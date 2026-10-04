@@ -1,6 +1,8 @@
 // 推幣機試玩版：檯面、推板、投幣、幣掉下去加錢。
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
+import { RoomEnvironment } from './lib/RoomEnvironment.js';
+import { makeCoinMaterials } from './coin.js?v=0.0.3';
 
 await RAPIER.init();
 
@@ -44,13 +46,18 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x14121c);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 
-scene.add(new THREE.HemisphereLight(0xfff4e0, 0x302840, 1.1));
+// 金屬要有東西可以反射才會亮，給它一個虛擬房間當倒影
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.6;
+scene.add(new THREE.HemisphereLight(0xfff4e0, 0x302840, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(4, 14, 8);
 sun.castShadow = true;
@@ -100,7 +107,7 @@ addBox(0.15, 3, tableLen / 2, outerW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff
 // 推板上方的擋牆（推板往回縮時，把推板上的幣刮下來）
 addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
 // 推板
-const pusher = addBox(halfW - 0.02, PUSHER_H / 2, PUSHER_DEPTH / 2, 0, PUSHER_H / 2, PUSHER_MID, 0xc9ccd6, { kinematic: true, metal: 0.7, rough: 0.3 });
+const pusher = addBox(halfW - 0.02, PUSHER_H / 2, PUSHER_DEPTH / 2, 0, PUSHER_H / 2, PUSHER_MID, 0x8d92a3, { kinematic: true, metal: 0.7, rough: 0.3 });
 // 前緣金邊（只有樣子）
 const lip = new THREE.Mesh(
   new THREE.BoxGeometry(TABLE_W, 0.08, 0.12),
@@ -128,7 +135,7 @@ scene.add(tray);
 
 // ===== 幣 =====
 const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_H, 28);
-const coinMeshMat = new THREE.MeshStandardMaterial({ color: 0xf4c95d, metalness: 0.55, roughness: 0.35 });
+const coinMeshMat = makeCoinMaterials();
 const COIN_EDGE = 0.03;
 const coinEuler = new THREE.Euler();
 const coinQuat = new THREE.Quaternion();
@@ -385,5 +392,5 @@ prefill();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
