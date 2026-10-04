@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.8';
+import { makeCoinMaterials } from './coin.js?v=0.0.9';
 
 await RAPIER.init();
 
@@ -180,10 +180,9 @@ const coinMatPlain = new THREE.MeshLambertMaterial({ color: 0xd9a53a, emissive: 
 let coinMeshMat = coinMatFancy;
 // 大金幣：同樣的幣面，大一號、偏紅金色
 const bigGeo = new THREE.CylinderGeometry(BIG_R, BIG_R, BIG_H, 32);
-const bigMatFancy = coinMatFancy.map((m) => {
-  const c = m.clone();
-  c.color = new THREE.Color(0xffb0a0);
-  return c;
+const bigMatFancy = makeCoinMaterials('10').map((m) => {
+  m.color = new THREE.Color(0xffb0a0);
+  return m;
 });
 const bigMatPlain = new THREE.MeshLambertMaterial({ color: 0xe0805a, emissive: 0x200800 });
 let bigMeshMat = bigMatFancy;
@@ -210,6 +209,7 @@ function spawnCoin(x, y, z, tilt = 0, big = false) {
       COIN_EDGE,
     )
       .setDensity(1)
+      .setContactSkin(0.01) // 留一層很薄的皮，疊在一起時比較不會抖
       .setFriction(COIN_FRICTION)
       .setRestitution(0.05),
     body,
@@ -338,30 +338,7 @@ function beep(freq, dur, vol = 0.08, type = 'sine') {
   } catch (e) { /* 沒聲音也能玩 */ }
 }
 
-// 幣在動的聲音：一層沙沙的摩擦聲＋零星的叮叮碰撞聲，
-// 正在動的幣越多就越大聲、叮得越頻繁（差別不誇張）
-let slideGain = null;
-function startSlideSound() {
-  if (slideGain || !audio) return;
-  try {
-    const len = audio.sampleRate * 2;
-    const buf = audio.createBuffer(1, len, audio.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    const src = audio.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    const band = audio.createBiquadFilter();
-    band.type = 'bandpass';
-    band.frequency.value = 3200;
-    band.Q.value = 0.7;
-    slideGain = audio.createGain();
-    slideGain.gain.value = 0;
-    src.connect(band).connect(slideGain).connect(audio.destination);
-    src.start();
-  } catch (e) { /* 沒聲音也能玩 */ }
-}
-
+// 幣在動的聲音：零星的叮叮碰撞聲，正在亂動的幣越多叮得越頻繁（差別不誇張）
 function clink(strength) {
   const base = 2600 + Math.random() * 1800;
   beep(base, 0.05, 0.008 + 0.012 * strength * Math.random(), 'sine');
@@ -371,7 +348,7 @@ function clink(strength) {
 let movingCount = 0;
 let soundFrame = 0;
 function updateCoinSound() {
-  if (!audio || !slideGain) return;
+  if (!audio) return;
   if (++soundFrame % 3 === 0) {
     // 跟著推板一起走的幣（坐在推板上、被平穩推著）不太會響，只算亂動的
     const vp = pusherSpeedZ();
@@ -385,7 +362,6 @@ function updateCoinSound() {
     movingCount = n;
   }
   const level = Math.pow(Math.min(1, movingCount / 12), 0.6);
-  slideGain.gain.setTargetAtTime(0.006 + 0.03 * level, audio.currentTime, 0.15);
   if (movingCount > 0 && Math.random() < 0.04 + 0.25 * level) clink(level);
 }
 
@@ -433,7 +409,6 @@ canvas.addEventListener('pointerdown', (e) => {
   pointerDown = true;
   canvas.setPointerCapture?.(e.pointerId);
   dropCoin();
-  startSlideSound();
   lastDrop = simTime;
 });
 const stop = () => { pointerDown = false; };
