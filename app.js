@@ -2,8 +2,11 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.17';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.17';
+import { makeCoinMaterials } from './coin.js?v=0.0.18';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.18';
+import {
+  RARITY, SLIME_VARIANTS, VARIANT_BY_ID, makeSlimeMesh, slimeHullPoints, updateSlimeEffects, drawSlimeIcon,
+} from './slime.js?v=0.0.18';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -54,7 +57,7 @@ const UPGRADES = {
   refill: {
     name: '媽媽十元',
     desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
-    levels: [20, 17, 14, 11, 8, 6],           // 媽媽幾秒給一次
+    levels: [30, 25, 20, 15, 12, 10],         // 媽媽幾秒給一次
     base: 8, growth: 1.6,
   },
   speed: {
@@ -117,6 +120,13 @@ const upgrades = Object.fromEntries(UPGRADE_KEYS.map((k) => [k, 0]));
 let rainTimer = 0;           // 每滿一秒擲一次金幣雨
 let rainQueue = 0;           // 金幣雨還有幾枚要下
 const coins = [];
+const dolls = [];            // 檯面上的史萊姆娃娃
+const collection = {};       // 圖鑑：每種娃娃收集了幾隻
+const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 30 秒一隻）
+const RARE_CHANCE = 0.25;    // 放出來的是稀有的機率
+const LEGEND_CHANCE = 0.04;  // 放出來的是傳說的機率
+const MAX_DOLLS = 2;         // 檯面上最多同時幾隻
+let dollTimer = 0;
 
 // ===== 保底式假隨機 =====
 // 機率 p 的事件：第 n 次沒中時，下一次的機率是 C × n；一中就從頭算。
@@ -319,6 +329,54 @@ function removeCoin(i) {
   coins.splice(i, 1);
 }
 
+// ===== 史萊姆娃娃 =====
+function spawnDoll(id, scale, pos, rot) {
+  const v = VARIANT_BY_ID[id];
+  if (!v) return null;
+  const body = world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(pos.x, pos.y, pos.z)
+      .setRotation(rot || { x: 0, y: 0, z: 0, w: 1 })
+      .setLinearDamping(0.1)
+      .setAngularDamping(0.4)
+      .setCcdEnabled(true),
+  );
+  world.createCollider(
+    RAPIER.ColliderDesc.convexHull(slimeHullPoints(scale))
+      .setDensity(0.35)
+      .setFriction(0.5)
+      .setRestitution(0.1)
+      .setContactSkin(0.01),
+    body,
+  );
+  const mesh = makeSlimeMesh(v, scale);
+  scene.add(mesh);
+  const doll = { id, scale, body, mesh };
+  dolls.push(doll);
+  return doll;
+}
+
+function removeDoll(i) {
+  const d = dolls[i];
+  world.removeRigidBody(d.body);
+  scene.remove(d.mesh);
+  dolls.splice(i, 1);
+}
+
+// 機台放一隻新的娃娃到推板上方，稀有度也用保底式假隨機
+function dropNewDoll() {
+  let rarity = 'common';
+  if (legendChance.roll()) rarity = 'legend';
+  else if (rareChance.roll()) rarity = 'rare';
+  const pool = SLIME_VARIANTS.filter((v) => v.rarity === rarity);
+  const v = pool[Math.floor(Math.random() * pool.length)];
+  const scale = 0.85 + Math.random() * 0.35; // 大小略有不同
+  const yaw = (Math.random() - 0.5) * 0.8;   // 大致面向玩家
+  spawnDoll(v.id, scale, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+  beep(700, 0.12, 0.05, 'triangle', 'doll');
+  setTimeout(() => beep(1050, 0.16, 0.05, 'triangle', 'doll'), 110);
+}
+
 // ===== 推板移動 =====
 // 用「走到哪裡」記推板位置，這樣升級加速時推板不會突然跳位置
 function movePusher() {
@@ -363,6 +421,8 @@ function prefill() {
     const coin = spawnCoin(c[0], c[1], c[2]);
     if (coin) coin.body.setRotation({ x: c[3], y: c[4], z: c[5], w: c[6] }, true);
   }
+  // 開局先放一隻普通的娃娃在檯面中間，讓玩家一眼看到目標
+  spawnDoll('green', 1, { x: 0.3, y: 1.6, z: -0.6 });
 }
 
 // ===== 介面 =====
@@ -422,15 +482,17 @@ const SOUND_KINDS = {
   rain: '金幣雨',
   mom: '媽媽給錢',
   shop: '商店購買',
+  doll: '娃娃',
 };
 const SOUND_KEY = 'pretty_drop_sound';
-const soundOn = { master: true };
+const soundOn = { master: true, volume: 7 }; // volume：0 到 10
 for (const k of Object.keys(SOUND_KINDS)) soundOn[k] = true;
 try { Object.assign(soundOn, JSON.parse(localStorage.getItem(SOUND_KEY) || '{}')); } catch (e) { /* 用預設 */ }
 
 let audio = null;
 function beep(freq, dur, vol = 0.08, type = 'sine', kind = 'drop') {
-  if (!soundOn.master || !soundOn[kind]) return;
+  if (!soundOn.master || !soundOn[kind] || !soundOn.volume) return;
+  vol *= soundOn.volume / 7; // 7 是原本的音量
   try {
     if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
     const o = audio.createOscillator();
@@ -493,6 +555,9 @@ function aimFromEvent(e) {
 
 const bigChance = new PseudoRandom(UPGRADES.lucky.levels[0]);
 const rainChance = new PseudoRandom(UPGRADES.rain.levels[0]);
+const dollChance = new PseudoRandom(DOLL_CHANCE);
+const rareChance = new PseudoRandom(RARE_CHANCE);
+const legendChance = new PseudoRandom(LEGEND_CHANCE);
 
 function setAuto(on) {
   autoDrop = on;
@@ -600,11 +665,22 @@ for (const t of document.querySelectorAll('#settings .tab')) {
 const soundListEl = document.getElementById('soundList');
 function renderSound() {
   const rows = [['master', '總開關']].concat(Object.entries(SOUND_KINDS));
-  soundListEl.innerHTML = rows.map(([k, name]) => {
+  const vol = `<div class="volRow"><span>音量</span><input type="range" id="volSlider" min="0" max="10" step="1" value="${soundOn.volume}"><b id="volNum">${soundOn.volume}</b></div>`;
+  soundListEl.innerHTML = vol + rows.map(([k, name]) => {
     const dim = k !== 'master' && !soundOn.master ? ' dim' : '';
     return `<div class="toggleRow${k === 'master' ? ' master' : ''}${dim}"><span>${name}</span><button type="button" data-sound="${k}" class="${soundOn[k] ? 'on' : ''}">${soundOn[k] ? '開' : '關'}</button></div>`;
   }).join('');
 }
+soundListEl.addEventListener('input', (e) => {
+  if (e.target.id !== 'volSlider') return;
+  soundOn.volume = Number(e.target.value);
+  document.getElementById('volNum').textContent = soundOn.volume;
+  try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundOn)); } catch (err) { /* 存不了也沒關係 */ }
+});
+// 放開滑桿時響一聲，讓玩家聽聽看現在多大聲
+soundListEl.addEventListener('change', (e) => {
+  if (e.target.id === 'volSlider') beep(990, 0.1, 0.06, 'triangle', 'drop');
+});
 soundListEl.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-sound]');
   if (!b) return;
@@ -614,8 +690,54 @@ soundListEl.addEventListener('click', (e) => {
 });
 renderSound();
 
+// ===== 圖鑑 =====
+const bookEl = document.getElementById('book');
+const bookListEl = document.getElementById('bookList');
+function renderBook() {
+  const got = SLIME_VARIANTS.filter((v) => collection[v.id] > 0).length;
+  document.getElementById('bookCount').textContent = `${got} / ${SLIME_VARIANTS.length}`;
+  bookListEl.innerHTML = '';
+  for (const v of SLIME_VARIANTS) {
+    const n = collection[v.id] || 0;
+    const cell = document.createElement('div');
+    cell.className = 'bookCell';
+    const cv = document.createElement('canvas');
+    cv.width = 96;
+    cv.height = 80;
+    drawSlimeIcon(cv.getContext('2d'), v, 96, 80, n > 0);
+    const r = RARITY[v.rarity];
+    cell.appendChild(cv);
+    const name = document.createElement('div');
+    name.className = 'bookName';
+    name.textContent = n > 0 ? v.name : '？？？';
+    const info = document.createElement('div');
+    info.className = 'bookInfo';
+    info.innerHTML = `<span style="color:${r.color}">${r.name}</span>${n > 0 ? ` ×${n}` : ''}`;
+    cell.append(name, info);
+    bookListEl.appendChild(cell);
+  }
+}
+document.getElementById('bookBtn').addEventListener('click', () => {
+  shopEl.classList.remove('show');
+  document.getElementById('settings').classList.remove('show');
+  renderBook();
+  bookEl.classList.toggle('show');
+});
+document.getElementById('bookClose').addEventListener('click', () => bookEl.classList.remove('show'));
+
+// 畫面上方的小通知
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(html) {
+  toastEl.innerHTML = html;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+}
+
 document.getElementById('settingsBtn').addEventListener('click', () => {
   shopEl.classList.remove('show');
+  bookEl.classList.remove('show');
   document.getElementById('settings').classList.toggle('show');
 });
 for (const b of document.querySelectorAll('#settings button[data-q]')) {
@@ -690,6 +812,7 @@ function buy(key) {
 }
 
 shopBtn.addEventListener('click', () => {
+  bookEl.classList.remove('show');
   document.getElementById('settings').classList.remove('show');
   renderShop();
   shopEl.classList.toggle('show');
@@ -713,6 +836,15 @@ function saveData() {
     pusherPhase,
     bigCount: bigChance.count,
     rainCount: rainChance.count,
+    dollCount: dollChance.count,
+    rareCount: rareChance.count,
+    legendCount: legendChance.count,
+    collection: { ...collection },
+    dolls: dolls.map((d) => {
+      const t = d.body.translation();
+      const r = d.body.rotation();
+      return { id: d.id, s: Math.round(d.scale * 1000) / 1000, p: [t.x, t.y, t.z], r: [r.x, r.y, r.z, r.w] };
+    }),
     won,
     lost,
     coins: coins.map((c) => {
@@ -748,6 +880,16 @@ function applySave(d) {
   pusherPhase = Number(d.pusherPhase) || 0;
   bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
   rainChance.count = Math.max(0, Math.floor(Number(d.rainCount) || 0));
+  dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
+  rareChance.count = Math.max(0, Math.floor(Number(d.rareCount) || 0));
+  legendChance.count = Math.max(0, Math.floor(Number(d.legendCount) || 0));
+  for (const [k, n] of Object.entries(d.collection || {})) {
+    if (VARIANT_BY_ID[k]) collection[k] = Math.max(0, Math.floor(Number(n) || 0));
+  }
+  for (const dd of (d.dolls || []).slice(0, MAX_DOLLS)) {
+    if (!Array.isArray(dd.p) || !Array.isArray(dd.r)) continue;
+    spawnDoll(dd.id, Number(dd.s) || 1, { x: dd.p[0], y: dd.p[1], z: dd.p[2] }, { x: dd.r[0], y: dd.r[1], z: dd.r[2], w: dd.r[3] });
+  }
   won = Number(d.won) || 0;
   lost = Number(d.lost) || 0;
   for (const c of (d.coins || []).slice(0, MAX_COINS)) {
@@ -820,6 +962,28 @@ function stepSim() {
       removeCoin(i);
     }
   }
+  for (let i = dolls.length - 1; i >= 0; i--) {
+    const t = dolls[i].body.translation();
+    if (t.y >= -1.2) continue;
+    const d = dolls[i];
+    const v = VARIANT_BY_ID[d.id];
+    if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
+      const r = RARITY[v.rarity];
+      const isNew = !collection[d.id];
+      collection[d.id] = (collection[d.id] || 0) + 1;
+      wallet += r.reward;
+      won += r.reward;
+      bump(walletEl);
+      floatText(`+${r.reward}`, new THREE.Vector3(t.x, 0, FRONT_Z));
+      toast(`<span style="color:${r.color}">${r.name}</span>　${v.name}${isNew ? '　<span class="newTag">新！</span>' : ''}　+${r.reward} 枚`);
+      [880, 1175, 1480, 1760, 2350].forEach((f, k) => setTimeout(() => beep(f, 0.16, 0.06, 'triangle', 'doll'), k * 80));
+      if (bookEl.classList.contains('show')) renderBook();
+      saveGame();
+    } else {
+      toast(`${v.name}掉進側溝了……`);
+    }
+    removeDoll(i);
+  }
 }
 
 function tick(now) {
@@ -838,6 +1002,13 @@ function tick(now) {
   if ((pointerDown || autoDrop) && simTime - lastDrop >= DROP_GAP) {
     dropCoin();
     lastDrop = simTime;
+  }
+
+  // 每一秒擲一次要不要放新娃娃（保底式假隨機）
+  dollTimer += frame;
+  if (dollTimer >= 1) {
+    dollTimer -= 1;
+    if (dolls.length < MAX_DOLLS && dollChance.roll()) dropNewDoll();
   }
 
   // 每一秒擲一次金幣雨（保底式假隨機）
@@ -882,6 +1053,11 @@ function tick(now) {
     c.mesh.quaternion.copy(c.body.rotation());
   }
   pusher.mesh.position.copy(pusher.body.translation());
+  for (const d of dolls) {
+    d.mesh.position.copy(d.body.translation());
+    d.mesh.quaternion.copy(d.body.rotation());
+    updateSlimeEffects(d.mesh, now / 1000);
+  }
   aimGhost.position.x = aimX;
   aimGhost.rotation.y += frame * 2;
 
@@ -899,5 +1075,5 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
