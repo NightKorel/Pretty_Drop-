@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.5';
+import { makeCoinMaterials } from './coin.js?v=0.0.6';
 
 await RAPIER.init();
 
@@ -257,6 +257,58 @@ function beep(freq, dur, vol = 0.08, type = 'sine') {
   } catch (e) { /* 沒聲音也能玩 */ }
 }
 
+// 幣在動的聲音：一層沙沙的摩擦聲＋零星的叮叮碰撞聲，
+// 正在動的幣越多就越大聲、叮得越頻繁（差別不誇張）
+let slideGain = null;
+function startSlideSound() {
+  if (slideGain || !audio) return;
+  try {
+    const len = audio.sampleRate * 2;
+    const buf = audio.createBuffer(1, len, audio.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = audio.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const band = audio.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 3200;
+    band.Q.value = 0.7;
+    slideGain = audio.createGain();
+    slideGain.gain.value = 0;
+    src.connect(band).connect(slideGain).connect(audio.destination);
+    src.start();
+  } catch (e) { /* 沒聲音也能玩 */ }
+}
+
+function clink(strength) {
+  const base = 2600 + Math.random() * 1800;
+  beep(base, 0.05, 0.008 + 0.012 * strength * Math.random(), 'sine');
+  beep(base * 1.48, 0.035, 0.005 + 0.006 * strength * Math.random(), 'sine');
+}
+
+let movingCount = 0;
+let soundFrame = 0;
+function updateCoinSound() {
+  if (!audio || !slideGain) return;
+  if (++soundFrame % 3 === 0) {
+    // 跟著推板一起走的幣（坐在推板上、被平穩推著）不太會響，只算亂動的
+    const w = (Math.PI * 2) / PUSHER_PERIOD;
+    const vp = PUSHER_AMP * w * Math.cos(simTime * w);
+    let n = 0;
+    for (const c of coins) {
+      const v = c.body.linvel();
+      const still = v.x * v.x + v.y * v.y + v.z * v.z;
+      const withPusher = v.x * v.x + v.y * v.y + (v.z - vp) * (v.z - vp);
+      if (Math.min(still, withPusher) > 0.6) n++;
+    }
+    movingCount = n;
+  }
+  const level = Math.pow(Math.min(1, movingCount / 12), 0.6);
+  slideGain.gain.setTargetAtTime(0.006 + 0.03 * level, audio.currentTime, 0.15);
+  if (movingCount > 0 && Math.random() < 0.04 + 0.25 * level) clink(level);
+}
+
 // ===== 瞄準與投幣 =====
 const aimGhost = new THREE.Mesh(coinGeo, new THREE.MeshBasicMaterial({ color: 0xf4c95d, transparent: true, opacity: 0.35 }));
 aimGhost.position.set(0, DROP_Y, DROP_Z);
@@ -296,6 +348,7 @@ canvas.addEventListener('pointerdown', (e) => {
   pointerDown = true;
   canvas.setPointerCapture?.(e.pointerId);
   dropCoin();
+  startSlideSound();
   lastDrop = simTime;
 });
 const stop = () => { pointerDown = false; };
@@ -376,7 +429,6 @@ function stepSim() {
       } else {
         lost++;
         bump(lostEl);
-        beep(140, 0.18, 0.05, 'sawtooth');
       }
       removeCoin(i);
     }
@@ -422,6 +474,7 @@ function tick(now) {
   aimGhost.position.x = aimX;
   aimGhost.rotation.y += frame * 2;
 
+  updateCoinSound();
   updateHud();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
@@ -432,5 +485,5 @@ prefill();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
