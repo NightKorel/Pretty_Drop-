@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.21';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.21';
+import { makeCoinMaterials } from './coin.js?v=0.0.22';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.22';
 import {
-  RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, setSlimeFancy, slimeHullPoints,
+  RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.21';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.21';
+} from './slime.js?v=0.0.22';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.22';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -90,7 +90,7 @@ const UPGRADES = {
   rainSize: {
     name: '金幣雨變大',
     desc: '每場金幣雨撒下來的幣變多',
-    levels: [30, 40, 50, 60, 75, 90, 110, 130],        // 一場金幣雨幾枚
+    levels: [30, 40, 50, 60, 70, 80, 100, 150],        // 一場金幣雨幾枚
     base: 150, growth: 1.55,
   },
   multi: {
@@ -100,11 +100,20 @@ const UPGRADES = {
     base: 400, growth: 2,
   },
 };
-// 價錢一律取 10 的倍數，而且每一級至少比上一級貴 10
+// 遊戲裡的錢：100 以內取 10 的倍數，超過 100 取 50 的倍數，看起來比較乾脆
+function niceMoney(x) {
+  return x <= 100 ? Math.max(10, Math.round(x / 10) * 10) : Math.round(x / 50) * 50;
+}
+// 比 x 大的下一個「乾脆的數字」
+function nextNice(x) {
+  return x < 100 ? x + 10 : x + 50;
+}
+// 每一級的價錢，而且每一級一定比上一級貴
 for (const u of Object.values(UPGRADES)) {
   let prev = 0;
   u.prices = u.levels.slice(1).map((_, i) => {
-    const p = Math.max(prev + 10, Math.round((u.base * Math.pow(u.growth, i)) / 10) * 10);
+    let p = niceMoney(u.base * Math.pow(u.growth, i));
+    if (p <= prev) p = nextNice(prev);
     prev = p;
     return p;
   });
@@ -382,9 +391,10 @@ function removeDoll(i) {
 }
 
 // 機台放一隻新的娃娃到推板上方，稀有度也用保底式假隨機
-function dropNewDoll() {
+function dropNewDoll(forceRarity) {
   let rarity = 'common';
-  if (legendChance.roll()) rarity = 'legend';
+  if (forceRarity) rarity = forceRarity;
+  else if (legendChance.roll()) rarity = 'legend';
   else if (rareChance.roll()) rarity = 'rare';
   const pool = SLOTS.map((sl, i) => i).filter((i) => SLOTS[i].rarity === rarity);
   const slot = pool[Math.floor(Math.random() * pool.length)];
@@ -677,7 +687,12 @@ function applyQuality(q) {
   coinMeshMat = q === 'low' ? coinMatPlain : coinMatFancy;
   bigMeshMat = q === 'low' ? bigMatPlain : bigMatFancy;
   for (const c of coins) c.mesh.material = c.value > 1 ? bigMeshMat : coinMeshMat;
-  for (const d of dolls) setSlimeFancy(d.mesh, q !== 'low');
+  // 娃娃換畫質要整隻重做（高／中是真的透光，低是假的半透明）
+  for (const d of dolls) {
+    scene.remove(d.mesh);
+    d.mesh = makeSlimeMesh(d.id, d.scale, q !== 'low');
+    scene.add(d.mesh);
+  }
   scene.traverse((o) => {
     if (!o.material) return;
     for (const m of [].concat(o.material)) m.needsUpdate = true;
@@ -767,7 +782,8 @@ function renderBook() {
     const slot = SLOTS[i];
     const r = RARITY[slot.rarity];
     const cell = document.createElement('div');
-    cell.className = 'bookCell';
+    cell.className = n > 0 ? 'bookCell owned' : 'bookCell';
+    cell.dataset.id = id;
     const cv = document.createElement('canvas');
     cv.width = 96;
     cv.height = 80;
@@ -783,6 +799,8 @@ function renderBook() {
   });
 }
 bookListEl.addEventListener('click', (e) => {
+  const cellEl = e.target.closest('.bookCell.owned');
+  if (cellEl) { openViewer(cellEl.dataset.id); return; }
   const tab = e.target.closest('button[data-set]');
   if (tab) {
     bookTab = tab.dataset.set;
@@ -810,6 +828,86 @@ document.getElementById('bookBtn').addEventListener('click', () => {
   bookEl.classList.toggle('show');
 });
 document.getElementById('bookClose').addEventListener('click', () => bookEl.classList.remove('show'));
+
+// ===== 圖鑑裡點娃娃：放大展示，可以左右轉 =====
+const viewerEl = document.getElementById('viewer');
+const viewerCanvas = document.getElementById('viewerCanvas');
+let viewer = null;   // 第一次打開才建立（用自己的一個小畫面）
+let viewerMesh = null;
+let viewerYaw = 0;
+let viewerDrag = null;
+let viewerOpen = false;
+
+function setupViewer() {
+  const r = new THREE.WebGLRenderer({ canvas: viewerCanvas, antialias: true, alpha: true });
+  r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  const sc = new THREE.Scene();
+  sc.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+  sc.environmentIntensity = 0.7;
+  sc.add(new THREE.HemisphereLight(0xfff4e0, 0x302840, 0.7));
+  const key = new THREE.DirectionalLight(0xffffff, 2);
+  key.position.set(2, 4, 3);
+  sc.add(key);
+  // 腳下放幾枚硬幣，半透明的娃娃才看得出透光
+  for (let i = 0; i < 7; i++) {
+    const c = new THREE.Mesh(coinGeo, coinMatFancy);
+    const a = (i / 7) * Math.PI * 2;
+    c.position.set(Math.cos(a) * 0.55, -0.05, Math.sin(a) * 0.55 - 0.1);
+    c.rotation.y = a;
+    sc.add(c);
+  }
+  const cam = new THREE.PerspectiveCamera(32, 1, 0.1, 20);
+  cam.position.set(0, 0.9, 2.3);
+  cam.lookAt(0, 0.3, 0);
+  viewer = { r, sc, cam };
+}
+
+function openViewer(id) {
+  const info = slimeInfo(id);
+  if (!info) return;
+  if (!viewer) setupViewer();
+  if (viewerMesh) viewer.sc.remove(viewerMesh);
+  viewerMesh = makeSlimeMesh(id, 1, quality !== 'low');
+  viewer.sc.add(viewerMesh);
+  viewerYaw = 0;
+  const r = RARITY[info.rarity];
+  document.getElementById('viewerName').textContent = info.skin.name;
+  document.getElementById('viewerInfo').innerHTML = `<span style="color:${r.color}">${r.name}</span>　${info.value} 枚　收集 ×${collection[id] || 0}`;
+  viewerEl.classList.add('show');
+  if (!viewerOpen) {
+    viewerOpen = true;
+    requestAnimationFrame(viewerLoop);
+  }
+}
+
+function viewerLoop(t) {
+  if (!viewerOpen) return;
+  const w = viewerCanvas.clientWidth;
+  if (viewer.r.domElement.width !== Math.round(w * viewer.r.getPixelRatio())) viewer.r.setSize(w, w, false);
+  if (!viewerDrag) viewerYaw += 0.006; // 沒在拖的時候慢慢轉
+  viewerMesh.rotation.y = viewerYaw;
+  updateSlimeEffects(viewerMesh, t / 1000);
+  viewer.r.render(viewer.sc, viewer.cam);
+  requestAnimationFrame(viewerLoop);
+}
+
+viewerCanvas.addEventListener('pointerdown', (e) => {
+  viewerDrag = { x: e.clientX, yaw: viewerYaw };
+  viewerCanvas.setPointerCapture?.(e.pointerId);
+});
+viewerCanvas.addEventListener('pointermove', (e) => {
+  if (viewerDrag) viewerYaw = viewerDrag.yaw + (e.clientX - viewerDrag.x) * 0.012;
+});
+const endDrag = () => { viewerDrag = null; };
+viewerCanvas.addEventListener('pointerup', endDrag);
+viewerCanvas.addEventListener('pointercancel', endDrag);
+function closeViewer() {
+  viewerEl.classList.remove('show');
+  viewerOpen = false;
+}
+document.getElementById('viewerClose').addEventListener('click', closeViewer);
+viewerEl.addEventListener('click', (e) => { if (e.target === viewerEl) closeViewer(); });
 
 // 畫面上方的小通知
 const toastEl = document.getElementById('toast');
@@ -912,6 +1010,25 @@ document.getElementById('achBtn').addEventListener('click', () => {
   achEl.classList.toggle('show');
 });
 document.getElementById('achClose').addEventListener('click', () => achEl.classList.remove('show'));
+
+// 設定的「其他」頁：作弊（測試用）
+for (const b of document.querySelectorAll('#settings button[data-cheat]')) {
+  b.addEventListener('click', () => {
+    const c = b.dataset.cheat;
+    if (c === 'coin100') wallet += 100;
+    else if (c === 'coin1000') wallet += 1000;
+    else if (c === 'doll') dropNewDoll();
+    else if (c === 'legend') dropNewDoll('legend');
+    else if (c === 'rain') startRain();
+    else if (c === 'sets') {
+      // 每一套都補到解鎖下一套需要的種數
+      for (const st of SLIME_SETS) for (let i = 0; i < 6; i++) collection[`${st.id}.${i}`] = Math.max(1, collection[`${st.id}.${i}`] || 0);
+    } else if (c === 'ach') achPoints += 10;
+    bump(walletEl);
+    toast(`作弊：${b.textContent}`);
+    saveGame();
+  });
+}
 
 document.getElementById('settingsBtn').addEventListener('click', () => {
   achEl.classList.remove('show');
@@ -1293,7 +1410,7 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };

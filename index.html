@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>推幣機</title>
-  <link rel="stylesheet" href="style.css?v=0.0.21">
+  <link rel="stylesheet" href="style.css?v=0.0.22">
   <!-- 先把要用的檔案一起開始下載，不用等前一個下載完才發現下一個 -->
   <link rel="modulepreload" href="lib/three.core.js">
   <link rel="modulepreload" href="lib/three.module.js">
   <link rel="modulepreload" href="lib/rapier.mjs">
   <link rel="modulepreload" href="lib/RoomEnvironment.js">
-  <link rel="modulepreload" href="coin.js?v=0.0.21">
-  <link rel="modulepreload" href="digits.js?v=0.0.21">
-  <link rel="modulepreload" href="start-layout.js?v=0.0.21">
-  <link rel="modulepreload" href="slime.js?v=0.0.21">
-  <link rel="modulepreload" href="achievements.js?v=0.0.21">
+  <link rel="modulepreload" href="coin.js?v=0.0.22">
+  <link rel="modulepreload" href="digits.js?v=0.0.22">
+  <link rel="modulepreload" href="start-layout.js?v=0.0.22">
+  <link rel="modulepreload" href="slime.js?v=0.0.22">
+  <link rel="modulepreload" href="achievements.js?v=0.0.22">
   <link rel="preload" href="lib/rapier_wasm3d_bg.wasm.gz" as="fetch" crossorigin>
 </head>
 <body>
   <div id="hud">
-    <div class="title">推幣機 <span class="ver">v0.0.21</span></div>
+    <div class="title">推幣機 <span class="ver">v0.0.22</span></div>
     <div class="money">
       <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
     </div>
@@ -36,6 +36,7 @@
         <button type="button" class="tab on" data-tab="quality">畫質</button>
         <button type="button" class="tab" data-tab="sound">音效</button>
         <button type="button" class="tab" data-tab="save">存檔</button>
+        <button type="button" class="tab" data-tab="other">其他</button>
       </div>
       <div class="pane" data-pane="quality">
         <div class="row">
@@ -56,6 +57,19 @@
         </div>
         <div class="note">遊戲會自動存檔。匯出可以把存檔存成檔案備份。</div>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <div class="pane" data-pane="other" hidden>
+        <div class="row">作弊（測試用）</div>
+        <div class="cheats">
+          <button type="button" data-cheat="coin100">手上 +100 枚</button>
+          <button type="button" data-cheat="coin1000">手上 +1000 枚</button>
+          <button type="button" data-cheat="doll">放一隻娃娃</button>
+          <button type="button" data-cheat="legend">放一隻傳說娃娃</button>
+          <button type="button" data-cheat="rain">下一場金幣雨</button>
+          <button type="button" data-cheat="sets">解鎖全部娃娃套</button>
+          <button type="button" data-cheat="ach">成就點數 +10</button>
+        </div>
+        <div class="note">作弊不會關掉，會照常存檔。</div>
       </div>
     </div>
   </div>
@@ -84,6 +98,15 @@
     </div>
     <div id="achList"></div>
   </div>
+  <div id="viewer">
+    <div class="viewerBox">
+      <button type="button" id="viewerClose" aria-label="關閉">✕</button>
+      <canvas id="viewerCanvas"></canvas>
+      <div id="viewerName"></div>
+      <div id="viewerInfo"></div>
+      <div class="viewerTip">左右拖曳可以轉</div>
+    </div>
+  </div>
   <div id="toast"></div>
   <div id="rainBanner">金幣雨！</div>
   <div id="hint">點檯面投幣，按住可以連投，右鍵（或「自動」）自動連續投</div>
@@ -108,6 +131,6 @@
       if (!window.__game) showLoadError(e.reason && e.reason.message ? e.reason.message : e.reason);
     });
   </script>
-  <script type="module" src="app.js?v=0.0.21"></script>
+  <script type="module" src="app.js?v=0.0.22"></script>
 </body>
 </html>

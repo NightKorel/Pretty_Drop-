@@ -11,12 +11,12 @@ export const RARITY = {
 
 // 每一套第 1 到第 10 隻：推下去值多少枚、稀有度（每套都一樣）
 export const SLOTS = [
+  { value: 10, rarity: 'common' },
   { value: 20, rarity: 'common' },
-  { value: 25, rarity: 'common' },
   { value: 30, rarity: 'common' },
-  { value: 35, rarity: 'common' },
   { value: 40, rarity: 'common' },
   { value: 50, rarity: 'common' },
+  { value: 60, rarity: 'common' },
   { value: 80, rarity: 'rare' },
   { value: 100, rarity: 'rare' },
   { value: 150, rarity: 'rare' },
@@ -97,12 +97,24 @@ function isDark(hex) {
 }
 
 // 史萊姆的側面輪廓（半徑 r、高度 y，都以 1 為單位）：底部平、上面圓
+// 史萊姆的側面輪廓（半徑 r、高度 y，都以 1 為單位）：底部只有一小塊是平的、肚子圓圓的，
+// 像一顆麻糬，比較不會穩穩地坐著不動
 const PROFILE = [
-  [0, 0], [0.82, 0], [0.95, 0.04], [1.0, 0.14], [0.99, 0.3], [0.93, 0.48],
-  [0.82, 0.64], [0.66, 0.78], [0.46, 0.89], [0.24, 0.96], [0, 0.99],
+  [0, 0], [0.42, 0], [0.66, 0.035], [0.84, 0.11], [0.96, 0.23], [1.0, 0.37],
+  [0.97, 0.52], [0.87, 0.67], [0.7, 0.8], [0.48, 0.91], [0.24, 0.975], [0, 1],
 ];
-export const SLIME_R = 0.62;
-export const SLIME_H = 0.62;
+export const SLIME_R = 0.55;
+export const SLIME_H = 0.8;
+
+// 輪廓在某個高度（0 到 1）的半徑
+function radiusAt(y) {
+  for (let i = 1; i < PROFILE.length; i++) {
+    const [r0, y0] = PROFILE[i - 1];
+    const [r1, y1] = PROFILE[i];
+    if (y <= y1) return r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+  }
+  return 0;
+}
 
 // 物理用的外形點
 export function slimeHullPoints(scale) {
@@ -130,8 +142,8 @@ function getBodyGeo() {
     }
   }
   pts.push(new THREE.Vector2(0, PROFILE[PROFILE.length - 1][1] * SLIME_H));
+  // LatheGeometry 自己會算好接縫處的法線，不要再重算，不然身體中間會出現一條線
   bodyGeo = new THREE.LatheGeometry(pts, 48);
-  bodyGeo.computeVertexNormals();
   return bodyGeo;
 }
 
@@ -179,8 +191,8 @@ function flakeTexture(skin) {
   });
 }
 
-// 假的半透明：一般的半透明（後面的金幣會透出來），再加「邊緣濃、中間透」，
-// 看起來像有厚度的果凍。比真正的透光計算省很多效能，所以每種畫質都用這個。
+// 假的半透明（低畫質用）：一般的半透明（後面的金幣會透出來），再加「邊緣濃、中間透」，
+// 看起來像有厚度的果凍。比真正的透光計算省很多效能。
 function fakeJelly(color, { center = 0.38, edge = 0.93, glow = 0.12, rough = 0.42, back = false } = {}) {
   const m = new THREE.MeshStandardMaterial({
     color, roughness: rough, metalness: 0, transparent: true, depthWrite: false,
@@ -201,7 +213,23 @@ function fakeJelly(color, { center = 0.38, edge = 0.93, glow = 0.12, rough = 0.4
   return m;
 }
 
-// 果凍類要畫兩層：先畫內側（深一點），再畫外側
+// 高／中畫質：真正會透光的半透明（微微霧面）
+function realJelly(skin) {
+  const color = new THREE.Color(skin.color);
+  if (skin.look === 'diamond') {
+    return new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, roughness: 0.22, transmission: 1, thickness: 1, ior: 1.8,
+      iridescence: 0.6, iridescenceIOR: 1.5, clearcoat: 0.3, clearcoatRoughness: 0.4,
+    });
+  }
+  return new THREE.MeshPhysicalMaterial({
+    color, roughness: 0.35, clearcoat: 0.2, clearcoatRoughness: 0.5,
+    transmission: 0.92, thickness: 0.7, ior: 1.33,
+    attenuationColor: color, attenuationDistance: skin.look === 'night' ? 0.35 : 0.9,
+  });
+}
+
+// 低畫質：假的半透明，果凍類要畫兩層：先畫內側（深一點），再畫外側
 function jellyLayers(skin) {
   const color = new THREE.Color(skin.color);
   if (skin.look === 'diamond') {
@@ -257,7 +285,10 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   const { skin } = slimeInfo(id);
   const g = new THREE.Group();
   let body;
-  if (isJelly(skin)) {
+  if (isJelly(skin) && fancy) {
+    body = new THREE.Mesh(getBodyGeo(), realJelly(skin));
+    body.castShadow = true;
+  } else if (isJelly(skin)) {
     const [backMat, frontMat] = jellyLayers(skin);
     const inner = new THREE.Mesh(getBodyGeo(), backMat);
     inner.renderOrder = 1;
@@ -271,14 +302,19 @@ export function makeSlimeMesh(id, scale, fancy = true) {
     body.receiveShadow = true;
   }
   g.add(body);
-  // 豆豆眼：深色史萊姆用白的
+  // 豆豆眼：深色史萊姆用白的。眼睛是貼在表面的扁片，不會凸出來
   const eyeMat = isDark(skin.color) ? eyeWhite : eyeBlack;
+  const ey = 0.5;                                  // 眼睛在身體的哪個高度（0 到 1）
+  const er = radiusAt(ey) * SLIME_R;
+  const slope = (radiusAt(ey + 0.02) - radiusAt(ey - 0.02)) / 0.04 * (SLIME_R / SLIME_H);
   for (const side of [-1, 1]) {
+    const th = side * 0.27;
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
     eye.renderOrder = 3; // 眼睛最後畫，不會被半透明的身體蓋得霧霧的
-    eye.scale.set(0.05, 0.08, 0.035);
-    eye.position.set(side * 0.16, 0.3, 0.555);
-    eye.lookAt(side * 0.16 * 3, 0.3, 3);
+    eye.scale.set(0.045, 0.07, 0.004);
+    const n = new THREE.Vector3(Math.sin(th), -slope, Math.cos(th)).normalize();
+    eye.position.set(Math.sin(th) * er, ey * SLIME_H, Math.cos(th) * er).addScaledVector(n, 0.002);
+    eye.lookAt(eye.position.clone().add(n));
     g.add(eye);
   }
   // 夜空：身體裡有幾顆小星星
@@ -305,11 +341,6 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   return g;
 }
 
-// 換畫質時換身體的材質
-export function setSlimeFancy(g, fancy) {
-  if (isJelly(g.userData.skin)) return; // 果凍類每種畫質都一樣
-  g.userData.body.material = bodyMaterial(g.userData.skin, fancy);
-}
 
 // 每一幀更新特效（閃光一閃一閃）
 export function updateSlimeEffects(g, time) {
