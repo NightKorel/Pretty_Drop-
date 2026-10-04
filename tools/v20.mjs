@@ -19,6 +19,6 @@ await page.tap('#bookBtn'); await page.waitForTimeout(200);
 await page.tap('.bookTab[data-set="sweets"]'); await page.tap('.useSet'); await page.waitForTimeout(200);
 const sets = await page.evaluate(() => [...__game.activeSets]);
 const ids = await page.evaluate(() => { const out = []; for (let i = 0; i < 12; i++) { __game.dropNewDoll(); out.push(__game.dolls[__game.dolls.length - 1].id.split('.')[0]); } return [...new Set(out)]; });
-await page.screenshot({ path: '/tmp/claude-0/pd/shots/book3.png' });
+await page.screenshot({ path: '/tmp/pd-shots/book3.png' });
 console.log(JSON.stringify({ r, sets, ids, errs }));
 await browser.close();

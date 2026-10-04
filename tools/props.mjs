@@ -12,8 +12,8 @@ await page.screenshot({ path: '/tmp/pd-shots/props.png' });
 const r = await page.evaluate(() => {
   const g = __game; const out = {};
   out.onTable = g.props.map(p => p.kind);
-  g.spawnProp('ticket', 'ticket', { x: 0, y: 1, z: 2.6 });
-  g.spawnProp('item', 'wind', { x: 1, y: 1, z: 2.6 });
+  g.spawnProp('ticket', 'ticket', { x: 0, y: 1, z: 3.6 });
+  g.spawnProp('item', 'wind', { x: 1, y: 1, z: 3.6 });
   g.simulate(1.5);
   out.free = g.freeSpins;
   out.wheelOpen = document.getElementById('wheel').classList.contains('show');

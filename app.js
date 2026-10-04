@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.31';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.31';
+import { makeCoinMaterials } from './coin.js?v=0.0.32';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.32';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.31';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.31';
+} from './slime.js?v=0.0.32';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.32';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -34,7 +34,7 @@ document.getElementById('loading').textContent = '機台準備中……（擺硬
 // ===== 數值（之後調手感主要改這裡） =====
 const GUTTER = 1.1;          // 兩側溝的寬度，幣掉進去就被機台吃掉（越寬吃越多）
 const TABLE_W = 9.4 - GUTTER * 2; // 檯面寬（推板也是這麼寬）；外框固定，側溝變寬檯面就變窄
-const FRONT_Z = 2;           // 檯面前緣（幣掉過這裡就算贏）
+const FRONT_Z = 3;           // 檯面前緣（幣掉過這裡就算贏）
 const BACK_Z = -10;          // 檯面最後面
 const WALL_Z = -6.3;         // 推板上方擋牆的位置
 const PUSHER_DEPTH = 5;      // 推板前後長度
@@ -296,14 +296,7 @@ for (const side of [-1, 1]) {
   pit.position.set(side * (halfW + GUTTER / 2), -2.5, (FRONT_Z + BACK_Z) / 2);
   scene.add(pit);
 }
-// 下方出幣口（只有樣子）
-const tray = new THREE.Mesh(
-  new THREE.BoxGeometry(TABLE_W + GUTTER * 2 + 1, 0.3, 3),
-  new THREE.MeshStandardMaterial({ color: 0x2a2236, roughness: 0.9 }),
-);
-tray.position.set(0, -3.2, FRONT_Z + 1.6);
-tray.receiveShadow = true;
-scene.add(tray);
+// 前緣下面沒有出幣口了：畫面只看到檯面，下面那塊沒用的拿掉
 
 // ===== 幣 =====
 const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_H, 28);
@@ -672,8 +665,15 @@ function resize() {
   const needW = TABLE_W + GUTTER * 1.2;
   const halfFovX = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
   const dist = Math.max(10.5, (needW / 2) / Math.tan(halfFovX) * 1.02);
-  camera.position.set(0, dist * 0.68, -0.5 + dist * 0.72);
-  camera.lookAt(0, -0.5, -3.2);
+  // 鏡頭看向檯面中間偏後，檯面前緣剛好在畫面下緣附近
+  if (camera.aspect < 0.8) {
+    // 直的手機畫面：寬度被卡住，改成比較往下俯視，檯面在畫面上會變高、填滿上下
+    camera.position.set(0, dist * 0.86, 0.6 + dist * 0.42);
+    camera.lookAt(0, -0.9, -2.0);
+  } else {
+    camera.position.set(0, dist * 0.7, 0.2 + dist * 0.66);
+    camera.lookAt(0, -0.9, -2.4);
+  }
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
@@ -1009,7 +1009,7 @@ function closeCelebrate() {
   celebEl.classList.remove('show');
   document.getElementById('confetti').innerHTML = '';
 }
-celebEl.addEventListener('click', closeCelebrate);
+// 慶祝卡片不擋畫面、不用點，時間到自己淡掉
 
 // 畫面上方的小通知
 const toastEl = document.getElementById('toast');
@@ -1661,6 +1661,7 @@ function spinWheel(free) {
     bump(walletEl);
   }
   stats.spins++;
+  updateLotteryBadge();
   wheelSpinning = true;
   renderWheelInfo();
   const idx = pickWheel();
@@ -1703,6 +1704,11 @@ document.getElementById('freeSpinBtn').addEventListener('click', () => spinWheel
 document.getElementById('paySpinBtn').addEventListener('click', () => spinWheel(false));
 document.getElementById('wheelClose').addEventListener('click', () => wheelEl.classList.remove('show'));
 document.getElementById('lotteryBtn').addEventListener('click', openWheel);
+// 「彩券」按鈕上顯示還有幾次免費抽獎
+function updateLotteryBadge() {
+  const b = document.getElementById('lotteryBtn');
+  b.innerHTML = freeSpins > 0 ? `彩券<span class="badge">${freeSpins}</span>` : '彩券';
+}
 
 // ===== 商店 =====
 const shopEl = document.getElementById('shop');
@@ -1966,8 +1972,10 @@ function stepSim() {
     if (pr.type === 'ticket') {
       if (front) {
         freeSpins++;
-        toast('推下彩券！免費抽一次');
-        if (!wheelEl.classList.contains('show')) openWheel(); else renderWheelInfo();
+        // 不跳出來打斷遊戲：累積在「彩券」按鈕上，想抽再按
+        toast('推下彩券！免費抽獎 +1');
+        updateLotteryBadge();
+        if (wheelEl.classList.contains('show')) renderWheelInfo();
       } else {
         toast('彩券掉進側溝了……');
       }
@@ -2113,6 +2121,7 @@ const saved = loadSave();
 if (saved) applySave(saved);
 else prefill();
 buildGuards();
+updateLotteryBadge();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用

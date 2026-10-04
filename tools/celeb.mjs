@@ -9,8 +9,8 @@ await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 await page.evaluate(() => __game.applyQuality('low'));
 // 投幣速度上限：連點 10 次，一秒內只該投 1 枚
 const rate = await page.evaluate(() => { const g = __game; const n0 = g.stats.coinsDropped; const c = document.getElementById('view'); for (let i = 0; i < 10; i++) { c.dispatchEvent(new PointerEvent('pointerdown', { button: 0, clientX: 200, clientY: 400, bubbles: true })); c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); } return g.stats.coinsDropped - n0; });
-await page.evaluate(() => { __game.spawnDoll('jelly.9', 1, { x: 0, y: 1, z: 2.6 }); __game.simulate(1.2); });
-await page.waitForTimeout(1200);
+await page.evaluate(() => { __game.spawnDoll('jelly.9', 1, { x: 0, y: 1, z: 3.6 }); __game.simulate(1.2); });
+await page.waitForTimeout(500);
 await page.screenshot({ path: '/tmp/pd-shots/celeb.png' });
 console.log(JSON.stringify({ rate, errs, ups: await page.evaluate(() => __game.UPGRADE_KEYS) }));
 await browser.close();

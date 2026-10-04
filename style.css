@@ -438,15 +438,16 @@ html, body {
 #combo.pop { animation: comboPop 0.25s ease-out; }
 @keyframes comboPop { 0% { transform: translateX(-50%) scale(1.35); } 100% { transform: translateX(-50%) scale(1); } }
 
+/* 娃娃慶祝：不擋畫面、點不到（點擊會穿過去繼續投幣），時間到自己淡掉 */
 #celebrate {
   display: none;
   position: fixed;
   inset: 0;
   z-index: 8;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  background: radial-gradient(circle, rgba(20, 18, 28, 0.55), rgba(10, 8, 16, 0.75));
-  cursor: pointer;
+  padding-top: 14vh;
+  pointer-events: none;
 }
 #celebrate.show { display: flex; }
 .celebCard {
@@ -483,3 +484,37 @@ html, body {
   0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
   100% { transform: translate(var(--drift), 105vh) rotate(720deg); opacity: 0.8; }
 }
+
+.hudBtn .badge {
+  display: inline-block;
+  margin-left: 4px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #e0454f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.celebCard { transform-origin: top center; }
+
+/* 慶祝卡片：橫的小卡，放在按鈕下面、後牆那一帶，不蓋到檯面 */
+#celebrate { padding-top: 0; align-items: flex-start; }
+.celebCard {
+  margin-top: 96px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 10px 18px 10px 12px;
+  min-width: 0;
+  max-width: calc(100% - 32px);
+  background: rgba(20, 18, 28, 0.9);
+}
+#celebIcon { width: 72px; height: 61px; flex: none; }
+#celebRarity { font-size: 12px; margin-top: 0; }
+#celebName { font-size: 16px; margin-top: 2px; }
+#celebValue { font-size: 26px; margin-top: 0; line-height: 1.1; }
+#celebExtra { font-size: 12px; margin-top: 2px; min-height: 0; }
+@media (max-width: 480px) { .celebCard { margin-top: 118px; } }
