@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.32';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.32';
+import { makeCoinMaterials } from './coin.js?v=0.0.33';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.33';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.32';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.32';
+} from './slime.js?v=0.0.33';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.33';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -32,7 +32,7 @@ await initPhysics();
 document.getElementById('loading').textContent = '機台準備中……（擺硬幣）';
 
 // ===== 數值（之後調手感主要改這裡） =====
-const GUTTER = 1.1;          // 兩側溝的寬度，幣掉進去就被機台吃掉（越寬吃越多）
+const GUTTER = 0.85;         // 兩側溝的寬度，幣掉進去就被機台吃掉（越寬吃越多）
 const TABLE_W = 9.4 - GUTTER * 2; // 檯面寬（推板也是這麼寬）；外框固定，側溝變寬檯面就變窄
 const FRONT_Z = 3;           // 檯面前緣（幣掉過這裡就算贏）
 const BACK_Z = -10;          // 檯面最後面

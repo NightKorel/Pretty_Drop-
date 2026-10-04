@@ -12,7 +12,7 @@ const d = await page.evaluate((N) => {
   const g = __game; g.applyQuality('low'); g.clearTable();
   // 跟原本一樣的撒法：推板前面一點到前緣前面一點，一層一層疊上去
   for (let i = 0; i < N; i++) {
-    const x = (Math.random() * 2 - 1) * (3.6 - 0.5 - 0.1);
+    const x = (Math.random() * 2 - 1) * (3.85 - 0.5 - 0.1);
     const z = -4.5 + Math.random() * (3 - 0.7 + 4.5);
     g.spawnCoin(x, 0.4 + (i % 6) * 0.35, z, 0.3);
     if (i % 20 === 19) g.simulate(0.3);
