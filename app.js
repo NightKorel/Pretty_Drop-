@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.30';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.30';
+import { makeCoinMaterials } from './coin.js?v=0.0.31';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.31';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.30';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.30';
+} from './slime.js?v=0.0.31';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.31';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -271,9 +271,9 @@ const outerW = halfW + GUTTER; // 玻璃牆的位置
 const tableLen = FRONT_Z - BACK_Z;
 // 檯面
 const table = addBox(halfW, 0.5, tableLen / 2, 0, -0.5, (FRONT_Z + BACK_Z) / 2, 0x1f5b57);
-// 左右玻璃
-addBox(0.15, 3, tableLen / 2, -outerW - 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
-addBox(0.15, 3, tableLen / 2, outerW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
+// 左右的牆：只有物理、不畫出來，畫面可以把檯面拉得更近更大
+addBox(0.15, 3, tableLen / 2, -outerW - 0.15, 3, (FRONT_Z + BACK_Z) / 2, null);
+addBox(0.15, 3, tableLen / 2, outerW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, null);
 // 推板上方的擋牆（推板往回縮時，把推板上的幣刮下來）
 addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
 // 推板
@@ -401,10 +401,14 @@ function dropNewDoll(forceRarity) {
   if (forceRarity) rarity = forceRarity;
   else if (legendChance.roll()) rarity = 'legend';
   else if (rareChance.roll()) rarity = 'rare';
-  const pool = SLOTS.map((sl, i) => i).filter((i) => SLOTS[i].rarity === rarity);
-  const slot = pool[Math.floor(Math.random() * pool.length)];
-  const set = activeSets[Math.floor(Math.random() * activeSets.length)];
-  const id = `${set}.${slot}`;
+  // 檯面上不會同時有兩隻一樣造型的史萊姆：從還沒在檯面上的造型裡挑
+  const onTable = new Set(dolls.map((d) => d.id));
+  const pickFrom = (r) => activeSets.flatMap((set) => SLOTS.map((sl, i) => (sl.rarity === r ? `${set}.${i}` : null)))
+    .filter((x) => x && !onTable.has(x));
+  let choices = pickFrom(rarity);
+  if (!choices.length) choices = ['common', 'rare', 'legend'].flatMap(pickFrom);
+  if (!choices.length) return;
+  const id = choices[Math.floor(Math.random() * choices.length)];
   const scale = 0.85 + Math.random() * 0.35; // 大小略有不同
   const yaw = (Math.random() - 0.5) * 0.8;   // 大致面向玩家
   spawnDoll(id, scale, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
@@ -664,9 +668,10 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   // 直的螢幕把鏡頭拉遠，讓整個檯面寬度放得下
-  const needW = TABLE_W + GUTTER * 2 + 1.5;
+  // 只要看得到檯面和一點點側溝就好（牆沒畫出來）
+  const needW = TABLE_W + GUTTER * 1.2;
   const halfFovX = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
-  const dist = Math.max(13, (needW / 2) / Math.tan(halfFovX) * 1.05);
+  const dist = Math.max(10.5, (needW / 2) / Math.tan(halfFovX) * 1.02);
   camera.position.set(0, dist * 0.68, -0.5 + dist * 0.72);
   camera.lookAt(0, -0.5, -3.2);
   camera.updateProjectionMatrix();
@@ -1225,13 +1230,62 @@ function labelTexture(bg, text, sub) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+// 彩券：純圖案、沒有字（檯面上的東西都不放中文字）。紅底、金邊、兩側半圓缺口、虛線撕線、中間一顆星
+function ticketTexture() {
+  const W = 256;
+  const H = 144;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#c8323c';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#f4c95d';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(10, 10, W - 20, H - 20);
+  ctx.fillStyle = '#7a1820';
+  for (const x of [0, W]) {
+    ctx.beginPath();
+    ctx.arc(x, H / 2, 16, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(255, 236, 190, 0.8)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 7]);
+  ctx.beginPath();
+  ctx.moveTo(W * 0.7, 18);
+  ctx.lineTo(W * 0.7, H - 18);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // 星星
+  ctx.fillStyle = '#f4c95d';
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i / 10) * Math.PI * 2;
+    const r = i % 2 ? 16 : 38;
+    const x = W * 0.36 + Math.cos(a) * r;
+    const y = H / 2 + Math.sin(a) * r;
+    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  // 右邊小格子的三個點
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(W * 0.85, H / 2 + (i - 1) * 26, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 const propMats = {};
 function propMaterial(type, kind) {
   const key = `${type}.${kind}`;
   if (propMats[key]) return propMats[key];
   if (type === 'ticket') {
     // 反光調低，顏色才不會被燈光洗淡
-    const tex = labelTexture('#c8323c', '彩券', '免費抽一次');
+    const tex = ticketTexture();
     const face = new THREE.MeshStandardMaterial({ map: tex, color: 0x9a9a9a, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3, roughness: 0.85, envMapIntensity: 0.2 });
     const edge = new THREE.MeshStandardMaterial({ color: 0xf4c95d, metalness: 0.6, roughness: 0.4 });
     propMats[key] = [edge, edge, face, face, edge, edge];
@@ -1408,7 +1462,10 @@ function removeProp(i) {
 
 // 機台放一個道具或一張彩券到推板上方
 function dropProp(type) {
-  const kinds = Object.keys(ITEMS);
+  // 檯面上不會同時有兩個一樣的東西：彩券最多一張、每種道具最多一個
+  const kinds = Object.keys(ITEMS).filter((k) => !props.some((p) => p.kind === k));
+  if (type === 'ticket' && props.some((p) => p.type === 'ticket')) return;
+  if (type !== 'ticket' && !kinds.length) return;
   const kind = type === 'ticket' ? 'ticket' : kinds[Math.floor(Math.random() * kinds.length)];
   const yaw = (Math.random() - 0.5) * 0.8;
   spawnProp(type, kind, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
