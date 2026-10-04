@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.4';
+import { makeCoinMaterials } from './coin.js?v=0.0.5';
 
 await RAPIER.init();
 
@@ -45,7 +45,7 @@ const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
@@ -55,9 +55,11 @@ scene.background = new THREE.Color(0x14121c);
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 
 // 金屬要有東西可以反射才會亮，給它一個虛擬房間當倒影
-scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const envTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environment = envTex;
 scene.environmentIntensity = 0.6;
-scene.add(new THREE.HemisphereLight(0xfff4e0, 0x302840, 0.6));
+const hemi = new THREE.HemisphereLight(0xfff4e0, 0x302840, 0.6);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(4, 14, 8);
 sun.castShadow = true;
@@ -135,7 +137,9 @@ scene.add(tray);
 
 // ===== 幣 =====
 const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_H, 28);
-const coinMeshMat = makeCoinMaterials();
+const coinMatFancy = makeCoinMaterials();
+const coinMatPlain = new THREE.MeshLambertMaterial({ color: 0xd9a53a, emissive: 0x1a1000 });
+let coinMeshMat = coinMatFancy;
 const COIN_EDGE = 0.03;
 const coinEuler = new THREE.Euler();
 const coinQuat = new THREE.Quaternion();
@@ -315,6 +319,41 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// ===== 畫質設定 =====
+// 高：全部效果；中：關陰影、解析度降一點；低：再關反射和幣面圖案，解析度最低
+const QUALITY_KEY = 'pretty_drop_quality';
+let quality = 'high';
+try { quality = localStorage.getItem(QUALITY_KEY) || 'high'; } catch (e) { /* 存不了就用預設 */ }
+
+function applyQuality(q) {
+  quality = q;
+  try { localStorage.setItem(QUALITY_KEY, q); } catch (e) { /* 存不了也沒關係 */ }
+  const dpr = window.devicePixelRatio || 1;
+  renderer.setPixelRatio(q === 'high' ? Math.min(dpr, 2) : q === 'mid' ? Math.min(dpr, 1.25) : 1);
+  const shadows = q === 'high';
+  renderer.shadowMap.enabled = shadows;
+  sun.castShadow = shadows;
+  scene.environment = q === 'low' ? null : envTex;
+  hemi.intensity = q === 'low' ? 1.4 : 0.6;
+  coinMeshMat = q === 'low' ? coinMatPlain : coinMatFancy;
+  for (const c of coins) c.mesh.material = coinMeshMat;
+  scene.traverse((o) => {
+    if (!o.material) return;
+    for (const m of [].concat(o.material)) m.needsUpdate = true;
+  });
+  for (const b of document.querySelectorAll('#settings button[data-q]')) {
+    b.classList.toggle('on', b.dataset.q === q);
+  }
+  resize();
+}
+
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  document.getElementById('settings').classList.toggle('show');
+});
+for (const b of document.querySelectorAll('#settings button[data-q]')) {
+  b.addEventListener('click', () => applyQuality(b.dataset.q));
+}
+
 // ===== 主迴圈 =====
 let acc = 0;
 let lastT = performance.now();
@@ -388,9 +427,10 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+applyQuality(quality);
 prefill();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });

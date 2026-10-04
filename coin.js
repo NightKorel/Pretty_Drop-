@@ -20,6 +20,17 @@ function rimHeight(r) {
   return 0.3 + 0.5 * rim;
 }
 
+// 內圈一圈小圓點（像真硬幣的珠圈，兩面共用）
+function beadHeight(x, y, r) {
+  const beadR = 0.74;
+  if (Math.abs(r - beadR) >= 0.04) return 0;
+  const ang = Math.atan2(y, x);
+  const n = 48;
+  const a = Math.round((ang / (Math.PI * 2)) * n) / n * Math.PI * 2;
+  const d = Math.hypot(x - Math.cos(a) * beadR, y - Math.sin(a) * beadR);
+  return 0.3 + 0.28 * (1 - smoothstep(0.012, 0.026, d));
+}
+
 // 幣面的高度：0 最低，1 最高。x、y 從 -1 到 1，y 往下是正。
 function faceHeight(x, y) {
   const r = Math.hypot(x, y);
@@ -27,15 +38,7 @@ function faceHeight(x, y) {
 
   h = Math.max(h, rimHeight(r));
 
-  // 內圈一圈小圓點（像真硬幣的珠圈）
-  const beadR = 0.74;
-  if (Math.abs(r - beadR) < 0.04) {
-    const ang = Math.atan2(y, x);
-    const n = 48;
-    const a = Math.round((ang / (Math.PI * 2)) * n) / n * Math.PI * 2;
-    const d = Math.hypot(x - Math.cos(a) * beadR, y - Math.sin(a) * beadR);
-    h = Math.max(h, 0.3 + 0.28 * (1 - smoothstep(0.012, 0.026, d)));
-  }
+  h = Math.max(h, beadHeight(x, y, r));
 
   // 史萊姆：上面圓、下面比較扁平
   const sx = x / 0.5;
@@ -77,44 +80,48 @@ function sparkle(x, y, cx, cy, s, peak) {
   return (0.4 + (peak - 0.4) * Math.pow(1 - Math.min(1, f), 0.7)) * edge;
 }
 
-// 背面：外圈凸起、中間凹下去，凹槽裡一個凸起的花體 1
+// 背面：外圈凸起、珠圈、中間凹下去，凹槽裡一個凸起的花體 1
+// 樣式照納可給的參考：粗體斜字、頂端一面往左下的旗子、底下帶弧角的底座
 function drawFancyOne(ctx) {
+  ctx.save();
   ctx.fillStyle = '#fff';
-  ctx.strokeStyle = '#fff';
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  // 主幹：上粗下細一點、往右斜
+  ctx.translate(128, 128);
+  ctx.scale(0.85, 0.85);
+  ctx.transform(1, 0, -0.2, 1, 0, 0); // 往右斜
+  ctx.translate(-128, -128);
+  // 主幹＋旗子
   ctx.beginPath();
-  ctx.moveTo(136, 62);
-  ctx.bezierCurveTo(150, 60, 156, 66, 154, 78);
-  ctx.lineTo(140, 186);
-  ctx.bezierCurveTo(139, 192, 120, 192, 121, 186);
-  ctx.lineTo(132, 80);
+  ctx.moveTo(146, 54);
+  ctx.lineTo(146, 186);
+  ctx.lineTo(116, 186);
+  ctx.lineTo(116, 86);
+  ctx.quadraticCurveTo(106, 96, 88, 100);
+  ctx.lineTo(86, 86);
+  ctx.quadraticCurveTo(116, 78, 134, 54);
   ctx.closePath();
   ctx.fill();
-  // 頂端往左下捲的旗子，尾巴一顆圓珠
-  ctx.lineWidth = 9;
+  // 底座
   ctx.beginPath();
-  ctx.moveTo(146, 66);
-  ctx.bezierCurveTo(128, 82, 108, 98, 92, 98);
-  ctx.bezierCurveTo(80, 98, 76, 88, 84, 82);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(88, 84, 8, 0, Math.PI * 2);
+  ctx.moveTo(92, 186);
+  ctx.lineTo(170, 186);
+  ctx.lineTo(172, 202);
+  ctx.lineTo(90, 202);
+  ctx.closePath();
   ctx.fill();
-  // 底座：兩端往上捲的橫線
-  ctx.lineWidth = 8;
+  // 主幹和底座之間的弧角
   ctx.beginPath();
-  ctx.moveTo(84, 182);
-  ctx.bezierCurveTo(78, 194, 92, 200, 108, 194);
-  ctx.bezierCurveTo(124, 188, 140, 188, 156, 194);
-  ctx.bezierCurveTo(172, 200, 186, 194, 180, 182);
-  ctx.stroke();
-  for (const [cx, cy] of [[84, 180], [180, 180]]) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  ctx.moveTo(116, 166);
+  ctx.quadraticCurveTo(116, 186, 96, 186);
+  ctx.lineTo(116, 188);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(146, 166);
+  ctx.quadraticCurveTo(146, 186, 166, 186);
+  ctx.lineTo(146, 188);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 // 簡單的模糊，讓字的邊緣圓滑（Safari 不支援畫布濾鏡，所以自己算）
@@ -156,8 +163,8 @@ function backHeightMap() {
       const y = ((py + 0.5) / SIZE) * 2 - 1;
       const r = Math.hypot(x, y);
       // 中間凹槽比外面低，往外圈慢慢升上去
-      let h = 0.12 + 0.18 * smoothstep(0.7, 0.8, r);
-      h = Math.max(h, rimHeight(r));
+      let h = 0.12 + 0.18 * smoothstep(0.64, 0.69, r);
+      h = Math.max(h, rimHeight(r), beadHeight(x, y, r));
       const i = py * SIZE + pxi;
       h = Math.max(h, 0.12 + 0.68 * Math.sqrt(soft[i]));
       hmap[i] = h;
