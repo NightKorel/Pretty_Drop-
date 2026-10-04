@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.14';
+import { makeCoinMaterials } from './coin.js?v=0.0.15';
 
 await RAPIER.init();
 
@@ -34,7 +34,7 @@ const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得
 const UPGRADES = {
   refill: {
     name: '媽媽十元',
-    desc: '媽媽每隔一段時間給你 10 枚，升級讓媽媽給得更勤（手上滿 100 枚就先不給）',
+    desc: '冒著被打的風險……每隔一段時間跟媽媽討 10 枚。升級讓你討得更勤，手上滿 100 枚就不好意思再討了。',
     levels: [20, 17, 14, 11, 8, 6],           // 媽媽幾秒給一次
     base: 8, growth: 1.6,
   },
@@ -69,8 +69,14 @@ const UPGRADES = {
     base: 300, growth: 2,
   },
 };
+// 價錢一律取 10 的倍數，而且每一級至少比上一級貴 10
 for (const u of Object.values(UPGRADES)) {
-  u.prices = u.levels.slice(1).map((_, i) => Math.round(u.base * Math.pow(u.growth, i)));
+  let prev = 0;
+  u.prices = u.levels.slice(1).map((_, i) => {
+    const p = Math.max(prev + 10, Math.round((u.base * Math.pow(u.growth, i)) / 10) * 10);
+    prev = p;
+    return p;
+  });
 }
 const UPGRADE_KEYS = Object.keys(UPGRADES);
 const BIG_VALUE = 10;         // 大金幣推下去值幾枚
@@ -245,7 +251,7 @@ let coinMeshMat = coinMatFancy;
 // 大金幣：大一號、背面寫 10，顏色比一般幣深一點點
 const bigGeo = new THREE.CylinderGeometry(BIG_R, BIG_R, BIG_H, 32);
 const bigMatFancy = makeCoinMaterials('10').map((m) => {
-  m.color = new THREE.Color(0xddcfb4); // 比一般幣深一點點
+  m.color.multiply(new THREE.Color(0xddcfb4)); // 在原本的顏色上壓深一點點（側邊也是）
   return m;
 });
 const bigMatPlain = new THREE.MeshLambertMaterial({ color: 0xc7952f, emissive: 0x160c00 });
@@ -380,9 +386,9 @@ function updateHud() {
   }
   if (wallet < MOM_CAP) {
     const left = Math.ceil(upValue('refill') - refillTimer);
-    refillEl.textContent = `媽媽 ${left} 秒後給你 ${MOM_GIVE} 枚`;
+    refillEl.textContent = `${left} 秒後獲得 ${MOM_GIVE} 枚`;
   } else {
-    refillEl.textContent = `手上滿 ${MOM_CAP} 枚，媽媽先不給了`;
+    refillEl.textContent = `手上滿 ${MOM_CAP} 枚，先不會獲得`;
   }
 }
 function floatText(text, worldPos) {
