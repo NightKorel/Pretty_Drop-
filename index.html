@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>推幣機</title>
-  <link rel="stylesheet" href="style.css?v=0.0.24">
+  <link rel="stylesheet" href="style.css?v=0.0.25">
   <!-- 先把要用的檔案一起開始下載，不用等前一個下載完才發現下一個 -->
   <link rel="modulepreload" href="lib/three.core.js">
   <link rel="modulepreload" href="lib/three.module.js">
   <link rel="modulepreload" href="lib/rapier.mjs">
   <link rel="modulepreload" href="lib/RoomEnvironment.js">
-  <link rel="modulepreload" href="coin.js?v=0.0.24">
-  <link rel="modulepreload" href="digits.js?v=0.0.24">
-  <link rel="modulepreload" href="start-layout.js?v=0.0.24">
-  <link rel="modulepreload" href="slime.js?v=0.0.24">
-  <link rel="modulepreload" href="achievements.js?v=0.0.24">
+  <link rel="modulepreload" href="coin.js?v=0.0.25">
+  <link rel="modulepreload" href="digits.js?v=0.0.25">
+  <link rel="modulepreload" href="start-layout.js?v=0.0.25">
+  <link rel="modulepreload" href="slime.js?v=0.0.25">
+  <link rel="modulepreload" href="achievements.js?v=0.0.25">
   <link rel="preload" href="lib/rapier_wasm3d_bg.wasm.gz" as="fetch" crossorigin>
 </head>
 <body>
   <div id="hud">
-    <div class="title">推幣機 <span class="ver">v0.0.24</span></div>
+    <div class="title">推幣機 <span class="ver">v0.0.25</span></div>
     <div class="money">
       <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
     </div>
@@ -27,6 +27,7 @@
       <button id="autoBtn" class="hudBtn" type="button">自動</button>
       <button id="shopBtn" class="hudBtn" type="button">商店</button>
       <button id="bookBtn" class="hudBtn" type="button">圖鑑</button>
+      <button id="lotteryBtn" class="hudBtn" type="button">彩券</button>
       <button id="achBtn" class="hudBtn" type="button">成就</button>
       <button id="settingsBtn" class="hudBtn" type="button">設定</button>
     </div>
@@ -68,8 +69,8 @@
           <button type="button" data-cheat="rain">下一場金幣雨</button>
           <button type="button" data-cheat="sets">解鎖全部娃娃套</button>
           <button type="button" data-cheat="ach">成就點數 +10</button>
-          <button type="button" data-cheat="tickets">轉盤券 +5</button>
-          <button type="button" data-cheat="items">每種道具 +3</button>
+          <button type="button" data-cheat="ticket">放一張彩券</button>
+          <button type="button" data-cheat="item">放一個道具</button>
         </div>
         <div class="note">作弊不會關掉，會照常存檔。</div>
       </div>
@@ -112,14 +113,14 @@
   <div id="wheel">
     <div class="viewerBox">
       <button type="button" id="wheelClose" aria-label="關閉">✕</button>
-      <div class="shopTitle">轉盤</div>
+      <div class="shopTitle">彩券</div>
       <canvas id="wheelCanvas" width="600" height="600"></canvas>
       <div id="wheelResult"></div>
-      <button type="button" id="spinBtn">轉一次（轉盤券 <span id="wheelTickets">0</span> 張）</button>
-      <div class="viewerTip">收集一隻娃娃拿 1 張轉盤券，傳說娃娃拿 3 張</div>
+      <button type="button" id="freeSpinBtn" class="spinBtn"></button>
+      <button type="button" id="paySpinBtn" class="spinBtn"></button>
+      <div class="viewerTip">把檯面上的彩券推下前緣，可以免費抽一次</div>
     </div>
   </div>
-  <div id="itemBar"></div>
   <div id="toast"></div>
   <div id="rainBanner">金幣雨！</div>
   <div id="hint">點檯面投幣，按住可以連投，右鍵（或「自動」）自動連續投</div>
@@ -144,6 +145,6 @@
       if (!window.__game) showLoadError(e.reason && e.reason.message ? e.reason.message : e.reason);
     });
   </script>
-  <script type="module" src="app.js?v=0.0.24"></script>
+  <script type="module" src="app.js?v=0.0.25"></script>
 </body>
 </html>

@@ -396,7 +396,9 @@ html, body {
 
 #wheelCanvas { width: 100%; aspect-ratio: 1; display: block; margin-top: 8px; }
 #wheelResult { min-height: 1.4em; font-size: 17px; font-weight: 700; color: var(--gold); margin-top: 6px; }
-#spinBtn {
+#wheel .spinBtn {
+  display: block;
+  width: 100%;
   margin-top: 8px;
   padding: 10px 18px;
   border-radius: 10px;
@@ -408,31 +410,6 @@ html, body {
   font-size: 15px;
   cursor: pointer;
 }
-#spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
+#wheel .spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
 
-#itemBar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 40px;
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 16px;
-  z-index: 2;
-  pointer-events: none;
-}
-#itemBar button {
-  pointer-events: auto;
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  padding: 7px 10px;
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-}
-#itemBar button:disabled { opacity: 0.4; cursor: default; }
-#itemBar button.ready { border-color: var(--gold); color: var(--gold); font-weight: 700; }
+

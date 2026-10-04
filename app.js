@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.24';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.24';
+import { makeCoinMaterials } from './coin.js?v=0.0.25';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.25';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.24';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.24';
+} from './slime.js?v=0.0.25';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.25';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1038,9 +1038,8 @@ for (const b of document.querySelectorAll('#settings button[data-cheat]')) {
       // 每一套都補到解鎖下一套需要的種數
       for (const st of SLIME_SETS) for (let i = 0; i < 6; i++) collection[`${st.id}.${i}`] = Math.max(1, collection[`${st.id}.${i}`] || 0);
     } else if (c === 'ach') achPoints += 10;
-    else if (c === 'tickets') tickets += 5;
-    else if (c === 'items') for (const k of Object.keys(items)) items[k] += 3;
-    updateItemBar();
+    else if (c === 'ticket') dropProp('ticket');
+    else if (c === 'item') dropProp('item');
     bump(walletEl);
     toast(`作弊：${b.textContent}`);
     saveGame();
@@ -1061,27 +1060,32 @@ for (const b of document.querySelectorAll('#settings button[data-q]')) {
 const rainBanner = document.getElementById('rainBanner');
 let rainSpawn = 0;
 let rainRate = 0;
-// ===== 轉盤券與特殊道具 =====
-// 收集一隻娃娃拿 1 張轉盤券（傳說 3 張）。轉盤轉出錢或道具，道具放在畫面下方隨時用。
+// ===== 彩券與特殊道具：兩個獨立系統，都是檯面上的實體東西 =====
+// 特殊道具：機台隨機（保底式）放上檯面，推下前緣馬上發動
 const ITEMS = {
-  wind: { name: '一陣風', desc: '往前吹 2 秒，把檯面上的幣往前推' },
-  glue: { name: '黏黏球', desc: '把一小堆幣黏成一大塊' },
-  quake: { name: '地震', desc: '檯面抖一抖，把卡住的幣抖鬆' },
+  wind: { name: '一陣風', label: '風', color: '#2f7fd0', desc: '往前吹 2 秒，把檯面上的幣往前推' },
+  glue: { name: '黏黏球', label: '黏', color: '#3a9a3a', desc: '把一小堆幣黏成一大塊' },
+  quake: { name: '地震', label: '震', color: '#d0452e', desc: '檯面抖一抖，把卡住的幣抖鬆' },
 };
-// 轉盤的格子（順時針）。weight 越大越容易轉到；大獎用保底式假隨機另外擲
+const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
+const TICKET_CHANCE = 0.015; // 每秒放一張彩券的機率（保底式，平均大約 67 秒一張）
+const MAX_PROPS = 3;         // 檯面上道具加彩券最多幾個
+// 彩券轉盤：推下檯面上的彩券免費轉一次；也可以花錢轉
 const WHEEL = [
-  { label: '50 枚', coins: 50, weight: 5, color: '#3b3150' },
-  { label: '一陣風', item: 'wind', weight: 4, color: '#2f4a5e' },
-  { label: '100 枚', coins: 100, weight: 3, color: '#4a3b2a' },
-  { label: '黏黏球', item: 'glue', weight: 4, color: '#2f5a44' },
-  { label: '150 枚', coins: 150, weight: 2, color: '#3b3150' },
-  { label: '地震', item: 'quake', weight: 4, color: '#5a3a3a' },
-  { label: '金幣雨', rain: true, weight: 2, color: '#2f4a5e' },
+  { label: '10 枚', coins: 10, weight: 4, color: '#3b3150' },
+  { label: '20 枚', coins: 20, weight: 4, color: '#2f4a5e' },
+  { label: '30 枚', coins: 30, weight: 3, color: '#4a3b2a' },
+  { label: '50 枚', coins: 50, weight: 3, color: '#2f5a44' },
+  { label: '80 枚', coins: 80, weight: 2, color: '#3b3150' },
+  { label: '100 枚', coins: 100, weight: 2, color: '#5a3a3a' },
+  { label: '150 枚', coins: 150, weight: 1, color: '#2f4a5e' },
   { label: '大獎 500 枚', coins: 500, jackpot: true, weight: 0, color: '#7a5a1a' },
 ];
-const JACKPOT_CHANCE = 0.05; // 每轉一次中大獎的機率（保底式）
-let tickets = 0;
-const items = { wind: 0, glue: 0, quake: 0 };
+const WHEEL_PRICE = 60;      // 花錢轉一次的價錢（平均大約拿回 60，有賺有賠）
+const JACKPOT_CHANCE = 0.03; // 每轉一次中大獎的機率（保底式）
+let freeSpins = 0;           // 推下彩券拿到的免費次數
+const props = [];            // 檯面上的道具和彩券
+let propTimer = 0;
 let windTime = 0;
 let quakeTime = 0;
 let quakeTick = 0;
@@ -1105,23 +1109,105 @@ const glueMats = coinMatFancy.map((m) => {
 });
 const glueMatPlain = new THREE.MeshLambertMaterial({ color: 0x9ccf6a, emissive: 0x102000 });
 
-function useItem(key) {
-  if (!items[key]) return;
-  items[key]--;
+// ===== 檯面上的道具和彩券（實體） =====
+function labelTexture(bg, text, sub) {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, 112, 112);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${sub ? 44 : 72}px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 64, sub ? 54 : 68);
+  if (sub) {
+    ctx.font = 'bold 20px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
+    ctx.fillText(sub, 64, 96);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const propMats = {};
+function propMaterial(type, kind) {
+  const key = `${type}.${kind}`;
+  if (propMats[key]) return propMats[key];
+  if (type === 'ticket') {
+    // 反光調低，顏色才不會被燈光洗淡
+    const tex = labelTexture('#c8323c', '彩券', '免費抽一次');
+    const face = new THREE.MeshStandardMaterial({ map: tex, color: 0x9a9a9a, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3, roughness: 0.85, envMapIntensity: 0.2 });
+    const edge = new THREE.MeshStandardMaterial({ color: 0xf4c95d, metalness: 0.6, roughness: 0.4 });
+    propMats[key] = [edge, edge, face, face, edge, edge];
+  } else {
+    const it = ITEMS[kind];
+    const tex = labelTexture(it.color, it.label);
+    propMats[key] = new THREE.MeshStandardMaterial({ map: tex, color: 0x9a9a9a, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3, roughness: 0.85, envMapIntensity: 0.2 });
+  }
+  return propMats[key];
+}
+const ticketGeo = new THREE.BoxGeometry(0.9, 0.05, 0.5);
+const itemGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+
+function spawnProp(type, kind, pos, rot) {
+  const half = type === 'ticket' ? { x: 0.45, y: 0.025, z: 0.25 } : { x: 0.25, y: 0.25, z: 0.25 };
+  const body = world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(pos.x, pos.y, pos.z)
+      .setRotation(rot || { x: 0, y: 0, z: 0, w: 1 })
+      .setLinearDamping(0.1)
+      .setAngularDamping(0.4)
+      .setCcdEnabled(true),
+  );
+  world.createCollider(
+    RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z)
+      .setDensity(type === 'ticket' ? 0.8 : 0.4)
+      .setFriction(0.4)
+      .setContactSkin(0.01),
+    body,
+  );
+  const mesh = new THREE.Mesh(type === 'ticket' ? ticketGeo : itemGeo, propMaterial(type, kind));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  const pr = { type, kind, body, mesh };
+  props.push(pr);
+  return pr;
+}
+
+function removeProp(i) {
+  world.removeRigidBody(props[i].body);
+  scene.remove(props[i].mesh);
+  props.splice(i, 1);
+}
+
+// 機台放一個道具或一張彩券到推板上方
+function dropProp(type) {
+  const kinds = Object.keys(ITEMS);
+  const kind = type === 'ticket' ? 'ticket' : kinds[Math.floor(Math.random() * kinds.length)];
+  const yaw = (Math.random() - 0.5) * 0.8;
+  spawnProp(type, kind, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+  beep(820, 0.1, 0.04, 'triangle', type === 'ticket' ? 'wheel' : 'item');
+}
+
+// 道具推下前緣：馬上發動
+function triggerItem(kind) {
   stats.itemsUsed++;
-  if (key === 'wind') {
+  if (kind === 'wind') {
     windTime = 2;
     toast('一陣風！');
-  } else if (key === 'quake') {
+  } else if (kind === 'quake') {
     quakeTime = 1.5;
     toast('地震！');
-  } else if (key === 'glue') {
+  } else if (kind === 'glue') {
     glueCoins();
   }
   beep(520, 0.2, 0.06, 'triangle', 'item');
   setTimeout(() => beep(780, 0.2, 0.05, 'triangle', 'item'), 120);
-  updateItemBar();
-  saveGame();
 }
 
 // 在檯面中間一帶挑一枚幣，把它附近的幾枚黏成一塊（推起來會整塊一起動）
@@ -1169,6 +1255,7 @@ function applyEffects() {
       c.body.applyImpulse({ x: 0, y: 0, z: c.body.mass() * 4 * STEP }, true);
     }
     for (const d of dolls) d.body.applyImpulse({ x: 0, y: 0, z: d.body.mass() * 2.5 * STEP }, true);
+    for (const pr of props) pr.body.applyImpulse({ x: 0, y: 0, z: pr.body.mass() * 2.5 * STEP }, true);
   }
   if (quakeTime > 0) {
     quakeTime -= STEP;
@@ -1184,10 +1271,12 @@ function applyEffects() {
   }
 }
 
-// ===== 轉盤 =====
+// ===== 彩券轉盤 =====
 const wheelEl = document.getElementById('wheel');
 const wheelCanvas = document.getElementById('wheelCanvas');
 const jackpotChance = new PseudoRandom(JACKPOT_CHANCE);
+const itemChance = new PseudoRandom(ITEM_CHANCE);
+const ticketChance = new PseudoRandom(TICKET_CHANCE);
 let wheelAngle = 0;
 let wheelSpinning = false;
 
@@ -1237,8 +1326,20 @@ function drawWheel() {
 }
 
 function renderWheelInfo() {
-  document.getElementById('wheelTickets').textContent = tickets;
-  document.getElementById('spinBtn').disabled = tickets <= 0 || wheelSpinning;
+  const freeBtn = document.getElementById('freeSpinBtn');
+  freeBtn.textContent = `免費抽一次（還有 ${freeSpins} 次）`;
+  freeBtn.disabled = freeSpins <= 0 || wheelSpinning;
+  freeBtn.style.display = freeSpins > 0 ? '' : 'none';
+  const payBtn = document.getElementById('paySpinBtn');
+  payBtn.textContent = `花 ${WHEEL_PRICE} 枚轉一次`;
+  payBtn.disabled = wallet < WHEEL_PRICE || wheelSpinning;
+}
+
+function openWheel() {
+  document.getElementById('wheelResult').textContent = '';
+  renderWheelInfo();
+  drawWheel();
+  wheelEl.classList.add('show');
 }
 
 // 先決定結果，再讓轉盤轉到那一格
@@ -1253,9 +1354,16 @@ function pickWheel() {
   return 0;
 }
 
-function spinWheel() {
-  if (wheelSpinning || tickets <= 0) return;
-  tickets--;
+function spinWheel(free) {
+  if (wheelSpinning) return;
+  if (free) {
+    if (freeSpins <= 0) return;
+    freeSpins--;
+  } else {
+    if (wallet < WHEEL_PRICE) return;
+    wallet -= WHEEL_PRICE;
+    bump(walletEl);
+  }
   stats.spins++;
   wheelSpinning = true;
   renderWheelInfo();
@@ -1286,46 +1394,19 @@ function spinWheel() {
 function finishSpin(idx) {
   wheelSpinning = false;
   const w = WHEEL[idx];
-  if (w.coins) {
-    wallet += w.coins;
-    bump(walletEl);
-  } else if (w.item) {
-    items[w.item]++;
-  } else if (w.rain) {
-    startRain();
-  }
+  wallet += w.coins;
+  bump(walletEl);
   document.getElementById('wheelResult').textContent = `轉到：${w.label}`;
   const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : [990, 1320];
   notes.forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'wheel'), k * 90));
   renderWheelInfo();
-  updateItemBar();
   saveGame();
 }
 
-document.getElementById('spinBtn').addEventListener('click', spinWheel);
+document.getElementById('freeSpinBtn').addEventListener('click', () => spinWheel(true));
+document.getElementById('paySpinBtn').addEventListener('click', () => spinWheel(false));
 document.getElementById('wheelClose').addEventListener('click', () => wheelEl.classList.remove('show'));
-
-// 畫面下方的道具列（轉盤券和三種道具）
-const itemBarEl = document.getElementById('itemBar');
-function updateItemBar() {
-  let html = `<button type="button" data-open="wheel" class="${tickets > 0 ? 'ready' : ''}">轉盤券 ×${tickets}</button>`;
-  for (const [k, it] of Object.entries(ITEMS)) {
-    html += `<button type="button" data-item="${k}" ${items[k] ? '' : 'disabled'} title="${it.desc}">${it.name} ×${items[k]}</button>`;
-  }
-  itemBarEl.innerHTML = html;
-}
-itemBarEl.addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  if (b.dataset.open === 'wheel') {
-    document.getElementById('wheelResult').textContent = '';
-    renderWheelInfo();
-    drawWheel();
-    wheelEl.classList.add('show');
-  } else if (b.dataset.item) {
-    useItem(b.dataset.item);
-  }
-});
+document.getElementById('lotteryBtn').addEventListener('click', openWheel);
 
 // ===== 商店 =====
 const shopEl = document.getElementById('shop');
@@ -1410,8 +1491,14 @@ function saveData() {
     rainCount: rainChance.count,
     dollCount: dollChance.count,
     jackpotCount: jackpotChance.count,
-    tickets,
-    items: { ...items },
+    freeSpins,
+    itemCount: itemChance.count,
+    ticketCount: ticketChance.count,
+    props: props.map((pr) => {
+      const t = pr.body.translation();
+      const r = pr.body.rotation();
+      return { type: pr.type, kind: pr.kind, p: [t.x, t.y, t.z], r: [r.x, r.y, r.z, r.w] };
+    }),
     rareCount: rareChance.count,
     legendCount: legendChance.count,
     collection: { ...collection },
@@ -1463,8 +1550,16 @@ function applySave(d) {
   rainChance.count = Math.max(0, Math.floor(Number(d.rainCount) || 0));
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
   jackpotChance.count = Math.max(0, Math.floor(Number(d.jackpotCount) || 0));
-  tickets = Math.max(0, Math.floor(Number(d.tickets) || 0));
-  for (const k of Object.keys(items)) items[k] = Math.max(0, Math.floor(Number(d.items?.[k]) || 0));
+  // 舊版的轉盤券換成免費抽獎次數
+  freeSpins = Math.max(0, Math.floor(Number(d.freeSpins ?? d.tickets) || 0));
+  itemChance.count = Math.max(0, Math.floor(Number(d.itemCount) || 0));
+  ticketChance.count = Math.max(0, Math.floor(Number(d.ticketCount) || 0));
+  for (const pr of (d.props || []).slice(0, MAX_PROPS)) {
+    if (!Array.isArray(pr.p) || !Array.isArray(pr.r)) continue;
+    if (pr.type === 'ticket' || ITEMS[pr.kind]) {
+      spawnProp(pr.type === 'ticket' ? 'ticket' : 'item', pr.kind, { x: pr.p[0], y: pr.p[1], z: pr.p[2] }, { x: pr.r[0], y: pr.r[1], z: pr.r[2], w: pr.r[3] });
+    }
+  }
   rareChance.count = Math.max(0, Math.floor(Number(d.rareCount) || 0));
   legendChance.count = Math.max(0, Math.floor(Number(d.legendCount) || 0));
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
@@ -1559,6 +1654,26 @@ function stepSim() {
       removeCoin(i);
     }
   }
+  for (let i = props.length - 1; i >= 0; i--) {
+    const t = props[i].body.translation();
+    if (t.y >= -1.2) continue;
+    const pr = props[i];
+    const front = t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2;
+    removeProp(i);
+    if (pr.type === 'ticket') {
+      if (front) {
+        freeSpins++;
+        toast('推下彩券！免費抽一次');
+        if (!wheelEl.classList.contains('show')) openWheel(); else renderWheelInfo();
+      } else {
+        toast('彩券掉進側溝了……');
+      }
+    } else if (front) {
+      triggerItem(pr.kind);
+    } else {
+      toast(`${ITEMS[pr.kind].name}掉進側溝了……`);
+    }
+  }
   for (let i = dolls.length - 1; i >= 0; i--) {
     const t = dolls[i].body.translation();
     if (t.y >= -1.2) continue;
@@ -1577,10 +1692,6 @@ function stepSim() {
       let msg = `<span style="color:${r.color}">${r.name}</span>　${info.skin.name}${isNew ? '　<span class="newTag">新！</span>' : ''}　+${info.value} 枚`;
       const opened = lockedBefore.filter((sid) => setUnlocked(SET_BY_ID[sid]));
       if (opened.length) msg += `<br>解鎖新的一套：「${SET_BY_ID[opened[0]].name}」，可以在圖鑑換`;
-      const gain = info.rarity === 'legend' ? 3 : 1;
-      tickets += gain;
-      msg += `<br>轉盤券 +${gain}`;
-      updateItemBar();
       toast(msg);
       [880, 1175, 1480, 1760, 2350].forEach((f, k) => setTimeout(() => beep(f, 0.16, 0.06, 'triangle', 'doll'), k * 80));
       if (bookEl.classList.contains('show')) renderBook();
@@ -1612,6 +1723,14 @@ function updateTimers(frame) {
   if (dollTimer >= 1) {
     dollTimer -= 1;
     if (dolls.length < MAX_DOLLS && dollChance.roll()) dropNewDoll();
+  }
+
+  // 每一秒擲一次要不要放道具、彩券（保底式假隨機）
+  propTimer += frame;
+  if (propTimer >= 1) {
+    propTimer -= 1;
+    if (props.length < MAX_PROPS && itemChance.roll()) dropProp('item');
+    if (props.length < MAX_PROPS && ticketChance.roll()) dropProp('ticket');
   }
 
   // 每一秒擲一次金幣雨（保底式假隨機）
@@ -1671,6 +1790,10 @@ function tick(now) {
     c.mesh.quaternion.copy(c.body.rotation());
   }
   pusher.mesh.position.copy(pusher.body.translation());
+  for (const pr of props) {
+    pr.mesh.position.copy(pr.body.translation());
+    pr.mesh.quaternion.copy(pr.body.rotation());
+  }
   for (const d of dolls) {
     d.mesh.position.copy(d.body.translation());
     d.mesh.quaternion.copy(d.body.rotation());
@@ -1690,11 +1813,10 @@ const saved = loadSave();
 if (saved) applySave(saved);
 else prefill();
 buildGuards();
-updateItemBar();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, items, useItem, get tickets() { return tickets; }, spinWheel, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, get freeSpins() { return freeSpins; }, spinWheel, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };
