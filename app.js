@@ -5,7 +5,8 @@ import RAPIER from './lib/rapier.mjs';
 await RAPIER.init();
 
 // ===== 數值（之後調手感主要改這裡） =====
-const TABLE_W = 8;           // 檯面寬
+const TABLE_W = 8;           // 檯面寬（推板也是這麼寬）
+const GUTTER = 0.7;          // 兩側溝的寬度，幣掉進去就被機台吃掉
 const FRONT_Z = 2;           // 檯面前緣（幣掉過這裡就算贏）
 const BACK_Z = -10;          // 檯面最後面
 const WALL_Z = -6.3;         // 推板上方擋牆的位置
@@ -29,6 +30,7 @@ const REFILL_SEC = 6;        // 每幾秒補 1 枚
 // ===== 狀態 =====
 let wallet = START_WALLET;
 let won = 0;
+let lost = 0;
 let aimX = 0;
 let pointerDown = false;
 let lastDrop = -1;
@@ -88,14 +90,15 @@ function addBox(hx, hy, hz, x, y, z, color, opts = {}) {
 }
 
 const halfW = TABLE_W / 2;
+const outerW = halfW + GUTTER; // 玻璃牆的位置
 const tableLen = FRONT_Z - BACK_Z;
 // 檯面
 addBox(halfW, 0.5, tableLen / 2, 0, -0.5, (FRONT_Z + BACK_Z) / 2, 0x1f5b57);
 // 左右玻璃
-addBox(0.15, 3, tableLen / 2, -halfW - 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
-addBox(0.15, 3, tableLen / 2, halfW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
+addBox(0.15, 3, tableLen / 2, -outerW - 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
+addBox(0.15, 3, tableLen / 2, outerW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
 // 推板上方的擋牆（推板往回縮時，把推板上的幣刮下來）
-addBox(halfW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
+addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
 // 推板
 const pusher = addBox(halfW - 0.02, PUSHER_H / 2, PUSHER_DEPTH / 2, 0, PUSHER_H / 2, PUSHER_MID, 0xc9ccd6, { kinematic: true, metal: 0.7, rough: 0.3 });
 // 前緣金邊（只有樣子）
@@ -105,9 +108,18 @@ const lip = new THREE.Mesh(
 );
 lip.position.set(0, 0.0, FRONT_Z - 0.06);
 scene.add(lip);
+// 兩側溝底下的暗坑（只有樣子）
+for (const side of [-1, 1]) {
+  const pit = new THREE.Mesh(
+    new THREE.BoxGeometry(GUTTER, 0.2, tableLen),
+    new THREE.MeshStandardMaterial({ color: 0x0b0a10, roughness: 1 }),
+  );
+  pit.position.set(side * (halfW + GUTTER / 2), -2.5, (FRONT_Z + BACK_Z) / 2);
+  scene.add(pit);
+}
 // 下方出幣口（只有樣子）
 const tray = new THREE.Mesh(
-  new THREE.BoxGeometry(TABLE_W + 1, 0.3, 3),
+  new THREE.BoxGeometry(TABLE_W + GUTTER * 2 + 1, 0.3, 3),
   new THREE.MeshStandardMaterial({ color: 0x2a2236, roughness: 0.9 }),
 );
 tray.position.set(0, -3.2, FRONT_Z + 1.6);
@@ -173,7 +185,7 @@ function prefill() {
     spawnCoin(x, 0.3 + (i % 6) * 0.25, z, 0.3);
   }
   // 讓幣先落定，這段掉下去的不算
-    for (let s = 0; s < 240; s++) {
+  for (let s = 0; s < 240; s++) {
     simTime += STEP;
     movePusher(simTime);
     world.step();
@@ -186,6 +198,7 @@ function prefill() {
 // ===== 介面 =====
 const walletEl = document.getElementById('wallet');
 const wonEl = document.getElementById('won');
+const lostEl = document.getElementById('lost');
 const refillEl = document.getElementById('refill');
 const hintEl = document.getElementById('hint');
 
@@ -197,6 +210,7 @@ function bump(el) {
 function updateHud() {
   walletEl.textContent = wallet;
   wonEl.textContent = won;
+  lostEl.textContent = lost;
   if (wallet < REFILL_BELOW) {
     const left = Math.ceil(REFILL_SEC - refillTimer);
     refillEl.textContent = `手上少於 ${REFILL_BELOW} 枚，${left} 秒後補 1 枚`;
@@ -284,7 +298,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   // 直的螢幕把鏡頭拉遠，讓整個檯面寬度放得下
-  const needW = TABLE_W + 1.5;
+  const needW = TABLE_W + GUTTER * 2 + 1.5;
   const halfFovX = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
   const dist = Math.max(13, (needW / 2) / Math.tan(halfFovX) * 1.05);
   camera.position.set(0, dist * 0.68, -0.5 + dist * 0.72);
@@ -306,13 +320,17 @@ function stepSim() {
   for (let i = coins.length - 1; i >= 0; i--) {
     const b = coins[i].body.translation();
     if (b.y < -1.2) {
-      if (b.z > FRONT_Z - 0.5) {
+      if (b.z > FRONT_Z - 0.5 && Math.abs(b.x) < halfW + 0.1) {
         won++;
         wallet++;
         floatText('+1', new THREE.Vector3(b.x, 0, FRONT_Z));
         bump(wonEl);
         bump(walletEl);
         beep(1320 + Math.random() * 200, 0.12, 0.07);
+      } else {
+        lost++;
+        bump(lostEl);
+        beep(140, 0.18, 0.05, 'sawtooth');
       }
       removeCoin(i);
     }
@@ -367,5 +385,5 @@ prefill();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, get wallet() { return wallet; }, get won() { return won; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
