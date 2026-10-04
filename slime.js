@@ -103,8 +103,8 @@ const PROFILE = [
   [0, 0], [0.42, 0], [0.66, 0.035], [0.84, 0.11], [0.96, 0.23], [1.0, 0.37],
   [0.97, 0.52], [0.87, 0.67], [0.7, 0.8], [0.48, 0.91], [0.24, 0.975], [0, 1],
 ];
-export const SLIME_R = 0.55;
-export const SLIME_H = 0.8;
+export const SLIME_R = 0.68;
+export const SLIME_H = 0.98;
 
 // 輪廓在某個高度（0 到 1）的半徑
 function radiusAt(y) {

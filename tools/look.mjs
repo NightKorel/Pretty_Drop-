@@ -1,0 +1,16 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.NPMG + '/playwright');
+const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const page = await (await browser.newContext({ viewport: { width: 900, height: 650 } })).newPage();
+const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('console', m => { if (m.type()==='error') errs.push(m.text()); });
+await page.goto('http://localhost:8765/');
+await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
+await page.screenshot({ path: '/tmp/pd-shots/look-start.png' });
+await page.evaluate(() => { const g = __game; g.applyQuality('mid');
+  g.spawnProp('item', 'wind', { x: -2, y: 1.5, z: 0.3 }); g.spawnProp('item', 'glue', { x: 0, y: 1.5, z: 0.6 }); g.spawnProp('item', 'quake', { x: 2, y: 1.5, z: 0.3 }); g.spawnProp('ticket', 'ticket', { x: 0.5, y: 1.8, z: -1 });
+  g.simulate(2); const c = g.camera; c.position.set(0, 4.5, 6); c.lookAt(0, 0, -0.2); });
+await page.waitForTimeout(1200);
+await page.screenshot({ path: '/tmp/pd-shots/look-props.png' });
+console.log(JSON.stringify({ n: await page.evaluate(() => __game.coins.length), errs }));
+await browser.close();

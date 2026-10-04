@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.26';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.26';
+import { makeCoinMaterials } from './coin.js?v=0.0.27';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.27';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.26';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.26';
+} from './slime.js?v=0.0.27';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.27';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -41,13 +41,13 @@ const PUSHER_DEPTH = 5;      // 推板前後長度
 const PUSHER_H = 0.6;        // 推板高度
 const PUSHER_MID = -6;       // 推板中心來回的中點
 const PUSHER_AMP = 1.2;      // 推板來回的幅度
-const COIN_R = 0.38;
-const COIN_H = 0.1;
+const COIN_R = 0.5;          // 硬幣做大顆、厚一點，每一枚看起來比較值錢
+const COIN_H = 0.14;
 const DROP_Y = 3.2;          // 投幣高度
 const DROP_Z = -4.6;         // 投幣的前後位置（推板上方）
 const STEP = 1 / 60;           // 物理一步的秒數
 const START_WALLET = 30;
-const MAX_COINS = 420;       // 檯面上幣的上限（保護效能）
+const MAX_COINS = 300;       // 檯面上幣的上限（保護效能）
 const GUARD_H = 0.07;         // 側溝擋板的高度（一枚幣厚 0.1）
 const MOM_GIVE = 10;         // 媽媽每次給幾枚
 const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得掛機刷）
@@ -125,8 +125,8 @@ for (const u of Object.values(UPGRADES)) {
 }
 const UPGRADE_KEYS = Object.keys(UPGRADES);
 const BIG_VALUE = 10;         // 大金幣推下去值幾枚
-const BIG_R = 0.55;
-const BIG_H = 0.14;
+const BIG_R = 0.7;
+const BIG_H = 0.18;
 
 // ===== 狀態 =====
 let wallet = START_WALLET;
@@ -156,7 +156,7 @@ const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平
 const RARE_CHANCE = 0.2;     // 放出來的是稀有（第 7 到 9 隻）的機率
 const LEGEND_CHANCE = 0.03;  // 放出來的是傳說（第 10 隻）的機率
 let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
-const MAX_DOLLS = 2;         // 檯面上最多同時幾隻
+const MAX_DOLLS = 4;         // 檯面上最多同時幾隻
 let dollTimer = 0;
 
 // ===== 保底式假隨機 =====
@@ -612,7 +612,7 @@ function dropCoin() {
   for (let k = 0; k < n; k++) {
     // 還沒買「大金幣」就完全不會出現，保底進度也不累積
     const big = upValue('lucky') > 0 && bigChance.roll();
-    const spread = n > 1 ? (k - (n - 1) / 2) * 0.55 : 0;
+    const spread = n > 1 ? (k - (n - 1) / 2) * 0.75 : 0;
     const lim = halfW - COIN_R - 0.05;
     const x = Math.max(-lim, Math.min(lim, aimX + spread + (Math.random() - 0.5) * 0.05));
     const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + (Math.random() - 0.5) * 0.3, 0.4, big);
@@ -1155,9 +1155,9 @@ let rainRate = 0;
 // ===== 彩券與特殊道具：兩個獨立系統，都是檯面上的實體東西 =====
 // 特殊道具：機台隨機（保底式）放上檯面，推下前緣馬上發動
 const ITEMS = {
-  wind: { name: '一陣風', label: '風', color: '#2f7fd0', desc: '往前吹 2 秒，把檯面上的幣往前推' },
-  glue: { name: '黏黏球', label: '黏', color: '#3a9a3a', desc: '把一小堆幣黏成一大塊' },
-  quake: { name: '地震', label: '震', color: '#d0452e', desc: '檯面抖一抖，把卡住的幣抖鬆' },
+  wind: { name: '一陣風', label: '風', color: '#9fd8ff', desc: '往前吹 2 秒，把檯面上的幣往前推' },
+  glue: { name: '黏黏球', label: '黏', color: '#6fd36a', desc: '把一小堆幣黏成一大塊' },
+  quake: { name: '地震', label: '震', color: '#ff8a3d', desc: '檯面抖一抖，把卡住的幣抖鬆' },
 };
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
 const TICKET_CHANCE = 0.015; // 每秒放一張彩券的機率（保底式，平均大約 67 秒一張）
@@ -1236,17 +1236,72 @@ function propMaterial(type, kind) {
     const edge = new THREE.MeshStandardMaterial({ color: 0xf4c95d, metalness: 0.6, roughness: 0.4 });
     propMats[key] = [edge, edge, face, face, edge, edge];
   } else {
-    const it = ITEMS[kind];
-    const tex = labelTexture(it.color, it.label);
-    propMats[key] = new THREE.MeshStandardMaterial({ map: tex, color: 0x9a9a9a, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3, roughness: 0.85, envMapIntensity: 0.2 });
+    // 像玩具一樣亮亮的塑膠感
+    propMats[key] = new THREE.MeshPhysicalMaterial({ color: ITEMS[kind].color, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.3 });
   }
   return propMats[key];
 }
-const ticketGeo = new THREE.BoxGeometry(0.9, 0.05, 0.5);
-const itemGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+const ticketGeo = new THREE.BoxGeometry(1.1, 0.07, 0.62);
+
+// 道具做成有厚度的立體圖示：風是一朵雲、黏黏球是一滴膠水、地震是一個爆炸星形
+function outlineShape(pts) {
+  const sh = new THREE.Shape();
+  pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
+  sh.closePath();
+  return sh;
+}
+function cloudPoints() {
+  // 幾個圓疊在一起的外框（從中心往外看，取最遠的那個圓），底部壓平
+  const circles = [[-0.24, -0.04, 0.2], [0, 0.08, 0.27], [0.25, -0.03, 0.21]];
+  const pts = [];
+  for (let i = 0; i < 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a);
+    let best = 0;
+    for (const [cx, cy, r] of circles) {
+      const b = dx * cx + dy * cy;
+      const c = cx * cx + cy * cy - r * r;
+      const disc = b * b - c;
+      if (disc >= 0) best = Math.max(best, b + Math.sqrt(disc));
+    }
+    pts.push([dx * best, Math.max(-0.2, dy * best)]);
+  }
+  return pts;
+}
+function dropPoints() {
+  const pts = [];
+  for (let i = 0; i < 48; i++) {
+    const t = (i / 48) * Math.PI * 2;
+    pts.push([0.36 * Math.sin(t) * Math.sin(t / 2), 0.42 * Math.cos(t) - 0.04]);
+  }
+  return pts;
+}
+function burstPoints() {
+  const pts = [];
+  const n = 8;
+  const jag = [1, 0.86, 1.05, 0.9, 1, 0.84, 1.08, 0.92];
+  for (let i = 0; i < n * 2; i++) {
+    const a = (i / (n * 2)) * Math.PI * 2 + 0.2;
+    const r = i % 2 === 0 ? 0.44 * jag[i / 2] : 0.24;
+    pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return pts;
+}
+const itemGeos = {};
+function itemGeo(kind) {
+  if (itemGeos[kind]) return itemGeos[kind];
+  const pts = kind === 'wind' ? cloudPoints() : kind === 'glue' ? dropPoints() : burstPoints();
+  const g = new THREE.ExtrudeGeometry(outlineShape(pts), {
+    depth: 0.18, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3, curveSegments: 12,
+  });
+  g.center();
+  itemGeos[kind] = g;
+  return g;
+}
 
 function spawnProp(type, kind, pos, rot) {
-  const half = type === 'ticket' ? { x: 0.45, y: 0.025, z: 0.25 } : { x: 0.25, y: 0.25, z: 0.25 };
+
   const body = world.createRigidBody(
     RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(pos.x, pos.y, pos.z)
@@ -1255,14 +1310,17 @@ function spawnProp(type, kind, pos, rot) {
       .setAngularDamping(0.4)
       .setCcdEnabled(true),
   );
+  const shape = type === 'ticket'
+    ? RAPIER.ColliderDesc.cuboid(0.55, 0.035, 0.31)
+    : RAPIER.ColliderDesc.convexHull(itemGeo(kind).attributes.position.array);
   world.createCollider(
-    RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z)
+    shape
       .setDensity(type === 'ticket' ? 0.8 : 0.4)
       .setFriction(0.4)
       .setContactSkin(0.01),
     body,
   );
-  const mesh = new THREE.Mesh(type === 'ticket' ? ticketGeo : itemGeo, propMaterial(type, kind));
+  const mesh = new THREE.Mesh(type === 'ticket' ? ticketGeo : itemGeo(kind), propMaterial(type, kind));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
@@ -1912,7 +1970,7 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, get freeSpins() { return freeSpins; }, spinWheel, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };
