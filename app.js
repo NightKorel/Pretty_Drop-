@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.29';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.29';
+import { makeCoinMaterials } from './coin.js?v=0.0.30';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.30';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.29';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.29';
+} from './slime.js?v=0.0.30';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.30';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1160,7 +1160,7 @@ const ITEMS = {
   quake: { name: '地震', label: '震', color: '#ff8a3d', dark: '#b3261e', desc: '檯面抖一抖，把卡住的幣抖鬆' },
 };
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
-const TICKET_CHANCE = 0.015; // 每秒放一張彩券的機率（保底式，平均大約 67 秒一張）
+const TICKET_CHANCE = 0.006; // 每秒放一張彩券的機率（保底式，平均大約 3 分鐘一張），檯面上同時最多 1 張
 const MAX_PROPS = 3;         // 檯面上道具加彩券最多幾個
 // 彩券轉盤：推下檯面上的彩券免費轉一次；也可以花錢轉
 const WHEEL = [
@@ -1416,10 +1416,13 @@ function dropProp(type) {
 }
 
 // 道具推下前緣：馬上發動
+// 道具發動後 4 秒內推下多少，結束時告訴玩家
+let itemReport = null;
 function triggerItem(kind) {
   stats.itemsUsed++;
+  itemReport = { kind, start: won, time: 4 };
   if (kind === 'wind') {
-    windTime = 2;
+    windTime = 1.2;
     toast('一陣風！');
   } else if (kind === 'quake') {
     quakeTime = 1.5;
@@ -1433,18 +1436,20 @@ function triggerItem(kind) {
 
 // 在檯面中間一帶挑一枚幣，把它附近的幾枚黏成一塊（推起來會整塊一起動）
 function glueCoins() {
+  // 挑最靠近前緣的一坨幣黏成一大塊，再往前推一把，讓整坨一起掉下去
   const onTable = coins.filter((c) => {
     const t = c.body.translation();
-    return t.y > 0 && t.y < 1 && t.z > -2.5 && t.z < FRONT_Z - 0.8 && Math.abs(t.x) < halfW - 0.6;
+    return t.y > 0 && t.y < 1.2 && t.z > FRONT_Z - 3 && t.z < FRONT_Z && Math.abs(t.x) < halfW - 0.3;
   });
   if (!onTable.length) { toast('檯面上沒有幣可以黏'); return; }
-  const center = onTable[Math.floor(Math.random() * onTable.length)];
+  onTable.sort((a, b) => b.body.translation().z - a.body.translation().z);
+  const center = onTable[Math.min(onTable.length - 1, Math.floor(Math.random() * 4))];
   const p0 = center.body.translation();
   const near = onTable
     .map((c) => ({ c, d: Math.hypot(c.body.translation().x - p0.x, c.body.translation().z - p0.z) }))
-    .filter((o) => o.c !== center && o.d < 1.3)
+    .filter((o) => o.c !== center && o.d < 1.8)
     .sort((a, b) => a.d - b.d)
-    .slice(0, 7)
+    .slice(0, 11)
     .map((o) => o.c);
   const q1 = new THREE.Quaternion().copy(center.body.rotation());
   const q1inv = q1.clone().invert();
@@ -1463,20 +1468,32 @@ function glueCoins() {
     c.glued = true;
     c.mesh.material = quality === 'low' ? glueMatPlain : glueMats;
   }
+  // 整坨往前推一把
+  for (const c of [center, ...near]) c.body.applyImpulse({ x: 0, y: c.body.mass() * 1.5, z: c.body.mass() * 6 }, true);
   toast(`黏黏球！黏住了 ${near.length + 1} 枚幣`);
 }
 
 // 每一步：一陣風往前推、地震亂抖
 function applyEffects() {
+  if (itemReport) {
+    itemReport.time -= STEP;
+    if (itemReport.time <= 0) {
+      const n = won - itemReport.start;
+      const verb = { wind: '吹下', glue: '黏下', quake: '震下' }[itemReport.kind];
+      toast(`${ITEMS[itemReport.kind].name}${verb}了 ${n} 枚！`);
+      itemReport = null;
+    }
+  }
   if (windTime > 0) {
     windTime -= STEP;
     for (const c of coins) {
       const t = c.body.translation();
       if (t.y < -0.5 || t.z < -4) continue;
-      c.body.applyImpulse({ x: 0, y: 0, z: c.body.mass() * 4 * STEP }, true);
+      // 風力要比幣跟檯面的摩擦力大，平躺的幣才吹得動
+      c.body.applyImpulse({ x: 0, y: 0, z: c.body.mass() * 7.5 * STEP }, true);
     }
-    for (const d of dolls) d.body.applyImpulse({ x: 0, y: 0, z: d.body.mass() * 2.5 * STEP }, true);
-    for (const pr of props) pr.body.applyImpulse({ x: 0, y: 0, z: pr.body.mass() * 2.5 * STEP }, true);
+    for (const d of dolls) d.body.applyImpulse({ x: 0, y: 0, z: d.body.mass() * 7 * STEP }, true);
+    for (const pr of props) pr.body.applyImpulse({ x: 0, y: 0, z: pr.body.mass() * 7 * STEP }, true);
   }
   if (quakeTime > 0) {
     quakeTime -= STEP;
@@ -1486,7 +1503,8 @@ function applyEffects() {
       for (const c of coins) {
         if (c.body.translation().y < -0.5) continue;
         const m = c.body.mass();
-        c.body.applyImpulse({ x: (Math.random() - 0.5) * m * 0.8, y: m * (0.6 + Math.random() * 0.6), z: (Math.random() - 0.2) * m * 0.8 }, true);
+        // 往上彈、稍微往前，讓卡住的幣鬆開、往前緣滑
+        c.body.applyImpulse({ x: (Math.random() - 0.5) * m * 1.0, y: m * (1.2 + Math.random() * 1.0), z: m * (0.2 + Math.random() * 0.6) }, true);
       }
     }
   }
@@ -1954,7 +1972,7 @@ function updateTimers(frame) {
   if (propTimer >= 1) {
     propTimer -= 1;
     if (props.length < MAX_PROPS && itemChance.roll()) dropProp('item');
-    if (props.length < MAX_PROPS && ticketChance.roll()) dropProp('ticket');
+    if (props.length < MAX_PROPS && !props.some((p) => p.type === 'ticket') && ticketChance.roll()) dropProp('ticket');
   }
 
   // 每一秒擲一次金幣雨（保底式假隨機）
