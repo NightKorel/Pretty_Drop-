@@ -281,7 +281,32 @@ html, body {
 #settings .toggleRow button { flex: none; min-width: 52px; padding: 4px 0; }
 
 .bookNote { font-size: 12px; color: var(--dim); margin-bottom: 12px; line-height: 1.5; }
-#bookList { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bookGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bookTabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.bookTab {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.bookTab.on { border-color: var(--gold); color: var(--gold); background: rgba(244, 201, 93, 0.14); font-weight: 700; }
+.bookTab.locked { opacity: 0.45; }
+.bookLock, .bookUse { font-size: 13px; color: var(--dim); margin-bottom: 10px; line-height: 1.6; }
+.useSet {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--gold);
+  background: var(--gold);
+  color: #1a1408;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
 .bookCell {
   background: rgba(255, 255, 255, 0.04);
   border-radius: 10px;

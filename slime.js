@@ -1,40 +1,110 @@
-// 史萊姆娃娃：外型、花色、特效，和圖鑑用的小圖。
-// 全部用程式做，不用畫圖。新增一種娃娃只要在 SLIME_VARIANTS 加一筆。
+// 史萊姆娃娃：分成好幾套，每套 10 隻。同一個位置（第幾隻）的價值、稀有度每套都一樣，只是換皮。
+// 全部用程式做，不用畫圖。新增一套只要在 SLIME_SETS 加一筆。
 import * as THREE from './lib/three.module.js';
 
-// 稀有度：推下去拿到的幣、圖鑑上的顏色
+// 稀有度
 export const RARITY = {
-  common: { name: '普通', reward: 40, color: '#c9c2d6' },
-  rare: { name: '稀有', reward: 100, color: '#7ec8ff' },
-  legend: { name: '傳說', reward: 300, color: '#f4c95d' },
+  common: { name: '普通', color: '#c9c2d6' },
+  rare: { name: '稀有', color: '#7ec8ff' },
+  legend: { name: '傳說', color: '#f4c95d' },
 };
 
-// look：solid 純色、dots 點點、stripes 條紋、twotone 上下雙色、jelly 果凍、gold 金屬金、rainbow 彩虹
-export const SLIME_VARIANTS = [
-  { id: 'green', name: '草地史萊姆', rarity: 'common', look: 'solid', color: '#7fd67a' },
-  { id: 'blue', name: '水滴史萊姆', rarity: 'common', look: 'solid', color: '#6fb7ff' },
-  { id: 'pink', name: '櫻花史萊姆', rarity: 'common', look: 'solid', color: '#ff9fc4' },
-  { id: 'yellow', name: '檸檬史萊姆', rarity: 'common', look: 'solid', color: '#ffe36e' },
-  { id: 'purple', name: '葡萄史萊姆', rarity: 'common', look: 'solid', color: '#b48cff' },
-  { id: 'white', name: '麻糬史萊姆', rarity: 'common', look: 'solid', color: '#f4f1ea' },
-  { id: 'strawberry', name: '草莓史萊姆', rarity: 'rare', look: 'dots', color: '#ff6f8e', color2: '#fff4f6' },
-  { id: 'mint', name: '薄荷巧克力史萊姆', rarity: 'rare', look: 'twotone', color: '#9ff0d0', color2: '#6b4430' },
-  { id: 'candy', name: '糖果條紋史萊姆', rarity: 'rare', look: 'stripes', color: '#ffffff', color2: '#ff7aa8' },
-  { id: 'jelly', name: '果凍史萊姆', rarity: 'rare', look: 'jelly', color: '#7ff0ff' },
-  { id: 'gold', name: '黃金史萊姆', rarity: 'legend', look: 'gold', color: '#f4c95d', sparkle: true },
-  { id: 'rainbow', name: '彩虹史萊姆', rarity: 'legend', look: 'rainbow', color: '#ff7a7a', sparkle: true },
+// 每一套第 1 到第 10 隻：推下去值多少枚、稀有度（每套都一樣）
+export const SLOTS = [
+  { value: 20, rarity: 'common' },
+  { value: 25, rarity: 'common' },
+  { value: 30, rarity: 'common' },
+  { value: 35, rarity: 'common' },
+  { value: 40, rarity: 'common' },
+  { value: 50, rarity: 'common' },
+  { value: 80, rarity: 'rare' },
+  { value: 100, rarity: 'rare' },
+  { value: 150, rarity: 'rare' },
+  { value: 300, rarity: 'legend' },
 ];
-export const VARIANT_BY_ID = Object.fromEntries(SLIME_VARIANTS.map((v) => [v.id, v]));
+
+// look：jelly 半透明果凍、night 夜空（半透明裡有小星星）、diamond 鑽石、
+//       cream 甜點（霧面奶油感）、twotone 上下雙色甜點、flake 金箔巧克力、metal 金屬、pearl 珍珠
+export const SLIME_SETS = [
+  {
+    id: 'jelly',
+    name: '果凍',
+    unlock: null,
+    skins: [
+      { name: '蘇打果凍', look: 'jelly', color: '#8fd3ff' },
+      { name: '檸檬果凍', look: 'jelly', color: '#ffe27a' },
+      { name: '青蘋果果凍', look: 'jelly', color: '#b4ee86' },
+      { name: '蜜桃果凍', look: 'jelly', color: '#ffb59c' },
+      { name: '葡萄果凍', look: 'jelly', color: '#b99cff' },
+      { name: '草莓果凍', look: 'jelly', color: '#ff8fa8' },
+      { name: '海鹽果凍', look: 'jelly', color: '#c4f5ef' },
+      { name: '薰衣草果凍', look: 'jelly', color: '#dcc8ff' },
+      { name: '夜空果凍', look: 'night', color: '#2c3a8c' },
+      { name: '鑽石史萊姆', look: 'diamond', color: '#ffffff', sparkle: true },
+    ],
+  },
+  {
+    id: 'sweets',
+    name: '甜點',
+    unlock: { set: 'jelly', kinds: 6 },
+    skins: [
+      { name: '牛奶史萊姆', look: 'cream', color: '#fbf5ea' },
+      { name: '香蕉史萊姆', look: 'cream', color: '#ffe59c' },
+      { name: '抹茶史萊姆', look: 'cream', color: '#a9c982' },
+      { name: '草莓牛奶史萊姆', look: 'cream', color: '#ffc4d0' },
+      { name: '芋頭史萊姆', look: 'cream', color: '#c9b4e2' },
+      { name: '芒果史萊姆', look: 'cream', color: '#ffc25a' },
+      { name: '焦糖布丁史萊姆', look: 'twotone', color: '#ffe29a', color2: '#a65a1e' },
+      { name: '薄荷巧克力史萊姆', look: 'twotone', color: '#b3efd6', color2: '#5a3a28' },
+      { name: '黑芝麻史萊姆', look: 'cream', color: '#3a3532' },
+      { name: '金箔巧克力史萊姆', look: 'flake', color: '#4a2b1d', sparkle: true },
+    ],
+  },
+  {
+    id: 'metal',
+    name: '金屬',
+    unlock: { set: 'sweets', kinds: 6 },
+    skins: [
+      { name: '銅史萊姆', look: 'metal', color: '#c97d4c' },
+      { name: '鐵史萊姆', look: 'metal', color: '#8d9299' },
+      { name: '青銅史萊姆', look: 'metal', color: '#9c8648' },
+      { name: '銀史萊姆', look: 'metal', color: '#dfe3e8' },
+      { name: '鈦藍史萊姆', look: 'metal', color: '#82a0cf' },
+      { name: '玫瑰金史萊姆', look: 'metal', color: '#eaa898' },
+      { name: '黑鐵史萊姆', look: 'metal', color: '#3c3e43' },
+      { name: '白金史萊姆', look: 'metal', color: '#f1f2f4' },
+      { name: '珍珠史萊姆', look: 'pearl', color: '#f6f1ea' },
+      { name: '黃金史萊姆', look: 'metal', color: '#f4c95d', sparkle: true },
+    ],
+  },
+];
+
+export const SET_BY_ID = Object.fromEntries(SLIME_SETS.map((s) => [s.id, s]));
+
+// 娃娃的 id 寫成「套.第幾隻」，例如 jelly.3（第幾隻從 0 開始算）
+export function slimeInfo(id) {
+  const [setId, slotStr] = String(id).split('.');
+  const set = SET_BY_ID[setId];
+  const slot = Number(slotStr);
+  if (!set || !(slot >= 0 && slot < 10)) return null;
+  return { id, set, slot, skin: set.skins[slot], ...SLOTS[slot] };
+}
+
+// 深色的史萊姆用白眼睛，其他用黑眼睛
+function isDark(hex) {
+  const c = new THREE.Color(hex);
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b < 0.18;
+}
 
 // 史萊姆的側面輪廓（半徑 r、高度 y，都以 1 為單位）：底部平、上面圓
 const PROFILE = [
   [0, 0], [0.82, 0], [0.95, 0.04], [1.0, 0.14], [0.99, 0.3], [0.93, 0.48],
   [0.82, 0.64], [0.66, 0.78], [0.46, 0.89], [0.24, 0.96], [0, 0.99],
 ];
-export const SLIME_R = 0.62;   // 標準大小的半徑
-export const SLIME_H = 0.62;   // 標準大小的高度
+export const SLIME_R = 0.62;
+export const SLIME_H = 0.62;
 
-// 物理用的外形點（繞一圈），大小用 scale 調
+// 物理用的外形點
 export function slimeHullPoints(scale) {
   const pts = [];
   const seg = 12;
@@ -51,7 +121,6 @@ let bodyGeo = null;
 function getBodyGeo() {
   if (bodyGeo) return bodyGeo;
   const pts = [];
-  // 輪廓切細一點，表面比較圓滑
   for (let i = 0; i < PROFILE.length - 1; i++) {
     const [r0, y0] = PROFILE[i];
     const [r1, y1] = PROFILE[i + 1];
@@ -61,148 +130,170 @@ function getBodyGeo() {
     }
   }
   pts.push(new THREE.Vector2(0, PROFILE[PROFILE.length - 1][1] * SLIME_H));
-  bodyGeo = new THREE.LatheGeometry(pts, 40);
+  bodyGeo = new THREE.LatheGeometry(pts, 48);
   bodyGeo.computeVertexNormals();
   return bodyGeo;
 }
 
-function patternTexture(v) {
+function canvasTexture(draw) {
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 128;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = v.color;
-  ctx.fillRect(0, 0, 256, 128);
-  if (v.look === 'dots') {
-    ctx.fillStyle = v.color2;
-    for (let y = 8; y < 128; y += 22) {
-      for (let x = (y / 22) % 2 ? 0 : 16; x < 256; x += 32) {
-        ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  } else if (v.look === 'stripes') {
-    ctx.fillStyle = v.color2;
-    for (let y = 0; y < 128; y += 24) ctx.fillRect(0, y, 256, 11);
-  } else if (v.look === 'twotone') {
-    // 下面薄荷、上面巧克力（像淋醬），交界有一點波浪（貼圖的上方對應史萊姆的頭頂）
-    ctx.fillStyle = v.color2;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    for (let x = 0; x <= 256; x += 8) ctx.lineTo(x, 46 + Math.sin(x / 14) * 9);
-    ctx.lineTo(256, 0);
-    ctx.closePath();
-    ctx.fill();
-  }
+  draw(c.getContext('2d'));
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
   return t;
 }
 
-function bodyMaterial(v) {
-  if (v.look === 'gold') {
-    return new THREE.MeshStandardMaterial({ color: v.color, metalness: 1, roughness: 0.22 });
-  }
-  if (v.look === 'jelly') {
-    return new THREE.MeshPhysicalMaterial({
-      color: v.color, roughness: 0.1, clearcoat: 1, transparent: true, opacity: 0.72,
-    });
-  }
-  const opts = { color: '#ffffff', roughness: 0.42, clearcoat: 0.5, clearcoatRoughness: 0.3 };
-  if (v.look === 'solid' || v.look === 'rainbow') opts.color = v.color;
-  else opts.map = patternTexture(v);
-  if (v.look === 'rainbow') opts.emissive = new THREE.Color(v.color).multiplyScalar(0.25);
-  return new THREE.MeshPhysicalMaterial(opts);
+// 貼圖的上方對應史萊姆的頭頂
+function twotoneTexture(skin) {
+  return canvasTexture((ctx) => {
+    ctx.fillStyle = skin.color;
+    ctx.fillRect(0, 0, 256, 128);
+    ctx.fillStyle = skin.color2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    for (let x = 0; x <= 256; x += 4) ctx.lineTo(x, 44 + Math.sin(x / 13) * 6 + Math.sin(x / 5) * 2);
+    ctx.lineTo(256, 0);
+    ctx.closePath();
+    ctx.fill();
+  });
 }
 
-const eyeMat = new THREE.MeshStandardMaterial({ color: 0x241a2e, roughness: 0.3 });
-const shineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
-const cheekMat = new THREE.MeshBasicMaterial({ color: 0xff8fa8, transparent: true, opacity: 0.55 });
-const eyeGeo = new THREE.SphereGeometry(1, 16, 12);
+function flakeTexture(skin) {
+  return canvasTexture((ctx) => {
+    ctx.fillStyle = skin.color;
+    ctx.fillRect(0, 0, 256, 128);
+    ctx.fillStyle = '#e9c46a';
+    for (let i = 0; i < 70; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 70;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 2 + Math.random() * 4, y + Math.random() * 3);
+      ctx.lineTo(x + Math.random() * 3, y + 2 + Math.random() * 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+}
 
-// 做一隻史萊姆娃娃（模型的原點在底部中心）
-export function makeSlimeMesh(v, scale) {
+// fancy：高／中畫質用比較好看（也比較吃效能）的真正透光材質
+function bodyMaterial(skin, fancy) {
+  const color = new THREE.Color(skin.color);
+  switch (skin.look) {
+    case 'jelly':
+    case 'night':
+      if (!fancy) return new THREE.MeshPhysicalMaterial({ color, roughness: 0.15, clearcoat: 1, transparent: true, opacity: 0.72 });
+      return new THREE.MeshPhysicalMaterial({
+        color, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.05,
+        transmission: 0.92, thickness: 0.7, ior: 1.33,
+        attenuationColor: color, attenuationDistance: skin.look === 'night' ? 0.35 : 0.9,
+      });
+    case 'diamond':
+      if (!fancy) return new THREE.MeshPhysicalMaterial({ color: 0xf2fbff, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.6 });
+      return new THREE.MeshPhysicalMaterial({
+        color: 0xffffff, roughness: 0.02, transmission: 1, thickness: 1, ior: 2.0,
+        iridescence: 1, iridescenceIOR: 1.6, clearcoat: 1,
+      });
+    case 'cream':
+      // 深色的不加白色絨光，不然會變灰灰的
+      if (isDark(skin.color)) return new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, clearcoat: 0.3 });
+      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.55, sheen: 0.6, sheenColor: 0xffffff, clearcoat: 0.15 });
+    case 'twotone':
+      return new THREE.MeshPhysicalMaterial({ map: twotoneTexture(skin), roughness: 0.5, sheen: 0.5, clearcoat: 0.35 });
+    case 'flake':
+      return new THREE.MeshPhysicalMaterial({ map: flakeTexture(skin), roughness: 0.45, clearcoat: 0.6 });
+    case 'pearl':
+      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.25, metalness: 0.1, clearcoat: 1, iridescence: 1, iridescenceIOR: 1.5 });
+    case 'metal':
+    default:
+      return new THREE.MeshStandardMaterial({ color, metalness: 1, roughness: 0.28 });
+  }
+}
+
+const eyeGeo = new THREE.SphereGeometry(1, 16, 12);
+const eyeBlack = new THREE.MeshStandardMaterial({ color: 0x1e1724, roughness: 0.35 });
+const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+
+function makePoints(n, size, color, at) {
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) pos.set(at(i), i * 3);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({ color, size, transparent: true, opacity: 0.9, depthWrite: false }));
+}
+
+// 做一隻史萊姆娃娃（模型的原點在底部中心，臉朝 +z）
+export function makeSlimeMesh(id, scale, fancy = true) {
+  const { skin } = slimeInfo(id);
   const g = new THREE.Group();
-  const body = new THREE.Mesh(getBodyGeo(), bodyMaterial(v));
+  const body = new THREE.Mesh(getBodyGeo(), bodyMaterial(skin, fancy));
   body.castShadow = true;
   body.receiveShadow = true;
   g.add(body);
-  // 眼睛（臉朝 +z）
+  // 豆豆眼：深色史萊姆用白的
+  const eyeMat = isDark(skin.color) ? eyeWhite : eyeBlack;
   for (const side of [-1, 1]) {
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
-    eye.scale.set(0.055, 0.085, 0.04);
-    eye.position.set(side * 0.17, 0.3, 0.55);
-    eye.lookAt(side * 0.17 * 3, 0.3, 3);
+    eye.scale.set(0.05, 0.08, 0.035);
+    eye.position.set(side * 0.16, 0.3, 0.555);
+    eye.lookAt(side * 0.16 * 3, 0.3, 3);
     g.add(eye);
-    const dot = new THREE.Mesh(eyeGeo, shineMat);
-    dot.scale.set(0.018, 0.022, 0.01);
-    dot.position.set(side * 0.17 + 0.02, 0.33, 0.585);
-    g.add(dot);
-    const cheek = new THREE.Mesh(eyeGeo, cheekMat);
-    cheek.scale.set(0.07, 0.04, 0.02);
-    cheek.position.set(side * 0.32, 0.22, 0.5);
-    cheek.lookAt(side * 0.32 * 3, 0.22, 3);
-    g.add(cheek);
   }
-  // 頭頂的反光
-  const shine = new THREE.Mesh(eyeGeo, shineMat);
-  shine.scale.set(0.11, 0.04, 0.06);
-  shine.position.set(0.2, 0.52, 0.28);
-  shine.rotation.set(-0.6, 0.5, -0.4);
-  g.add(shine);
-  // 傳說級：身邊有閃光粒子
-  if (v.sparkle) {
-    const n = 14;
-    const pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
+  // 夜空：身體裡有幾顆小星星
+  if (skin.look === 'night') {
+    g.add(makePoints(10, 0.035, 0xfff6d0, () => {
       const a = Math.random() * Math.PI * 2;
-      const r = 0.7 + Math.random() * 0.25;
-      pos.set([Math.cos(a) * r, 0.1 + Math.random() * 0.8, Math.sin(a) * r], i * 3);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-      color: 0xfff2b0, size: 0.09, transparent: true, opacity: 0.9, depthWrite: false,
+      const r = Math.random() * 0.4;
+      return [Math.cos(a) * r, 0.1 + Math.random() * 0.4, Math.sin(a) * r];
     }));
+  }
+  // 傳說：身邊幾點淡淡的閃光
+  if (skin.sparkle) {
+    const pts = makePoints(8, 0.06, 0xfff2c0, () => {
+      const a = Math.random() * Math.PI * 2;
+      const r = 0.72 + Math.random() * 0.15;
+      return [Math.cos(a) * r, 0.15 + Math.random() * 0.6, Math.sin(a) * r];
+    });
     pts.userData.sparkle = true;
     g.add(pts);
   }
   g.scale.setScalar(scale);
-  g.userData.variant = v;
+  g.userData.skin = skin;
   g.userData.body = body;
   return g;
 }
 
-// 每一幀更新特效（彩虹變色、閃光一閃一閃）
+// 換畫質時換身體的材質
+export function setSlimeFancy(g, fancy) {
+  g.userData.body.material = bodyMaterial(g.userData.skin, fancy);
+}
+
+// 每一幀更新特效（閃光一閃一閃）
 export function updateSlimeEffects(g, time) {
-  const v = g.userData.variant;
-  if (v.look === 'rainbow') {
-    const c = g.userData.body.material.color;
-    c.setHSL((time * 0.15) % 1, 0.75, 0.68);
-    g.userData.body.material.emissive.copy(c).multiplyScalar(0.25);
-  }
   for (const ch of g.children) {
     if (ch.userData.sparkle) {
-      ch.rotation.y = time * 0.8;
-      ch.material.opacity = 0.55 + 0.45 * Math.sin(time * 6);
+      ch.rotation.y = time * 0.6;
+      ch.material.opacity = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(time * 4));
     }
   }
 }
 
 // 圖鑑用的小圖（2D）
-export function drawSlimeIcon(ctx, v, w, h, owned) {
+export function drawSlimeIcon(ctx, id, w, h, owned) {
+  const { skin } = slimeInfo(id);
   ctx.clearRect(0, 0, w, h);
   const cx = w / 2;
-  const by = h * 0.86;
-  const rw = w * 0.38;
-  const rh = h * 0.62;
+  const by = h * 0.88;
+  const rw = w * 0.36;
+  const rh = h * 0.66;
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(cx - rw, by);
-  ctx.bezierCurveTo(cx - rw * 1.05, by - rh * 0.55, cx - rw * 0.6, by - rh, cx, by - rh);
-  ctx.bezierCurveTo(cx + rw * 0.6, by - rh, cx + rw * 1.05, by - rh * 0.55, cx + rw, by);
+  ctx.bezierCurveTo(cx - rw * 1.06, by - rh * 0.58, cx - rw * 0.58, by - rh, cx, by - rh);
+  ctx.bezierCurveTo(cx + rw * 0.58, by - rh, cx + rw * 1.06, by - rh * 0.58, cx + rw, by);
   ctx.closePath();
   if (!owned) {
     ctx.fillStyle = '#3a3448';
@@ -214,44 +305,44 @@ export function drawSlimeIcon(ctx, v, w, h, owned) {
     ctx.restore();
     return;
   }
-  let fill = v.color;
-  if (v.look === 'rainbow') {
-    const g = ctx.createLinearGradient(cx - rw, 0, cx + rw, 0);
-    ['#ff7a7a', '#ffd36e', '#7fd67a', '#6fb7ff', '#b48cff'].forEach((c, i) => g.addColorStop(i / 4, c));
-    fill = g;
-  } else if (v.look === 'gold') {
-    const g = ctx.createLinearGradient(0, by - rh, 0, by);
-    g.addColorStop(0, '#fff1b8');
-    g.addColorStop(1, '#c99a2e');
-    fill = g;
+  const base = new THREE.Color(skin.color);
+  const light = '#' + base.clone().lerp(new THREE.Color(1, 1, 1), 0.45).getHexString();
+  const dark = '#' + base.clone().multiplyScalar(0.7).getHexString();
+  const g = ctx.createLinearGradient(0, by - rh, 0, by);
+  if (skin.look === 'diamond') {
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.5, '#cfe9ff');
+    g.addColorStop(1, '#f6d6ff');
+  } else {
+    g.addColorStop(0, light);
+    g.addColorStop(1, skin.look === 'metal' || skin.look === 'pearl' ? dark : skin.color);
   }
-  ctx.fillStyle = fill;
-  ctx.globalAlpha = v.look === 'jelly' ? 0.8 : 1;
+  ctx.fillStyle = g;
+  const clear = skin.look === 'jelly' || skin.look === 'night' || skin.look === 'diamond';
+  ctx.globalAlpha = clear ? 0.82 : 1;
   ctx.fill();
   ctx.globalAlpha = 1;
   ctx.clip();
-  if (v.look === 'dots') {
-    ctx.fillStyle = v.color2;
-    for (let y = by - rh; y < by; y += h * 0.13) {
-      for (let x = cx - rw; x < cx + rw; x += w * 0.14) {
-        ctx.beginPath();
-        ctx.arc(x + ((y / (h * 0.13)) % 2) * w * 0.07, y, w * 0.025, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  } else if (v.look === 'stripes') {
-    ctx.fillStyle = v.color2;
-    for (let y = by - rh; y < by; y += h * 0.14) ctx.fillRect(0, y, w, h * 0.065);
-  } else if (v.look === 'twotone') {
-    ctx.fillStyle = v.color2;
-    ctx.fillRect(0, 0, w, by - rh * 0.55);
+  if (skin.look === 'twotone') {
+    ctx.fillStyle = skin.color2;
+    ctx.fillRect(0, 0, w, by - rh * 0.6);
+  } else if (skin.look === 'flake') {
+    ctx.fillStyle = '#e9c46a';
+    for (let i = 0; i < 14; i++) ctx.fillRect(cx - rw + Math.random() * rw * 2, by - rh + Math.random() * rh * 0.6, 2, 2);
+  } else if (skin.look === 'night') {
+    ctx.fillStyle = '#fff6d0';
+    for (let i = 0; i < 6; i++) ctx.fillRect(cx - rw * 0.6 + Math.random() * rw * 1.2, by - rh * 0.7 + Math.random() * rh * 0.6, 2, 2);
   }
+  // 頭頂一道反光
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(cx + rw * 0.35, by - rh * 0.78, rw * 0.18, rh * 0.06, -0.5, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
-  // 眼睛
-  ctx.fillStyle = '#241a2e';
+  ctx.fillStyle = isDark(skin.color) ? '#ffffff' : '#1e1724';
   for (const s of [-1, 1]) {
     ctx.beginPath();
-    ctx.ellipse(cx + s * rw * 0.3, by - rh * 0.45, w * 0.035, h * 0.06, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + s * rw * 0.3, by - rh * 0.45, w * 0.032, h * 0.055, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }

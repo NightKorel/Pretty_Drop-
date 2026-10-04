@@ -2,11 +2,12 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.18';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.18';
+import { makeCoinMaterials } from './coin.js?v=0.0.19';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.19';
 import {
-  RARITY, SLIME_VARIANTS, VARIANT_BY_ID, makeSlimeMesh, slimeHullPoints, updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.18';
+  RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, setSlimeFancy, slimeHullPoints,
+  updateSlimeEffects, drawSlimeIcon,
+} from './slime.js?v=0.0.19';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -123,8 +124,9 @@ const coins = [];
 const dolls = [];            // 檯面上的史萊姆娃娃
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
 const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 30 秒一隻）
-const RARE_CHANCE = 0.25;    // 放出來的是稀有的機率
-const LEGEND_CHANCE = 0.04;  // 放出來的是傳說的機率
+const RARE_CHANCE = 0.2;     // 放出來的是稀有（第 7 到 9 隻）的機率
+const LEGEND_CHANCE = 0.03;  // 放出來的是傳說（第 10 隻）的機率
+let activeSet = 'jelly';     // 現在用哪一套娃娃
 const MAX_DOLLS = 2;         // 檯面上最多同時幾隻
 let dollTimer = 0;
 
@@ -247,6 +249,8 @@ addBox(0.15, 3, tableLen / 2, outerW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff
 addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
 // 推板
 const pusher = addBox(halfW - 0.02, PUSHER_H / 2, PUSHER_DEPTH / 2, 0, PUSHER_H / 2, PUSHER_MID, 0x8d92a3, { kinematic: true, metal: 0.7, rough: 0.3 });
+// 推板表面比較澀，推板變快時上面的幣才會跟著走，不會一直滑來滑去
+pusher.body.collider(0).setFriction(0.9);
 // 前緣金邊（只有樣子）
 const lip = new THREE.Mesh(
   new THREE.BoxGeometry(TABLE_W, 0.08, 0.12),
@@ -331,8 +335,7 @@ function removeCoin(i) {
 
 // ===== 史萊姆娃娃 =====
 function spawnDoll(id, scale, pos, rot) {
-  const v = VARIANT_BY_ID[id];
-  if (!v) return null;
+  if (!slimeInfo(id)) return null;
   const body = world.createRigidBody(
     RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(pos.x, pos.y, pos.z)
@@ -349,7 +352,7 @@ function spawnDoll(id, scale, pos, rot) {
       .setContactSkin(0.01),
     body,
   );
-  const mesh = makeSlimeMesh(v, scale);
+  const mesh = makeSlimeMesh(id, scale, quality !== 'low');
   scene.add(mesh);
   const doll = { id, scale, body, mesh };
   dolls.push(doll);
@@ -368,11 +371,12 @@ function dropNewDoll() {
   let rarity = 'common';
   if (legendChance.roll()) rarity = 'legend';
   else if (rareChance.roll()) rarity = 'rare';
-  const pool = SLIME_VARIANTS.filter((v) => v.rarity === rarity);
-  const v = pool[Math.floor(Math.random() * pool.length)];
+  const pool = SLOTS.map((sl, i) => i).filter((i) => SLOTS[i].rarity === rarity);
+  const slot = pool[Math.floor(Math.random() * pool.length)];
+  const id = `${activeSet}.${slot}`;
   const scale = 0.85 + Math.random() * 0.35; // 大小略有不同
   const yaw = (Math.random() - 0.5) * 0.8;   // 大致面向玩家
-  spawnDoll(v.id, scale, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+  spawnDoll(id, scale, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
   beep(700, 0.12, 0.05, 'triangle', 'doll');
   setTimeout(() => beep(1050, 0.16, 0.05, 'triangle', 'doll'), 110);
 }
@@ -422,7 +426,7 @@ function prefill() {
     if (coin) coin.body.setRotation({ x: c[3], y: c[4], z: c[5], w: c[6] }, true);
   }
   // 開局先放一隻普通的娃娃在檯面中間，讓玩家一眼看到目標
-  spawnDoll('green', 1, { x: 0.3, y: 1.6, z: -0.6 });
+  spawnDoll('jelly.0', 1, { x: 0.3, y: 1.6, z: -0.6 });
 }
 
 // ===== 介面 =====
@@ -643,6 +647,7 @@ function applyQuality(q) {
   coinMeshMat = q === 'low' ? coinMatPlain : coinMatFancy;
   bigMeshMat = q === 'low' ? bigMatPlain : bigMatFancy;
   for (const c of coins) c.mesh.material = c.value > 1 ? bigMeshMat : coinMeshMat;
+  for (const d of dolls) setSlimeFancy(d.mesh, q !== 'low');
   scene.traverse((o) => {
     if (!o.material) return;
     for (const m of [].concat(o.material)) m.needsUpdate = true;
@@ -693,33 +698,76 @@ renderSound();
 // ===== 圖鑑 =====
 const bookEl = document.getElementById('book');
 const bookListEl = document.getElementById('bookList');
+// 每一套收集了幾種
+function kindsIn(setId) {
+  return SET_BY_ID[setId].skins.filter((_, i) => collection[`${setId}.${i}`] > 0).length;
+}
+// 上一套收集到指定種數，下一套就解鎖
+function setUnlocked(set) {
+  return !set.unlock || kindsIn(set.unlock.set) >= set.unlock.kinds;
+}
+let bookTab = 'jelly';
+
 function renderBook() {
-  const got = SLIME_VARIANTS.filter((v) => collection[v.id] > 0).length;
-  document.getElementById('bookCount').textContent = `${got} / ${SLIME_VARIANTS.length}`;
-  bookListEl.innerHTML = '';
-  for (const v of SLIME_VARIANTS) {
-    const n = collection[v.id] || 0;
+  const total = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);
+  document.getElementById('bookCount').textContent = `${total} / ${SLIME_SETS.length * 10}`;
+  const set = SET_BY_ID[bookTab];
+  const unlocked = setUnlocked(set);
+  let head = '<div class="bookTabs">';
+  for (const st of SLIME_SETS) {
+    const lock = setUnlocked(st) ? '' : ' locked';
+    head += `<button type="button" class="bookTab${st.id === bookTab ? ' on' : ''}${lock}" data-set="${st.id}">${st.name}${st.id === activeSet ? '・使用中' : ''}</button>`;
+  }
+  head += '</div>';
+  if (!unlocked) {
+    const need = SET_BY_ID[set.unlock.set];
+    head += `<div class="bookLock">在「${need.name}」收集 ${set.unlock.kinds} 種就會解鎖（現在 ${kindsIn(need.id)} 種）</div>`;
+  } else if (set.id === activeSet) {
+    head += `<div class="bookUse">「${set.name}」使用中：機台現在放出來的都是這一套（${kindsIn(set.id)} / 10）</div>`;
+  } else {
+    head += `<div class="bookUse"><button type="button" class="useSet" data-use="${set.id}">改用「${set.name}」</button>（${kindsIn(set.id)} / 10）</div>`;
+  }
+  bookListEl.innerHTML = head + '<div class="bookGrid"></div>';
+  const grid = bookListEl.querySelector('.bookGrid');
+  set.skins.forEach((skin, i) => {
+    const id = `${set.id}.${i}`;
+    const n = collection[id] || 0;
+    const slot = SLOTS[i];
+    const r = RARITY[slot.rarity];
     const cell = document.createElement('div');
     cell.className = 'bookCell';
     const cv = document.createElement('canvas');
     cv.width = 96;
     cv.height = 80;
-    drawSlimeIcon(cv.getContext('2d'), v, 96, 80, n > 0);
-    const r = RARITY[v.rarity];
-    cell.appendChild(cv);
+    drawSlimeIcon(cv.getContext('2d'), id, 96, 80, n > 0);
     const name = document.createElement('div');
     name.className = 'bookName';
-    name.textContent = n > 0 ? v.name : '？？？';
+    name.textContent = n > 0 ? skin.name : '？？？';
     const info = document.createElement('div');
     info.className = 'bookInfo';
-    info.innerHTML = `<span style="color:${r.color}">${r.name}</span>${n > 0 ? ` ×${n}` : ''}`;
-    cell.append(name, info);
-    bookListEl.appendChild(cell);
-  }
+    info.innerHTML = `<span style="color:${r.color}">${r.name}</span> ${slot.value} 枚${n > 0 ? `<br>收集 ×${n}` : ''}`;
+    cell.append(cv, name, info);
+    grid.appendChild(cell);
+  });
 }
+bookListEl.addEventListener('click', (e) => {
+  const tab = e.target.closest('button[data-set]');
+  if (tab) {
+    bookTab = tab.dataset.set;
+    renderBook();
+    return;
+  }
+  const use = e.target.closest('button[data-use]');
+  if (use && setUnlocked(SET_BY_ID[use.dataset.use])) {
+    activeSet = use.dataset.use;
+    renderBook();
+    saveGame();
+  }
+});
 document.getElementById('bookBtn').addEventListener('click', () => {
   shopEl.classList.remove('show');
   document.getElementById('settings').classList.remove('show');
+  bookTab = activeSet;
   renderBook();
   bookEl.classList.toggle('show');
 });
@@ -840,6 +888,7 @@ function saveData() {
     rareCount: rareChance.count,
     legendCount: legendChance.count,
     collection: { ...collection },
+    activeSet,
     dolls: dolls.map((d) => {
       const t = d.body.translation();
       const r = d.body.rotation();
@@ -883,9 +932,11 @@ function applySave(d) {
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
   rareChance.count = Math.max(0, Math.floor(Number(d.rareCount) || 0));
   legendChance.count = Math.max(0, Math.floor(Number(d.legendCount) || 0));
+  // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
   for (const [k, n] of Object.entries(d.collection || {})) {
-    if (VARIANT_BY_ID[k]) collection[k] = Math.max(0, Math.floor(Number(n) || 0));
+    if (slimeInfo(k)) collection[k] = Math.max(0, Math.floor(Number(n) || 0));
   }
+  if (SET_BY_ID[d.activeSet] && setUnlocked(SET_BY_ID[d.activeSet])) activeSet = d.activeSet;
   for (const dd of (d.dolls || []).slice(0, MAX_DOLLS)) {
     if (!Array.isArray(dd.p) || !Array.isArray(dd.r)) continue;
     spawnDoll(dd.id, Number(dd.s) || 1, { x: dd.p[0], y: dd.p[1], z: dd.p[2] }, { x: dd.r[0], y: dd.r[1], z: dd.r[2], w: dd.r[3] });
@@ -966,21 +1017,25 @@ function stepSim() {
     const t = dolls[i].body.translation();
     if (t.y >= -1.2) continue;
     const d = dolls[i];
-    const v = VARIANT_BY_ID[d.id];
+    const info = slimeInfo(d.id);
     if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
-      const r = RARITY[v.rarity];
+      const r = RARITY[info.rarity];
       const isNew = !collection[d.id];
+      const lockedBefore = SLIME_SETS.filter((st) => !setUnlocked(st)).map((st) => st.id);
       collection[d.id] = (collection[d.id] || 0) + 1;
-      wallet += r.reward;
-      won += r.reward;
+      wallet += info.value;
+      won += info.value;
       bump(walletEl);
-      floatText(`+${r.reward}`, new THREE.Vector3(t.x, 0, FRONT_Z));
-      toast(`<span style="color:${r.color}">${r.name}</span>　${v.name}${isNew ? '　<span class="newTag">新！</span>' : ''}　+${r.reward} 枚`);
+      floatText(`+${info.value}`, new THREE.Vector3(t.x, 0, FRONT_Z));
+      let msg = `<span style="color:${r.color}">${r.name}</span>　${info.skin.name}${isNew ? '　<span class="newTag">新！</span>' : ''}　+${info.value} 枚`;
+      const opened = lockedBefore.filter((sid) => setUnlocked(SET_BY_ID[sid]));
+      if (opened.length) msg += `<br>解鎖新的一套：「${SET_BY_ID[opened[0]].name}」，可以在圖鑑換`;
+      toast(msg);
       [880, 1175, 1480, 1760, 2350].forEach((f, k) => setTimeout(() => beep(f, 0.16, 0.06, 'triangle', 'doll'), k * 80));
       if (bookEl.classList.contains('show')) renderBook();
       saveGame();
     } else {
-      toast(`${v.name}掉進側溝了……`);
+      toast(`${info.skin.name}掉進側溝了……`);
     }
     removeDoll(i);
   }
@@ -1075,5 +1130,5 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, setActiveSet(id) { activeSet = id; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
