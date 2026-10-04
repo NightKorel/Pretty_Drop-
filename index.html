@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>推幣機</title>
-  <link rel="stylesheet" href="style.css?v=0.0.7">
+  <link rel="stylesheet" href="style.css?v=0.0.8">
 </head>
 <body>
   <div id="hud">
-    <div class="title">推幣機 <span class="ver">v0.0.7</span></div>
+    <div class="title">推幣機 <span class="ver">v0.0.8</span></div>
     <div class="money">
       <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
     </div>
@@ -46,6 +46,25 @@
   <div id="hint">點檯面投幣，按住可以連投</div>
   <div id="loading">機台準備中……</div>
   <canvas id="view"></canvas>
-  <script type="module" src="app.js?v=0.0.7"></script>
+  <script>
+    // 遊戲出錯時把原因顯示在畫面上，方便回報
+    function showLoadError(msg) {
+      var el = document.getElementById('loading');
+      if (!el) return;
+      el.classList.remove('hide');
+      el.style.flexDirection = 'column';
+      el.style.padding = '16px';
+      el.style.textAlign = 'center';
+      el.innerHTML = '遊戲載入失敗，請重新整理再試一次。<br><br><small style="opacity:.7;word-break:break-all"></small>';
+      el.querySelector('small').textContent = String(msg).slice(0, 300);
+    }
+    window.addEventListener('error', function (e) {
+      if (!window.__game) showLoadError(e.message || (e.target && e.target.src) || '未知錯誤');
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      if (!window.__game) showLoadError(e.reason && e.reason.message ? e.reason.message : e.reason);
+    });
+  </script>
+  <script type="module" src="app.js?v=0.0.8"></script>
 </body>
 </html>
