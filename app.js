@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.12';
+import { makeCoinMaterials } from './coin.js?v=0.0.13';
 
 await RAPIER.init();
 
@@ -25,16 +25,17 @@ const START_WALLET = 30;
 const START_COINS = 200;     // 一開檯面上已經有的幣
 const MAX_COINS = 420;       // 檯面上幣的上限（保護效能）
 const DROP_GAP = 0.28;       // 按住連投的間隔秒數
-const REFILL_BELOW = 10;     // 手上少於這個數，倒數完直接補到這個數
+const MOM_GIVE = 10;         // 媽媽每次給幾枚
+const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得掛機刷）
 
 // ===== 商店升級 =====
 // 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項，越後面的越好也越貴。
 // 每升一級價錢乘上 growth。levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
   refill: {
-    name: '補幣加快',
-    desc: '手上少於 10 枚時，補到 10 枚要等的秒數變短',
-    levels: [6, 5, 4, 3.2, 2.5, 2],
+    name: '媽媽十元',
+    desc: '媽媽每隔一段時間給你 10 枚，升級讓媽媽給得更勤（手上滿 100 枚就先不給）',
+    levels: [20, 17, 14, 11, 8, 6],           // 媽媽幾秒給一次
     base: 8, growth: 1.6,
   },
   speed: {
@@ -241,13 +242,13 @@ const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_H, 28);
 const coinMatFancy = makeCoinMaterials();
 const coinMatPlain = new THREE.MeshLambertMaterial({ color: 0xd9a53a, emissive: 0x1a1000 });
 let coinMeshMat = coinMatFancy;
-// 大金幣：同樣的幣面，大一號、偏紅金色
+// 大金幣：大一號、背面寫 10，顏色比一般幣深一點點
 const bigGeo = new THREE.CylinderGeometry(BIG_R, BIG_R, BIG_H, 32);
 const bigMatFancy = makeCoinMaterials('10').map((m) => {
-  m.color = new THREE.Color(0xffb0a0);
+  m.color = new THREE.Color(0xddcfb4); // 比一般幣深一點點
   return m;
 });
-const bigMatPlain = new THREE.MeshLambertMaterial({ color: 0xe0805a, emissive: 0x200800 });
+const bigMatPlain = new THREE.MeshLambertMaterial({ color: 0xc7952f, emissive: 0x160c00 });
 let bigMeshMat = bigMatFancy;
 const COIN_EDGE = 0.03;
 const coinEuler = new THREE.Euler();
@@ -377,11 +378,11 @@ function updateHud() {
     shopShownWallet = wallet;
     renderShop();
   }
-  if (wallet < REFILL_BELOW) {
+  if (wallet < MOM_CAP) {
     const left = Math.ceil(upValue('refill') - refillTimer);
-    refillEl.textContent = `手上少於 ${REFILL_BELOW} 枚，${left} 秒後補到 ${REFILL_BELOW} 枚`;
+    refillEl.textContent = `媽媽 ${left} 秒後給你 ${MOM_GIVE} 枚`;
   } else {
-    refillEl.textContent = '';
+    refillEl.textContent = `手上滿 ${MOM_CAP} 枚，媽媽先不給了`;
   }
 }
 function floatText(text, worldPos) {
@@ -795,12 +796,12 @@ function tick(now) {
     if (Math.random() < 0.5) clink(0.6);
   }
 
-  // 沒錢時倒數，數完直接補到 10 枚
-  if (wallet < REFILL_BELOW) {
+  // 媽媽十元：固定時間給 10 枚，手上滿 100 枚就先不給（給了也不超過 100）
+  if (wallet < MOM_CAP) {
     refillTimer += frame;
     if (refillTimer >= upValue('refill')) {
       refillTimer = 0;
-      wallet = REFILL_BELOW;
+      wallet = Math.min(MOM_CAP, wallet + MOM_GIVE);
       bump(walletEl);
       beep(990, 0.1, 0.05, 'triangle');
     }
