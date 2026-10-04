@@ -10,17 +10,18 @@ export const RARITY = {
 };
 
 // 每一套第 1 到第 10 隻：推下去值多少枚、稀有度（每套都一樣）
+// 娃娃只分三個檔次，同一檔的價值都一樣（納可：金額不要分太細）
 export const SLOTS = [
-  { value: 10, rarity: 'common' },
-  { value: 20, rarity: 'common' },
-  { value: 30, rarity: 'common' },
-  { value: 40, rarity: 'common' },
   { value: 50, rarity: 'common' },
-  { value: 60, rarity: 'common' },
-  { value: 80, rarity: 'rare' },
-  { value: 100, rarity: 'rare' },
+  { value: 50, rarity: 'common' },
+  { value: 50, rarity: 'common' },
+  { value: 50, rarity: 'common' },
+  { value: 50, rarity: 'common' },
+  { value: 50, rarity: 'common' },
   { value: 150, rarity: 'rare' },
-  { value: 300, rarity: 'legend' },
+  { value: 150, rarity: 'rare' },
+  { value: 150, rarity: 'rare' },
+  { value: 500, rarity: 'legend' },
 ];
 
 // look：jelly 半透明果凍、night 夜空（半透明裡有小星星）、diamond 鑽石、
