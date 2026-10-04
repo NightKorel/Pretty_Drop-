@@ -2,12 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.20';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.20';
+import { makeCoinMaterials } from './coin.js?v=0.0.21';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.21';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, setSlimeFancy, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.20';
+} from './slime.js?v=0.0.21';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.21';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -128,6 +129,13 @@ const upgrades = Object.fromEntries(UPGRADE_KEYS.map((k) => [k, 0]));
 let rainTimer = 0;           // 每滿一秒擲一次金幣雨
 let rainQueue = 0;           // 金幣雨還有幾枚要下
 const coins = [];
+// 成就：累計數字、達成了哪些、成就點數、買了哪些裝飾品、各位置裝了哪個
+const stats = Object.fromEntries(Object.keys(STAT_NAMES).map((k) => [k, 0]));
+const achieved = {};
+let achPoints = 0;
+const ownedDecor = {};
+const equipped = {};
+let achTimer = 0;
 const dolls = [];            // 檯面上的史萊姆娃娃
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
 const DOLL_CHANCE = 0.06;    // 每秒放一隻娃娃的機率（保底式，平均大約 17 秒一隻）
@@ -248,7 +256,7 @@ const halfW = TABLE_W / 2;
 const outerW = halfW + GUTTER; // 玻璃牆的位置
 const tableLen = FRONT_Z - BACK_Z;
 // 檯面
-addBox(halfW, 0.5, tableLen / 2, 0, -0.5, (FRONT_Z + BACK_Z) / 2, 0x1f5b57);
+const table = addBox(halfW, 0.5, tableLen / 2, 0, -0.5, (FRONT_Z + BACK_Z) / 2, 0x1f5b57);
 // 左右玻璃
 addBox(0.15, 3, tableLen / 2, -outerW - 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
 addBox(0.15, 3, tableLen / 2, outerW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, 0x9fd8ff, { opacity: 0.12 });
@@ -497,6 +505,7 @@ const SOUND_KINDS = {
   mom: '媽媽給錢',
   shop: '商店購買',
   doll: '娃娃',
+  ach: '成就達成',
 };
 const SOUND_KEY = 'pretty_drop_sound';
 const soundOn = { master: true, volume: 7 }; // volume：0 到 10
@@ -602,6 +611,7 @@ function dropCoin() {
   }
   if (!dropped) return;
   wallet -= dropped;
+  stats.coinsDropped += dropped;
   bump(walletEl);
   beep(900, 0.06, 0.05, 'triangle', 'drop');
   hintEl.style.opacity = 0;
@@ -792,6 +802,7 @@ bookListEl.addEventListener('click', (e) => {
   }
 });
 document.getElementById('bookBtn').addEventListener('click', () => {
+  document.getElementById('ach').classList.remove('show');
   shopEl.classList.remove('show');
   document.getElementById('settings').classList.remove('show');
   bookTab = activeSets[0];
@@ -810,7 +821,100 @@ function toast(html) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
 }
 
+// ===== 成就與成就商店 =====
+const achEl = document.getElementById('ach');
+const achListEl = document.getElementById('achList');
+let achTab = 'list';
+// 裝飾品換外觀時可以動到的東西
+const decorView = { THREE, scene, table: table.mesh, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
+
+function checkAchievements() {
+  const state = { stats, collection, upgrades, wallet };
+  for (const a of ACHIEVEMENTS) {
+    if (achieved[a.id] || !a.check(state)) continue;
+    achieved[a.id] = true;
+    achPoints += a.points;
+    toast(`成就達成：${a.name}　+${a.points} 點`);
+    beep(1046, 0.12, 0.05, 'triangle', 'ach');
+    setTimeout(() => beep(1568, 0.2, 0.05, 'triangle', 'ach'), 120);
+    if (achEl.classList.contains('show')) renderAch();
+  }
+}
+
+function equipDecor(id) {
+  const d = DECORATIONS.find((x) => x.id === id);
+  if (!d || !ownedDecor[id]) return;
+  const old = DECORATIONS.find((x) => x.id === equipped[d.slot]);
+  if (old && old.remove) old.remove(decorView);
+  if (equipped[d.slot] === id) {
+    delete equipped[d.slot]; // 再按一次就拿下來
+  } else {
+    equipped[d.slot] = id;
+    d.apply(decorView);
+  }
+}
+
+function renderAch() {
+  document.getElementById('achPoints').textContent = achPoints;
+  let html = '<div class="bookTabs">'
+    + `<button type="button" class="bookTab${achTab === 'list' ? ' on' : ''}" data-achtab="list">成就</button>`
+    + `<button type="button" class="bookTab${achTab === 'shop' ? ' on' : ''}" data-achtab="shop">成就商店</button></div>`;
+  if (achTab === 'list') {
+    const done = ACHIEVEMENTS.filter((a) => achieved[a.id]).length;
+    html += `<div class="bookUse">已達成 ${done} / ${ACHIEVEMENTS.length}</div>`;
+    for (const a of ACHIEVEMENTS) {
+      const ok = achieved[a.id];
+      html += `<div class="item achItem${ok ? ' done' : ''}"><div class="info"><div class="name">${ok ? '✓ ' : ''}${a.name}</div><div class="desc">${a.desc}</div></div><div class="achPts">${a.points} 點</div></div>`;
+    }
+  } else {
+    html += '<div class="bookTip">用成就點數買裝飾品，只改外觀，不影響遊戲。</div>';
+    if (!DECORATIONS.length) {
+      html += '<div class="bookLock">裝飾品準備中，之後會上架。</div>';
+    }
+    for (const [slot, slotName] of Object.entries(DECORATION_SLOTS)) {
+      const items = DECORATIONS.filter((d) => d.slot === slot);
+      if (!items.length) continue;
+      html += `<div class="bookUse">${slotName}</div>`;
+      for (const d of items) {
+        let btn;
+        if (!ownedDecor[d.id]) btn = `<button type="button" data-decorbuy="${d.id}" ${achPoints < d.price ? 'disabled' : ''}>${d.price} 點</button>`;
+        else btn = `<button type="button" data-decoruse="${d.id}">${equipped[slot] === d.id ? '拿下來' : '裝上'}</button>`;
+        html += `<div class="item"><div class="info"><div class="name">${d.name}</div></div>${btn}</div>`;
+      }
+    }
+  }
+  achListEl.innerHTML = html;
+}
+
+achListEl.addEventListener('click', (e) => {
+  const tab = e.target.closest('button[data-achtab]');
+  if (tab) { achTab = tab.dataset.achtab; renderAch(); return; }
+  const buyB = e.target.closest('button[data-decorbuy]');
+  if (buyB) {
+    const d = DECORATIONS.find((x) => x.id === buyB.dataset.decorbuy);
+    if (d && !ownedDecor[d.id] && achPoints >= d.price) {
+      achPoints -= d.price;
+      ownedDecor[d.id] = true;
+      equipDecor(d.id);
+      saveGame();
+    }
+    renderAch();
+    return;
+  }
+  const useB = e.target.closest('button[data-decoruse]');
+  if (useB) { equipDecor(useB.dataset.decoruse); saveGame(); renderAch(); }
+});
+document.getElementById('achBtn').addEventListener('click', () => {
+  shopEl.classList.remove('show');
+  bookEl.classList.remove('show');
+  document.getElementById('settings').classList.remove('show');
+  renderAch();
+  achEl.classList.toggle('show');
+});
+document.getElementById('achClose').addEventListener('click', () => achEl.classList.remove('show'));
+
 document.getElementById('settingsBtn').addEventListener('click', () => {
+  achEl.classList.remove('show');
   shopEl.classList.remove('show');
   bookEl.classList.remove('show');
   document.getElementById('settings').classList.toggle('show');
@@ -824,6 +928,7 @@ const rainBanner = document.getElementById('rainBanner');
 let rainSpawn = 0;
 let rainRate = 0;
 function startRain() {
+  stats.rains++;
   rainQueue = upValue('rainSize');
   rainRate = rainQueue / 2.5;
   rainSpawn = 0;
@@ -878,6 +983,8 @@ function buy(key) {
   if (lv >= u.prices.length || wallet < u.prices[lv]) return;
   wallet -= u.prices[lv];
   upgrades[key]++;
+  stats.upgradesBought++;
+  checkAchievements();
   if (key === 'guard') buildGuards();
   beep(660, 0.08, 0.06, 'triangle', 'shop');
   setTimeout(() => beep(990, 0.12, 0.06, 'triangle', 'shop'), 80);
@@ -887,6 +994,7 @@ function buy(key) {
 }
 
 shopBtn.addEventListener('click', () => {
+  achEl.classList.remove('show');
   bookEl.classList.remove('show');
   document.getElementById('settings').classList.remove('show');
   renderShop();
@@ -916,6 +1024,11 @@ function saveData() {
     legendCount: legendChance.count,
     collection: { ...collection },
     activeSets,
+    stats: { ...stats },
+    achieved: { ...achieved },
+    achPoints,
+    ownedDecor: { ...ownedDecor },
+    equipped: { ...equipped },
     dolls: dolls.map((d) => {
       const t = d.body.translation();
       const r = d.body.rotation();
@@ -965,6 +1078,13 @@ function applySave(d) {
   }
   const sets = (Array.isArray(d.activeSets) ? d.activeSets : [d.activeSet]).filter((id) => SET_BY_ID[id] && setUnlocked(SET_BY_ID[id]));
   if (sets.length) activeSets = [...new Set(sets)];
+  for (const k of Object.keys(stats)) stats[k] = Math.max(0, Number(d.stats?.[k]) || 0);
+  for (const a of ACHIEVEMENTS) if (d.achieved?.[a.id]) achieved[a.id] = true;
+  achPoints = Math.max(0, Math.floor(Number(d.achPoints) || 0));
+  for (const x of DECORATIONS) if (d.ownedDecor?.[x.id]) ownedDecor[x.id] = true;
+  for (const [slot, id] of Object.entries(d.equipped || {})) {
+    if (DECORATION_SLOTS[slot] && ownedDecor[id]) equipDecor(id);
+  }
   for (const dd of (d.dolls || []).slice(0, MAX_DOLLS)) {
     if (!Array.isArray(dd.p) || !Array.isArray(dd.r)) continue;
     spawnDoll(dd.id, Number(dd.s) || 1, { x: dd.p[0], y: dd.p[1], z: dd.p[2] }, { x: dd.r[0], y: dd.r[1], z: dd.r[2], w: dd.r[3] });
@@ -1028,6 +1148,8 @@ function stepSim() {
       if (b.z > FRONT_Z - 0.5 && Math.abs(b.x) < halfW + 0.1) {
         won += value;
         wallet += value;
+        stats.coinsWon += value;
+        if (value > 1) stats.bigWon++;
         floatText(`+${value}`, new THREE.Vector3(b.x, 0, FRONT_Z));
         bump(walletEl);
         if (value > 1) {
@@ -1051,6 +1173,7 @@ function stepSim() {
       const isNew = !collection[d.id];
       const lockedBefore = SLIME_SETS.filter((st) => !setUnlocked(st)).map((st) => st.id);
       collection[d.id] = (collection[d.id] || 0) + 1;
+      stats.dollsCollected++;
       wallet += info.value;
       won += info.value;
       bump(walletEl);
@@ -1075,6 +1198,13 @@ function updateTimers(frame) {
   if ((pointerDown || autoDrop) && simTime - lastDrop >= DROP_GAP) {
     dropCoin();
     lastDrop = simTime;
+  }
+
+  // 每一秒檢查一次成就
+  achTimer += frame;
+  if (achTimer >= 1) {
+    achTimer -= 1;
+    checkAchievements();
   }
 
   // 每一秒擲一次要不要放新娃娃（保底式假隨機）
@@ -1163,7 +1293,7 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };

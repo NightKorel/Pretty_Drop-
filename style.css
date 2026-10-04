@@ -168,7 +168,7 @@ html, body {
 #settings .note { font-size: 12px; color: var(--dim); line-height: 1.6; max-width: 220px; }
 #settings .sep { margin-top: 12px; }
 
-#shop, #book {
+#shop, #book, #ach {
   display: none;
   position: fixed;
   left: 50%;
@@ -183,12 +183,12 @@ html, body {
   border-radius: 14px;
   padding: 16px;
 }
-#shop.show, #book.show { display: block; }
+#shop.show, #book.show, #ach.show { display: block; }
 .shopHead { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .shopTitle { font-size: 18px; font-weight: 700; letter-spacing: 2px; }
 .shopWallet { flex: 1; color: var(--dim); font-size: 14px; }
 .shopWallet span { color: var(--gold); font-weight: 700; font-size: 18px; }
-#shopClose, #bookClose {
+#shopClose, #bookClose, #achClose {
   background: transparent;
   color: var(--text);
   border: none;
@@ -342,3 +342,14 @@ html, body {
 .volRow { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; font-weight: 700; }
 .volRow input[type=range] { flex: 1; accent-color: var(--gold); }
 .volRow b { min-width: 2ch; text-align: right; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+.achItem { opacity: 0.6; }
+.achItem.done { opacity: 1; }
+.achItem.done .name { color: var(--gold); }
+.achPts { font-size: 13px; color: var(--dim); white-space: nowrap; }
+
+/* 手機上按鈕多，縮小一點才排得下 */
+@media (max-width: 480px) {
+  #hud .btns { gap: 6px; }
+  .hudBtn { padding: 7px 9px; font-size: 13px; }
+}
