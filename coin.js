@@ -3,10 +3,21 @@
 import * as THREE from './lib/three.module.js';
 
 const SIZE = 256;
+// 貼圖在硬幣上下兩面的轉向（試出來的）
+const FRONT_ROT = Math.PI / 2;
+const FRONT_FLIP = false;
+const BACK_ROT = Math.PI / 2;
+const BACK_FLIP = false;
 
 function smoothstep(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
+}
+
+// 外圈凸起，邊緣圓滑（兩面共用）
+function rimHeight(r) {
+  const rim = smoothstep(0.8, 0.86, r) * (1 - smoothstep(0.95, 1.0, r));
+  return 0.3 + 0.5 * rim;
 }
 
 // 幣面的高度：0 最低，1 最高。x、y 從 -1 到 1，y 往下是正。
@@ -14,9 +25,7 @@ function faceHeight(x, y) {
   const r = Math.hypot(x, y);
   let h = 0.3; // 底面
 
-  // 外圈凸起，邊緣圓滑
-  const rim = smoothstep(0.8, 0.86, r) * (1 - smoothstep(0.95, 1.0, r));
-  h = Math.max(h, 0.3 + 0.5 * rim);
+  h = Math.max(h, rimHeight(r));
 
   // 內圈一圈小圓點（像真硬幣的珠圈）
   const beadR = 0.74;
@@ -42,9 +51,13 @@ function faceHeight(x, y) {
       const ed = Math.hypot((x - ex) / 0.055, (y - 0.12) / 0.085);
       sh -= 0.6 * (1 - smoothstep(0.75, 1.1, ed)) * edge;
     }
-    // 身上一小塊反光（微微凸起）
-    const hd = Math.hypot((x - 0.24) / 0.07, (y + 0.02) / 0.045);
-    sh += 0.08 * (1 - smoothstep(0.6, 1, hd)) * edge;
+    // 頭頂右上一道細細的反光（順著頭的弧度，離眼睛遠一點）
+    const hx = x - 0.19;
+    const hy = y + 0.15;
+    const hu = hx * Math.cos(0.45) + hy * Math.sin(0.45);
+    const hv = -hx * Math.sin(0.45) + hy * Math.cos(0.45);
+    const hd = Math.hypot(hu / 0.085, hv / 0.022);
+    sh += 0.07 * (1 - smoothstep(0.5, 1, hd)) * edge;
     h = Math.max(h, sh);
   }
 
@@ -62,6 +75,95 @@ function sparkle(x, y, cx, cy, s, peak) {
   if (f >= 1.05) return 0;
   const edge = 1 - smoothstep(0.95, 1.05, f);
   return (0.4 + (peak - 0.4) * Math.pow(1 - Math.min(1, f), 0.7)) * edge;
+}
+
+// 背面：外圈凸起、中間凹下去，凹槽裡一個凸起的花體 1
+function drawFancyOne(ctx) {
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#fff';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // 主幹：上粗下細一點、往右斜
+  ctx.beginPath();
+  ctx.moveTo(136, 62);
+  ctx.bezierCurveTo(150, 60, 156, 66, 154, 78);
+  ctx.lineTo(140, 186);
+  ctx.bezierCurveTo(139, 192, 120, 192, 121, 186);
+  ctx.lineTo(132, 80);
+  ctx.closePath();
+  ctx.fill();
+  // 頂端往左下捲的旗子，尾巴一顆圓珠
+  ctx.lineWidth = 9;
+  ctx.beginPath();
+  ctx.moveTo(146, 66);
+  ctx.bezierCurveTo(128, 82, 108, 98, 92, 98);
+  ctx.bezierCurveTo(80, 98, 76, 88, 84, 82);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(88, 84, 8, 0, Math.PI * 2);
+  ctx.fill();
+  // 底座：兩端往上捲的橫線
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(84, 182);
+  ctx.bezierCurveTo(78, 194, 92, 200, 108, 194);
+  ctx.bezierCurveTo(124, 188, 140, 188, 156, 194);
+  ctx.bezierCurveTo(172, 200, 186, 194, 180, 182);
+  ctx.stroke();
+  for (const [cx, cy] of [[84, 180], [180, 180]]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// 簡單的模糊，讓字的邊緣圓滑（Safari 不支援畫布濾鏡，所以自己算）
+function blur(src, w, h, rad) {
+  const tmp = new Float32Array(w * h);
+  const out = new Float32Array(w * h);
+  const n = rad * 2 + 1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -rad; k <= rad; k++) sum += src[y * w + Math.min(w - 1, Math.max(0, x + k))];
+      tmp[y * w + x] = sum / n;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -rad; k <= rad; k++) sum += tmp[Math.min(h - 1, Math.max(0, y + k)) * w + x];
+      out[y * w + x] = sum / n;
+    }
+  }
+  return out;
+}
+
+function backHeightMap() {
+  const c = makeCanvas(SIZE, SIZE);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  drawFancyOne(ctx);
+  const px = ctx.getImageData(0, 0, SIZE, SIZE).data;
+  const mask = new Float32Array(SIZE * SIZE);
+  for (let i = 0; i < mask.length; i++) mask[i] = px[i * 4] / 255;
+  const soft = blur(blur(mask, SIZE, SIZE, 2), SIZE, SIZE, 2);
+  const hmap = new Float32Array(SIZE * SIZE);
+  for (let py = 0; py < SIZE; py++) {
+    for (let pxi = 0; pxi < SIZE; pxi++) {
+      const x = ((pxi + 0.5) / SIZE) * 2 - 1;
+      const y = ((py + 0.5) / SIZE) * 2 - 1;
+      const r = Math.hypot(x, y);
+      // 中間凹槽比外面低，往外圈慢慢升上去
+      let h = 0.12 + 0.18 * smoothstep(0.7, 0.8, r);
+      h = Math.max(h, rimHeight(r));
+      const i = py * SIZE + pxi;
+      h = Math.max(h, 0.12 + 0.68 * Math.sqrt(soft[i]));
+      hmap[i] = h;
+    }
+  }
+  return hmap;
 }
 
 function makeCanvas(w, h) {
@@ -104,16 +206,8 @@ function texture(canvas, srgb = false) {
   return t;
 }
 
-export function makeCoinMaterials() {
-  // 幣面
-  const hmap = new Float32Array(SIZE * SIZE);
-  for (let py = 0; py < SIZE; py++) {
-    for (let px = 0; px < SIZE; px++) {
-      const x = ((px + 0.5) / SIZE) * 2 - 1;
-      const y = ((py + 0.5) / SIZE) * 2 - 1;
-      hmap[py * SIZE + px] = faceHeight(x, y);
-    }
-  }
+// 從高度圖做出一面的材質
+function faceMaterial(hmap) {
   const color = makeCanvas(SIZE, SIZE);
   const rough = makeCanvas(SIZE, SIZE);
   const cctx = color.getContext('2d');
@@ -137,13 +231,40 @@ export function makeCoinMaterials() {
   }
   cctx.putImageData(cimg, 0, 0);
   rctx.putImageData(rimg, 0, 0);
-  const face = new THREE.MeshStandardMaterial({
-    map: texture(color, true),
-    normalMap: texture(normalFromHeight(hmap, SIZE, SIZE, 7)),
-    roughnessMap: texture(rough),
+  const maps = [texture(color, true), texture(normalFromHeight(hmap, SIZE, SIZE, 7)), texture(rough)];
+  return { maps, mat: new THREE.MeshStandardMaterial({
+    map: maps[0],
+    normalMap: maps[1],
+    roughnessMap: maps[2],
     roughness: 1,
     metalness: 0.85,
-  });
+  }) };
+}
+
+// 圓柱上下兩面的貼圖方向跟平面不一樣，這裡轉回正確的方向
+function orient(maps, rotation, flipX) {
+  for (const t of maps) {
+    t.center.set(0.5, 0.5);
+    t.rotation = rotation;
+    if (flipX) t.repeat.set(-1, 1);
+    t.wrapS = THREE.RepeatWrapping;
+  }
+}
+
+export function makeCoinMaterials() {
+  // 正面：史萊姆
+  const hmap = new Float32Array(SIZE * SIZE);
+  for (let py = 0; py < SIZE; py++) {
+    for (let px = 0; px < SIZE; px++) {
+      const x = ((px + 0.5) / SIZE) * 2 - 1;
+      const y = ((py + 0.5) / SIZE) * 2 - 1;
+      hmap[py * SIZE + px] = faceHeight(x, y);
+    }
+  }
+  const front = faceMaterial(hmap);
+  const back = faceMaterial(backHeightMap());
+  orient(front.maps, FRONT_ROT, FRONT_FLIP);
+  orient(back.maps, BACK_ROT, BACK_FLIP);
 
   // 側邊直紋
   const SW = 256;
@@ -160,5 +281,5 @@ export function makeCoinMaterials() {
   });
 
   // CylinderGeometry 的順序：側面、上面、下面
-  return [side, face, face];
+  return [side, front.mat, back.mat];
 }
