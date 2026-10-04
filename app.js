@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.13';
+import { makeCoinMaterials } from './coin.js?v=0.0.14';
 
 await RAPIER.init();
 
@@ -51,9 +51,9 @@ const UPGRADES = {
     base: 40, growth: 1.75,
   },
   lucky: {
-    name: '大金幣機率',
-    desc: '投幣時更常掉出大金幣（推下去值 10 枚）',
-    levels: [0.05, 0.065, 0.08, 0.1, 0.12, 0.15], // 每投一枚變成大金幣的機率
+    name: '大金幣',
+    desc: '投幣時有機會掉出大金幣（推下去值 10 枚），升級讓機會變大',
+    levels: [0, 0.02, 0.03, 0.045, 0.06, 0.08], // 每投一枚變成大金幣的機率（沒買就沒有）
     base: 80, growth: 1.8,
   },
   rain: {
@@ -397,8 +397,24 @@ function floatText(text, worldPos) {
 }
 
 // ===== 聲音（很簡單的合成音） =====
+// 每個音效都有分類，設定裡可以分開關；總開關關掉就全部不響
+const SOUND_KINDS = {
+  drop: '投幣',
+  clink: '硬幣碰撞',
+  win: '幣掉下來',
+  big: '大金幣',
+  rain: '金幣雨',
+  mom: '媽媽給錢',
+  shop: '商店購買',
+};
+const SOUND_KEY = 'pretty_drop_sound';
+const soundOn = { master: true };
+for (const k of Object.keys(SOUND_KINDS)) soundOn[k] = true;
+try { Object.assign(soundOn, JSON.parse(localStorage.getItem(SOUND_KEY) || '{}')); } catch (e) { /* 用預設 */ }
+
 let audio = null;
-function beep(freq, dur, vol = 0.08, type = 'sine') {
+function beep(freq, dur, vol = 0.08, type = 'sine', kind = 'drop') {
+  if (!soundOn.master || !soundOn[kind]) return;
   try {
     if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
     const o = audio.createOscillator();
@@ -416,8 +432,8 @@ function beep(freq, dur, vol = 0.08, type = 'sine') {
 // 幣在動的聲音：零星的叮叮碰撞聲，正在亂動的幣越多叮得越頻繁（差別不誇張）
 function clink(strength) {
   const base = 2600 + Math.random() * 1800;
-  beep(base, 0.05, 0.008 + 0.012 * strength * Math.random(), 'sine');
-  beep(base * 1.48, 0.035, 0.005 + 0.006 * strength * Math.random(), 'sine');
+  beep(base, 0.05, 0.008 + 0.012 * strength * Math.random(), 'sine', 'clink');
+  beep(base * 1.48, 0.035, 0.005 + 0.006 * strength * Math.random(), 'sine', 'clink');
 }
 
 let movingCount = 0;
@@ -475,16 +491,17 @@ function dropCoin() {
     return;
   }
   if (bigChance.p !== upValue('lucky')) bigChance.setChance(upValue('lucky'));
-  const big = bigChance.roll();
+  // 還沒買「大金幣」就完全不會出現，保底進度也不累積
+  const big = upValue('lucky') > 0 && bigChance.roll();
   const c = spawnCoin(aimX + (Math.random() - 0.5) * 0.05, DROP_Y, DROP_Z, 0.4, big);
   if (!c) return;
   if (big) {
     floatText('大金幣！', new THREE.Vector3(aimX, DROP_Y, DROP_Z));
-    beep(1500, 0.15, 0.05, 'triangle');
+    beep(1500, 0.15, 0.05, 'triangle', 'big');
   }
   wallet--;
   bump(walletEl);
-  beep(900, 0.06, 0.05, 'triangle');
+  beep(900, 0.06, 0.05, 'triangle', 'drop');
   hintEl.style.opacity = 0;
   updateHud();
 }
@@ -558,6 +575,32 @@ function applyQuality(q) {
   resize();
 }
 
+// 設定分頁
+for (const t of document.querySelectorAll('#settings .tab')) {
+  t.addEventListener('click', () => {
+    for (const x of document.querySelectorAll('#settings .tab')) x.classList.toggle('on', x === t);
+    for (const p of document.querySelectorAll('#settings .pane')) p.hidden = p.dataset.pane !== t.dataset.tab;
+  });
+}
+
+// 音效開關
+const soundListEl = document.getElementById('soundList');
+function renderSound() {
+  const rows = [['master', '總開關']].concat(Object.entries(SOUND_KINDS));
+  soundListEl.innerHTML = rows.map(([k, name]) => {
+    const dim = k !== 'master' && !soundOn.master ? ' dim' : '';
+    return `<div class="toggleRow${k === 'master' ? ' master' : ''}${dim}"><span>${name}</span><button type="button" data-sound="${k}" class="${soundOn[k] ? 'on' : ''}">${soundOn[k] ? '開' : '關'}</button></div>`;
+  }).join('');
+}
+soundListEl.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-sound]');
+  if (!b) return;
+  soundOn[b.dataset.sound] = !soundOn[b.dataset.sound];
+  try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundOn)); } catch (err) { /* 存不了也沒關係 */ }
+  renderSound();
+});
+renderSound();
+
 document.getElementById('settingsBtn').addEventListener('click', () => {
   shopEl.classList.remove('show');
   document.getElementById('settings').classList.toggle('show');
@@ -573,7 +616,7 @@ function startRain() {
   rainBanner.classList.remove('show');
   void rainBanner.offsetWidth;
   rainBanner.classList.add('show');
-  [880, 1100, 1320, 1760].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle'), k * 90));
+  [880, 1100, 1320, 1760].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'rain'), k * 90));
 }
 
 // ===== 商店 =====
@@ -622,8 +665,8 @@ function buy(key) {
   wallet -= u.prices[lv];
   upgrades[key]++;
   if (key === 'guard') buildGuards();
-  beep(660, 0.08, 0.06, 'triangle');
-  setTimeout(() => beep(990, 0.12, 0.06, 'triangle'), 80);
+  beep(660, 0.08, 0.06, 'triangle', 'shop');
+  setTimeout(() => beep(990, 0.12, 0.06, 'triangle', 'shop'), 80);
   bump(walletEl);
   renderShop();
   saveGame();
@@ -750,9 +793,9 @@ function stepSim() {
         floatText(`+${value}`, new THREE.Vector3(b.x, 0, FRONT_Z));
         bump(walletEl);
         if (value > 1) {
-          [1320, 1660, 1980].forEach((f, k) => setTimeout(() => beep(f, 0.15, 0.07), k * 70));
+          [1320, 1660, 1980].forEach((f, k) => setTimeout(() => beep(f, 0.15, 0.07, 'sine', 'big'), k * 70));
         } else {
-          beep(1320 + Math.random() * 200, 0.12, 0.07);
+          beep(1320 + Math.random() * 200, 0.12, 0.07, 'sine', 'win');
         }
       } else {
         lost += value;
@@ -803,7 +846,7 @@ function tick(now) {
       refillTimer = 0;
       wallet = Math.min(MOM_CAP, wallet + MOM_GIVE);
       bump(walletEl);
-      beep(990, 0.1, 0.05, 'triangle');
+      beep(990, 0.1, 0.05, 'triangle', 'mom');
     }
   } else {
     refillTimer = 0;
@@ -832,5 +875,5 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, setAuto, saveGame, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
