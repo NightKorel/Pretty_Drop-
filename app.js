@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.36';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.36';
+import { makeCoinMaterials } from './coin.js?v=0.0.37';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.37';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.36';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.36';
+} from './slime.js?v=0.0.37';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.37';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1964,10 +1964,13 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 let acc = 0;
 let lastT = performance.now();
 
-// 娃娃和道具比側溝寬，掉進去會卡在檯面邊緣和玻璃中間，這種就當作掉進側溝了
-function stuckInGutter(t) {
-  return Math.abs(t.x) > halfW + 0.05 && t.y < 0.5;
+// 比硬幣大的東西（史萊姆、彩券、道具）只要碰到兩側的牆，就當作掉進側溝了（納可定）
+// r 是這個東西大約的半徑
+function stuckInGutter(t, r = 0.5) {
+  return Math.abs(t.x) + r >= outerW - 0.05 && t.y < 2;
 }
+
+const SLIME_R_WORLD = 0.68; // 史萊姆標準大小的半徑（跟 slime.js 的 SLIME_R 一樣）
 
 // 物理走一步，並處理掉下去的幣
 function stepSim() {
@@ -2001,7 +2004,7 @@ function stepSim() {
   }
   for (let i = props.length - 1; i >= 0; i--) {
     const t = props[i].body.translation();
-    if (t.y >= -1.2 && !stuckInGutter(t)) continue;
+    if (t.y >= -1.2 && !stuckInGutter(t, props[i].type === 'ticket' ? 0.4 : 0.35)) continue;
     const pr = props[i];
     const front = t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2;
     removeProp(i);
@@ -2023,7 +2026,7 @@ function stepSim() {
   }
   for (let i = dolls.length - 1; i >= 0; i--) {
     const t = dolls[i].body.translation();
-    if (t.y >= -1.2 && !stuckInGutter(t)) continue;
+    if (t.y >= -1.2 && !stuckInGutter(t, SLIME_R_WORLD * dolls[i].scale)) continue;
     const d = dolls[i];
     const info = slimeInfo(d.id);
     if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
