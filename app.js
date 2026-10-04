@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.9';
+import { makeCoinMaterials } from './coin.js?v=0.0.10';
 
 await RAPIER.init();
 
@@ -66,6 +66,7 @@ let won = 0;
 let lost = 0;
 let aimX = 0;
 let pointerDown = false;
+let autoDrop = false;         // 右鍵切換的自動連續投幣
 let lastDrop = -1;
 let refillTimer = 0;
 let simTime = 0;
@@ -73,6 +74,51 @@ let pusherPhase = 0;         // 推板走到來回的哪裡（0 到 1）
 const upgrades = { guard: 0, speed: 0, lucky: 0, refill: 0 };
 let rainQueue = 0;           // 金幣雨還有幾枚要下
 const coins = [];
+
+// ===== 保底式假隨機 =====
+// 機率 p 的事件：第 n 次沒中時，下一次的機率是 C × n；一中就從頭算。
+// 長期看起來就是 p，但不會連續很久都不中，也不太會連續中。
+function prdC(p) {
+  if (p <= 0) return 0;
+  // 給定 C 算出長期的平均機率
+  const rateOf = (c) => {
+    let notYet = 1;
+    let expected = 0;
+    const maxN = Math.ceil(1 / c);
+    for (let n = 1; n <= maxN; n++) {
+      const hit = Math.min(1, c * n) * notYet;
+      expected += n * hit;
+      notYet -= hit;
+    }
+    return 1 / expected;
+  };
+  let lo = 0;
+  let hi = p;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (rateOf(mid) < p) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+class PseudoRandom {
+  constructor(p) {
+    this.count = 0;
+    this.setChance(p);
+  }
+  setChance(p) {
+    this.p = p;
+    this.c = prdC(p);
+  }
+  roll() {
+    this.count++;
+    if (Math.random() < this.c * this.count) {
+      this.count = 0;
+      return true;
+    }
+    return false;
+  }
+}
 
 function upValue(key) {
   return UPGRADES[key].levels[upgrades[key]];
@@ -289,6 +335,15 @@ function prefill() {
 const walletEl = document.getElementById('wallet');
 const refillEl = document.getElementById('refill');
 const hintEl = document.getElementById('hint');
+const autoBtn = document.getElementById('autoBtn');
+// 手機沒有右鍵，用按鈕切換
+autoBtn.addEventListener('click', () => {
+  setAuto(!autoDrop);
+  if (autoDrop) {
+    dropCoin();
+    lastDrop = simTime;
+  }
+});
 
 function bump(el) {
   el.classList.remove('pop');
@@ -384,12 +439,22 @@ function aimFromEvent(e) {
   }
 }
 
+const bigChance = new PseudoRandom(UPGRADES.lucky.levels[0]);
+
+function setAuto(on) {
+  autoDrop = on;
+  autoBtn.classList.toggle('on', on);
+  autoBtn.textContent = on ? '自動中' : '自動';
+}
+
 function dropCoin() {
+  // 手上沒幣就安靜地停下來
   if (wallet <= 0) {
-    beep(180, 0.15, 0.06, 'square');
+    if (autoDrop) setAuto(false);
     return;
   }
-  const big = Math.random() < upValue('lucky');
+  if (bigChance.p !== upValue('lucky')) bigChance.setChance(upValue('lucky'));
+  const big = bigChance.roll();
   const c = spawnCoin(aimX + (Math.random() - 0.5) * 0.05, DROP_Y, DROP_Z, 0.4, big);
   if (!c) return;
   if (big) {
@@ -404,7 +469,18 @@ function dropCoin() {
 }
 
 canvas.addEventListener('pointermove', aimFromEvent);
+// 右鍵：開始／停止自動連續投幣
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  aimFromEvent(e);
+  setAuto(!autoDrop);
+  if (autoDrop) {
+    dropCoin();
+    lastDrop = simTime;
+  }
+});
 canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
   aimFromEvent(e);
   pointerDown = true;
   canvas.setPointerCapture?.(e.pointerId);
@@ -534,6 +610,7 @@ function saveData() {
     wallet,
     upgrades: { ...upgrades },
     pusherPhase,
+    bigCount: bigChance.count,
     won,
     lost,
     coins: coins.map((c) => {
@@ -567,6 +644,7 @@ function applySave(d) {
     upgrades[key] = Math.min(UPGRADES[key].prices.length, Math.max(0, lv));
   }
   pusherPhase = Number(d.pusherPhase) || 0;
+  bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
   won = Number(d.won) || 0;
   lost = Number(d.lost) || 0;
   for (const c of (d.coins || []).slice(0, MAX_COINS)) {
@@ -653,8 +731,8 @@ function tick(now) {
   }
   if (steps === 4) acc = 0;
 
-  // 按住連投
-  if (pointerDown && simTime - lastDrop >= DROP_GAP) {
+  // 按住連投，或自動投幣
+  if ((pointerDown || autoDrop) && simTime - lastDrop >= DROP_GAP) {
     dropCoin();
     lastDrop = simTime;
   }
@@ -702,5 +780,5 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, get rain() { return rainQueue; }, saveGame, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, setAuto, saveGame, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });

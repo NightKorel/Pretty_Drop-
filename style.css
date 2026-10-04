@@ -125,6 +125,7 @@ html, body {
 }
 
 #hud .btns { display: flex; gap: 8px; }
+.hudBtn.on { background: var(--gold); color: #1a1408; border-color: var(--gold); font-weight: 700; }
 .hudBtn {
   pointer-events: auto;
   background: var(--panel);

@@ -1,6 +1,7 @@
 // 硬幣的外觀：幣面浮雕（史萊姆＋閃亮＋外圈）和側邊直紋。
 // 只是貼在表面的皮，物理還是一個扁圓柱，不會多算。
 import * as THREE from './lib/three.module.js';
+import { drawDigits } from './digits.js?v=0.0.10';
 
 const SIZE = 256;
 // 貼圖在硬幣上下兩面的轉向（試出來的）
@@ -80,78 +81,10 @@ function sparkle(x, y, cx, cy, s, peak) {
   return (0.4 + (peak - 0.4) * Math.pow(1 - Math.min(1, f), 0.7)) * edge;
 }
 
-// 背面：外圈凸起、珠圈、中間凹下去，凹槽裡凸起的花體數字
-// 樣式照納可給的參考（設計文件/參考圖/花體數字.jpg）：粗體斜字、粗細對比大
-// 每個數字都畫在 256×256 的格子裡、中心在 (128, 128)、還沒斜
-
-// 1：頂端一面往左下的旗子、底下帶弧角的底座
-function glyphOne(ctx) {
-  // 主幹＋旗子
-  ctx.beginPath();
-  ctx.moveTo(146, 54);
-  ctx.lineTo(146, 186);
-  ctx.lineTo(116, 186);
-  ctx.lineTo(116, 86);
-  ctx.quadraticCurveTo(106, 96, 88, 100);
-  ctx.lineTo(86, 86);
-  ctx.quadraticCurveTo(116, 78, 134, 54);
-  ctx.closePath();
-  ctx.fill();
-  // 底座
-  ctx.beginPath();
-  ctx.moveTo(92, 186);
-  ctx.lineTo(170, 186);
-  ctx.lineTo(172, 202);
-  ctx.lineTo(90, 202);
-  ctx.closePath();
-  ctx.fill();
-  // 主幹和底座之間的弧角
-  ctx.beginPath();
-  ctx.moveTo(116, 166);
-  ctx.quadraticCurveTo(116, 186, 96, 186);
-  ctx.lineTo(116, 188);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(146, 166);
-  ctx.quadraticCurveTo(146, 186, 166, 186);
-  ctx.lineTo(146, 188);
-  ctx.closePath();
-  ctx.fill();
-}
-
-// 0：直立的橢圓，左右粗、上下細
-function glyphZero(ctx) {
-  ctx.beginPath();
-  ctx.ellipse(128, 128, 38, 72, 0, 0, Math.PI * 2);
-  ctx.ellipse(128, 128, 15, 54, 0, 0, Math.PI * 2);
-  ctx.fill('evenodd');
-}
-
-const GLYPHS = { 1: glyphOne, 0: glyphZero };
-const GLYPH_W = { 1: 86, 0: 76 }; // 每個數字大約多寬
-const GLYPH_GAP = 10;
-
-// 把一串數字畫在幣面中間，整體往右斜
+// 背面：外圈凸起、珠圈、中間凹下去，凹槽裡凸起的花體數字（數字字型在 digits.js）
 function drawNumber(ctx, text) {
-  const digits = String(text).split('');
-  const total = digits.reduce((sum, d) => sum + GLYPH_W[d], 0) + GLYPH_GAP * (digits.length - 1);
-  const scale = digits.length === 1 ? 0.85 : 0.66;
-  ctx.save();
-  ctx.fillStyle = '#fff';
-  ctx.translate(128, 128);
-  ctx.scale(scale, scale);
-  ctx.transform(1, 0, -0.2, 1, 0, 0); // 往右斜
-  let x = -total / 2;
-  for (const d of digits) {
-    ctx.save();
-    ctx.translate(x + GLYPH_W[d] / 2, 0);
-    ctx.translate(-128, -128);
-    GLYPHS[d](ctx);
-    ctx.restore();
-    x += GLYPH_W[d] + GLYPH_GAP;
-  }
-  ctx.restore();
+  const height = String(text).length === 1 ? 126 : 92;
+  drawDigits(ctx, text, 128, 128, height);
 }
 
 // 簡單的模糊，讓字的邊緣圓滑（Safari 不支援畫布濾鏡，所以自己算）
