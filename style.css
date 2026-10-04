@@ -205,7 +205,7 @@ html, body {
 }
 .item .info { flex: 1; }
 .item .name { font-weight: 700; font-size: 15px; }
-.item .lv { color: var(--gold); font-size: 12px; margin-left: 6px; letter-spacing: 2px; }
+.item .lv { color: var(--gold); font-size: 12px; margin-left: 8px; font-weight: 400; }
 .item .desc { color: var(--dim); font-size: 12px; margin-top: 4px; line-height: 1.5; }
 .item button {
   min-width: 76px;
@@ -512,7 +512,7 @@ html, body {
   max-width: calc(100% - 32px);
   background: rgba(20, 18, 28, 0.9);
 }
-#celebIcon { width: 72px; height: 61px; flex: none; }
+#celebIcon { width: 84px; height: 84px; flex: none; }
 #celebRarity { font-size: 12px; margin-top: 0; }
 #celebName { font-size: 16px; margin-top: 2px; }
 #celebValue { font-size: 26px; margin-top: 0; line-height: 1.1; }

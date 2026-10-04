@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.33';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.33';
+import { makeCoinMaterials } from './coin.js?v=0.0.35';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.35';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.33';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.33';
+} from './slime.js?v=0.0.35';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.35';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -48,7 +48,7 @@ const DROP_Z = -4.6;         // 投幣的前後位置（推板上方）
 const STEP = 1 / 60;           // 物理一步的秒數
 const START_WALLET = 30;
 const MAX_COINS = 300;       // 檯面上幣的上限（保護效能）
-const GUARD_H = 0.07;         // 側溝擋板的高度（一枚幣厚 0.1）
+const GUARD_H = 0.1;          // 側溝擋板的高度（一枚幣厚 0.14，擋板大約七成高）
 const MOM_GIVE = 10;         // 媽媽每次給幾枚
 const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得掛機刷）
 
@@ -847,13 +847,13 @@ document.getElementById('bookClose').addEventListener('click', () => bookEl.clas
 const viewerEl = document.getElementById('viewer');
 const viewerCanvas = document.getElementById('viewerCanvas');
 let viewer = null;   // 第一次打開才建立（用自己的一個小畫面）
-let viewerMesh = null;
 let viewerYaw = 0;
 let viewerDrag = null;
 let viewerOpen = false;
 
-function setupViewer() {
-  const r = new THREE.WebGLRenderer({ canvas: viewerCanvas, antialias: true, alpha: true });
+// 一個小畫面：只放一隻史萊姆（圖鑑放大和慶祝小卡都用這個）
+function makeMiniView(canvas, withCoins) {
+  const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   r.toneMapping = THREE.ACESFilmicToneMapping;
   const sc = new THREE.Scene();
@@ -863,28 +863,53 @@ function setupViewer() {
   const key = new THREE.DirectionalLight(0xffffff, 2);
   key.position.set(2, 4, 3);
   sc.add(key);
-  // 腳下放幾枚硬幣，半透明的娃娃才看得出透光
-  for (let i = 0; i < 7; i++) {
-    const c = new THREE.Mesh(coinGeo, coinMatFancy);
-    const a = (i / 7) * Math.PI * 2;
-    c.position.set(Math.cos(a) * 0.55, -0.05, Math.sin(a) * 0.55 - 0.1);
-    c.rotation.y = a;
-    sc.add(c);
+  if (withCoins) {
+    // 腳下放幾枚硬幣，半透明的娃娃才看得出透光
+    for (let i = 0; i < 7; i++) {
+      const c = new THREE.Mesh(coinGeo, coinMatFancy);
+      const a = (i / 7) * Math.PI * 2;
+      c.position.set(Math.cos(a) * 0.8, -0.07, Math.sin(a) * 0.8 - 0.1);
+      c.rotation.y = a;
+      sc.add(c);
+    }
   }
   const cam = new THREE.PerspectiveCamera(32, 1, 0.1, 20);
-  cam.position.set(0, 0.9, 2.3);
-  cam.lookAt(0, 0.3, 0);
-  viewer = { r, sc, cam };
+  cam.position.set(0, 1.1, 2.9);
+  cam.lookAt(0, 0.42, 0);
+  return { r, sc, cam, mesh: null };
+}
+function miniSetSlime(view, id) {
+  if (view.mesh) view.sc.remove(view.mesh);
+  view.mesh = makeSlimeMesh(id, 1, quality !== 'low');
+  view.sc.add(view.mesh);
+}
+function miniRender(view, yaw, t) {
+  const c = view.r.domElement;
+  const w = c.clientWidth;
+  const h = c.clientHeight;
+  const pr = view.r.getPixelRatio();
+  if (c.width !== Math.round(w * pr) || c.height !== Math.round(h * pr)) {
+    view.r.setSize(w, h, false);
+    view.cam.aspect = w / h;
+    view.cam.updateProjectionMatrix();
+  }
+  view.mesh.rotation.y = yaw;
+  updateSlimeEffects(view.mesh, t / 1000);
+  view.r.render(view.sc, view.cam);
+}
+// 從臉朝左一點開始轉，轉過正面再往右，不會一下就轉到背面
+const SPIN_START = -0.75;
+
+function setupViewer() {
+  viewer = makeMiniView(viewerCanvas, true);
 }
 
 function openViewer(id) {
   const info = slimeInfo(id);
   if (!info) return;
   if (!viewer) setupViewer();
-  if (viewerMesh) viewer.sc.remove(viewerMesh);
-  viewerMesh = makeSlimeMesh(id, 1, quality !== 'low');
-  viewer.sc.add(viewerMesh);
-  viewerYaw = 0;
+  miniSetSlime(viewer, id);
+  viewerYaw = SPIN_START;
   const r = RARITY[info.rarity];
   document.getElementById('viewerName').textContent = info.skin.name;
   document.getElementById('viewerInfo').innerHTML = `<span style="color:${r.color}">${r.name}</span>　${info.value} 枚　收集 ×${collection[id] || 0}`;
@@ -897,12 +922,8 @@ function openViewer(id) {
 
 function viewerLoop(t) {
   if (!viewerOpen) return;
-  const w = viewerCanvas.clientWidth;
-  if (viewer.r.domElement.width !== Math.round(w * viewer.r.getPixelRatio())) viewer.r.setSize(w, w, false);
   if (!viewerDrag) viewerYaw += 0.006; // 沒在拖的時候慢慢轉
-  viewerMesh.rotation.y = viewerYaw;
-  updateSlimeEffects(viewerMesh, t / 1000);
-  viewer.r.render(viewer.sc, viewer.cam);
+  miniRender(viewer, viewerYaw, t);
   requestAnimationFrame(viewerLoop);
 }
 
@@ -966,8 +987,14 @@ let celebTimer = null;
 function celebrate(id, isNew, unlockedSet) {
   const info = slimeInfo(id);
   const r = RARITY[info.rarity];
-  const cv = document.getElementById('celebIcon');
-  drawSlimeIcon(cv.getContext('2d'), id, cv.width, cv.height, true);
+  // 小卡裡直接放會轉的 3D 史萊姆
+  if (!celebView) celebView = makeMiniView(document.getElementById('celebIcon'), false);
+  miniSetSlime(celebView, id);
+  celebYaw = SPIN_START;
+  if (!celebSpinning) {
+    celebSpinning = true;
+    requestAnimationFrame(celebLoop);
+  }
   document.getElementById('celebRarity').innerHTML = `<span style="color:${r.color}">${r.name}</span>${isNew ? '　<span class="newTag">新！</span>' : ''}`;
   document.getElementById('celebName').textContent = info.skin.name;
   document.getElementById('celebExtra').textContent = unlockedSet ? `解鎖新的一套：「${unlockedSet}」，可以在圖鑑換` : '';
@@ -1004,6 +1031,15 @@ function celebrate(id, isNew, unlockedSet) {
   tune.forEach((f, k) => setTimeout(() => beep(f, 0.26, 0.07, 'triangle', 'doll'), k * 120));
   clearTimeout(celebTimer);
   celebTimer = setTimeout(closeCelebrate, info.rarity === 'legend' ? 4500 : 3200);
+}
+let celebView = null;
+let celebYaw = 0;
+let celebSpinning = false;
+function celebLoop(t) {
+  if (!celebEl.classList.contains('show')) { celebSpinning = false; return; }
+  celebYaw += 0.006;
+  miniRender(celebView, celebYaw, t);
+  requestAnimationFrame(celebLoop);
 }
 function closeCelebrate() {
   celebEl.classList.remove('show');
@@ -1735,12 +1771,12 @@ function renderShop() {
     const u = UPGRADES[key];
     const lv = upgrades[key];
     const max = u.prices.length;
-    const dots = '●'.repeat(lv) + '○'.repeat(max - lv);
+    const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
     const price = u.prices[lv];
     const btn = lv >= max
       ? '<button type="button" disabled>已滿級</button>'
       : `<button type="button" data-buy="${key}" ${wallet < price ? 'disabled' : ''}>${price} 枚</button>`;
-    html += `<div class="item"><div class="info"><div class="name">${u.name}<span class="lv">${dots}</span></div><div class="desc">${u.desc}</div></div>${btn}</div>`;
+    html += `<div class="item"><div class="info"><div class="name">${u.name}<span class="lv">${lvText}</span></div><div class="desc">${u.desc}</div></div>${btn}</div>`;
   });
   const next = UPGRADE_KEYS.findIndex((_, i) => !shopVisible(i));
   if (next > 0) html += '<div class="item locked"><div class="info"><div class="desc">買下上面最後一項，就會出現新的升級</div></div></div>';
