@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.10';
+import { makeCoinMaterials } from './coin.js?v=0.0.11';
 
 await RAPIER.init();
 
@@ -25,7 +25,7 @@ const START_WALLET = 30;
 const START_COINS = 200;     // 一開檯面上已經有的幣
 const MAX_COINS = 420;       // 檯面上幣的上限（保護效能）
 const DROP_GAP = 0.28;       // 按住連投的間隔秒數
-const REFILL_BELOW = 10;     // 手上少於這個數就會慢慢補
+const REFILL_BELOW = 10;     // 手上少於這個數，倒數完直接補到這個數
 
 // ===== 商店升級（每一級的效果與價錢） =====
 const UPGRADES = {
@@ -49,7 +49,7 @@ const UPGRADES = {
   },
   refill: {
     name: '補幣加快',
-    desc: '手上少於 10 枚時，補幣的速度變快',
+    desc: '手上少於 10 枚時，補滿 10 枚要等的時間變短',
     levels: [6, 4, 3, 2],         // 每幾秒補 1 枚
     prices: [25, 60, 140],
   },
@@ -360,7 +360,7 @@ function updateHud() {
   }
   if (wallet < REFILL_BELOW) {
     const left = Math.ceil(upValue('refill') - refillTimer);
-    refillEl.textContent = `手上少於 ${REFILL_BELOW} 枚，${left} 秒後補 1 枚`;
+    refillEl.textContent = `手上少於 ${REFILL_BELOW} 枚，${left} 秒後補到 ${REFILL_BELOW} 枚`;
   } else {
     refillEl.textContent = '';
   }
@@ -745,13 +745,14 @@ function tick(now) {
     if (Math.random() < 0.5) clink(0.6);
   }
 
-  // 沒錢時慢慢補
+  // 沒錢時倒數，數完直接補到 10 枚
   if (wallet < REFILL_BELOW) {
     refillTimer += frame;
     if (refillTimer >= upValue('refill')) {
       refillTimer = 0;
-      wallet++;
+      wallet = REFILL_BELOW;
       bump(walletEl);
+      beep(990, 0.1, 0.05, 'triangle');
     }
   } else {
     refillTimer = 0;
