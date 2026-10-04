@@ -4,17 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>推幣機</title>
-  <link rel="stylesheet" href="style.css?v=0.0.6">
+  <link rel="stylesheet" href="style.css?v=0.0.7">
 </head>
 <body>
   <div id="hud">
-    <div class="title">推幣機 <span class="ver">v0.0.6</span></div>
+    <div class="title">推幣機 <span class="ver">v0.0.7</span></div>
     <div class="money">
       <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
-      <div class="box"><span class="label">贏回</span><span id="won">0</span><span class="unit">枚</span></div>
-      <div class="box lost"><span class="label">被吃掉</span><span id="lost">0</span><span class="unit">枚</span></div>
     </div>
-    <button id="settingsBtn" type="button">設定</button>
+    <div class="btns">
+      <button id="shopBtn" class="hudBtn" type="button">商店</button>
+      <button id="settingsBtn" class="hudBtn" type="button">設定</button>
+    </div>
     <div id="refill" class="refill"></div>
     <div id="settings">
       <div class="row">畫質</div>
@@ -24,11 +25,27 @@
         <button type="button" data-q="low">低</button>
       </div>
       <div class="note">高：全部效果<br>中：關陰影<br>低：關陰影、反射、幣面圖案</div>
+      <div class="row sep">存檔</div>
+      <div class="row">
+        <button type="button" id="exportBtn">匯出</button>
+        <button type="button" id="importBtn">匯入</button>
+        <button type="button" id="resetBtn">重新開始</button>
+      </div>
+      <div class="note">遊戲會自動存檔。匯出可以把存檔存成檔案備份。</div>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
+  </div>
+  <div id="shop">
+    <div class="shopHead">
+      <div class="shopTitle">商店</div>
+      <div class="shopWallet">手上 <span id="shopWallet">0</span> 枚</div>
+      <button type="button" id="shopClose" aria-label="關閉">✕</button>
+    </div>
+    <div id="shopList"></div>
   </div>
   <div id="hint">點檯面投幣，按住可以連投</div>
   <div id="loading">機台準備中……</div>
   <canvas id="view"></canvas>
-  <script type="module" src="app.js?v=0.0.6"></script>
+  <script type="module" src="app.js?v=0.0.7"></script>
 </body>
 </html>
