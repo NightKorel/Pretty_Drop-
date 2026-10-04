@@ -1,0 +1,13 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.NPMG + '/playwright');
+const fs = require('fs');
+const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const page = await (await browser.newContext({ viewport: { width: 400, height: 300 } })).newPage();
+await page.goto('http://localhost:8765/');
+await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
+const d = await page.evaluate(() => { __game.simulate(4); const s = __game.saveData(); return { coins: s.coins, phase: s.pusherPhase }; });
+const out = `// 開局檯面上的硬幣擺法（事先模擬好、已經落定），省掉每次開遊戲都要等硬幣掉下來的時間。\n// 由測試腳本產生：先照原本的方式撒 200 枚、模擬到穩定，再把位置存下來。\nexport const START_PHASE = ${d.phase.toFixed(4)};\nexport const START_LAYOUT = ${JSON.stringify(d.coins)};\n`;
+fs.writeFileSync('/home/user/Pretty_Drop-/start-layout.js', out);
+console.log(d.coins.length, d.phase);
+await browser.close();

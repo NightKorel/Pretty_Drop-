@@ -90,7 +90,8 @@
 ## 專案技術備註（沿用前兩攤的習慣，方向定了再調整）
 
 - 純 HTML／CSS／原生 JavaScript，不用框架、不用建置。
-- 外部函式庫放 `lib/`（three.js 畫 3D、Rapier 算物理），從 npm 抓下來放進 repo，不用 CDN（雲端環境連 CDN 會被擋）。部署用 GitHub Pages，從 main 根目錄發佈（已放 `.nojekyll`），根目錄的 `index.html` 就是首頁。
+- 外部函式庫放 `lib/`（three.js 畫 3D、Rapier 算物理），從 npm 抓下來放進 repo，不用 CDN（雲端環境連 CDN 會被擋）。three.js 用 esbuild 壓縮過；Rapier 的 rapier.mjs 改過，拿掉內嵌的 wasm，改抓 `rapier_wasm3d_bg.wasm.gz`（瀏覽器解壓縮），舊瀏覽器退回抓沒壓縮的 `.wasm`。換版本時要照做一次。
+- 測試腳本在 `tools/`，用法看 `tools/說明.md`。部署用 GitHub Pages，從 main 根目錄發佈（已放 `.nojekyll`），根目錄的 `index.html` 就是首頁。
 - 存檔放瀏覽器 localStorage（存檔太大再改 IndexedDB），可匯出匯入 JSON。
 - 如果要用 AI：先走「手動複製貼上」或免費方案。**API 鑰匙只存在納可的瀏覽器，絕對不能寫進程式或推上 GitHub。**
 - 想加到手機主畫面、離線可玩時：做 manifest＋`sw.js`＋`icons/`。`sw.js` 一律先上網抓新的，沒網路才用存著的；新增遊戲檔案要記得加進 `sw.js` 的檔案清單。

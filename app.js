@@ -2,9 +2,29 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.15';
+import { makeCoinMaterials } from './coin.js?v=0.0.16';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.16';
 
-await RAPIER.init();
+// 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
+// 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
+async function initPhysics() {
+  const gzUrl = new URL('./lib/rapier_wasm3d_bg.wasm.gz', import.meta.url);
+  const rawUrl = new URL('./lib/rapier_wasm3d_bg.wasm', import.meta.url);
+  if ('DecompressionStream' in window) {
+    try {
+      const res = await fetch(gzUrl);
+      if (res.ok) {
+        const stream = res.body.pipeThrough(new DecompressionStream('gzip'));
+        await RAPIER.init(new Response(stream, { headers: { 'Content-Type': 'application/wasm' } }));
+        return;
+      }
+    } catch (e) { /* 改用沒壓縮的 */ }
+  }
+  await RAPIER.init(rawUrl);
+}
+document.getElementById('loading').textContent = '機台準備中……（下載物理引擎）';
+await initPhysics();
+document.getElementById('loading').textContent = '機台準備中……（擺硬幣）';
 
 // ===== 數值（之後調手感主要改這裡） =====
 const TABLE_W = 8;           // 檯面寬（推板也是這麼寬）
@@ -22,7 +42,6 @@ const DROP_Y = 3.2;          // 投幣高度
 const DROP_Z = -4.6;         // 投幣的前後位置（推板上方）
 const STEP = 1 / 60;           // 物理一步的秒數
 const START_WALLET = 30;
-const START_COINS = 200;     // 一開檯面上已經有的幣
 const MAX_COINS = 420;       // 檯面上幣的上限（保護效能）
 const DROP_GAP = 0.28;       // 按住連投的間隔秒數
 const MOM_GIVE = 10;         // 媽媽每次給幾枚
@@ -58,8 +77,8 @@ const UPGRADES = {
   },
   rain: {
     name: '金幣雨機率',
-    desc: '每一秒都有小小的機會下一場金幣雨，升級讓機會變大',
-    levels: [0.004, 0.006, 0.008, 0.011, 0.014, 0.018], // 每秒下金幣雨的機率
+    desc: '解鎖金幣雨：每一秒都有小小的機會下一場，升級讓機會變大',
+    levels: [0, 0.004, 0.006, 0.009, 0.013, 0.018], // 每秒下金幣雨的機率（沒買就不會下）
     base: 150, growth: 1.9,
   },
   rainSize: {
@@ -337,21 +356,12 @@ function buildGuards() {
 }
 
 // ===== 一開始先鋪幣 =====
+// 用事先模擬好的擺法（start-layout.js），不用每次開遊戲都等硬幣落定
 function prefill() {
-  const pusherFront = PUSHER_MID + PUSHER_DEPTH / 2;
-  for (let i = 0; i < START_COINS; i++) {
-    const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.1);
-    const z = pusherFront - 1 + Math.random() * (FRONT_Z - 0.6 - pusherFront + 1);
-    spawnCoin(x, 0.3 + (i % 6) * 0.25, z, 0.3);
-  }
-  // 讓幣先落定，這段掉下去的不算
-  for (let s = 0; s < 240; s++) {
-    simTime += STEP;
-    movePusher();
-    world.step();
-    for (let i = coins.length - 1; i >= 0; i--) {
-      if (coins[i].body.translation().y < -1) removeCoin(i);
-    }
+  pusherPhase = START_PHASE;
+  for (const c of START_LAYOUT) {
+    const coin = spawnCoin(c[0], c[1], c[2]);
+    if (coin) coin.body.setRotation({ x: c[3], y: c[4], z: c[5], w: c[6] }, true);
   }
 }
 
@@ -491,11 +501,8 @@ function setAuto(on) {
 }
 
 function dropCoin() {
-  // 手上沒幣就安靜地停下來
-  if (wallet <= 0) {
-    if (autoDrop) setAuto(false);
-    return;
-  }
+  // 手上沒幣就安靜地什麼都不做；自動投幣不會關掉，有錢了會繼續投
+  if (wallet <= 0) return;
   if (bigChance.p !== upValue('lucky')) bigChance.setChance(upValue('lucky'));
   // 還沒買「大金幣」就完全不會出現，保底進度也不累積
   const big = upValue('lucky') > 0 && bigChance.roll();
@@ -617,8 +624,12 @@ for (const b of document.querySelectorAll('#settings button[data-q]')) {
 
 // ===== 金幣雨 =====
 const rainBanner = document.getElementById('rainBanner');
+let rainSpawn = 0;
+let rainRate = 0;
 function startRain() {
   rainQueue = upValue('rainSize');
+  rainRate = rainQueue / 2.5;
+  rainSpawn = 0;
   rainBanner.classList.remove('show');
   void rainBanner.offsetWidth;
   rainBanner.classList.add('show');
@@ -834,15 +845,22 @@ function tick(now) {
   if (rainTimer >= 1) {
     rainTimer -= 1;
     if (rainChance.p !== upValue('rain')) rainChance.setChance(upValue('rain'));
-    if (rainQueue <= 0 && rainChance.roll()) startRain();
+    if (upValue('rain') > 0 && rainQueue <= 0 && rainChance.roll()) startRain();
   }
 
-  // 金幣雨：一枚一枚從上面撒下來
-  if (rainQueue > 0 && Math.random() < 0.6) {
-    const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.2);
-    if (spawnCoin(x, DROP_Y + 1 + Math.random(), -5 + Math.random() * 5, 1.2)) rainQueue--;
-    else rainQueue = 0;
-    if (Math.random() < 0.5) clink(0.6);
+  // 金幣雨：大約 2.5 秒內，一枚一枚從畫面上方翻轉著掉下來
+  if (rainQueue > 0) {
+    rainSpawn += frame * rainRate;
+    while (rainSpawn >= 1 && rainQueue > 0) {
+      rainSpawn -= 1;
+      const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.2);
+      const c = spawnCoin(x, 9 + Math.random() * 3, -5.5 + Math.random() * 6, Math.PI);
+      if (!c) { rainQueue = 0; break; }
+      c.body.setLinvel({ x: 0, y: -2 - Math.random() * 2, z: 0 }, true);
+      c.body.setAngvel({ x: (Math.random() - 0.5) * 16, y: 0, z: (Math.random() - 0.5) * 16 }, true);
+      rainQueue--;
+      if (Math.random() < 0.3) clink(0.6);
+    }
   }
 
   // 媽媽十元：固定時間給 10 枚，手上滿 100 枚就先不給（給了也不超過 100）
@@ -881,5 +899,5 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
