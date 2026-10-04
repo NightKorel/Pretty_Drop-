@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.28';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.28';
+import { makeCoinMaterials } from './coin.js?v=0.0.29';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.29';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.28';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.28';
+} from './slime.js?v=0.0.29';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.29';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1155,9 +1155,9 @@ let rainRate = 0;
 // ===== 彩券與特殊道具：兩個獨立系統，都是檯面上的實體東西 =====
 // 特殊道具：機台隨機（保底式）放上檯面，推下前緣馬上發動
 const ITEMS = {
-  wind: { name: '一陣風', label: '風', color: '#9fd8ff', desc: '往前吹 2 秒，把檯面上的幣往前推' },
-  glue: { name: '黏黏球', label: '黏', color: '#6fd36a', desc: '把一小堆幣黏成一大塊' },
-  quake: { name: '地震', label: '震', color: '#ff8a3d', desc: '檯面抖一抖，把卡住的幣抖鬆' },
+  wind: { name: '一陣風', label: '風', color: '#9fd8ff', dark: '#2a6fb0', desc: '往前吹 2 秒，把檯面上的幣往前推' },
+  glue: { name: '黏黏球', label: '黏', color: '#6fd36a', dark: '#2d7a2a', desc: '把一小堆幣黏成一大塊' },
+  quake: { name: '地震', label: '震', color: '#ff8a3d', dark: '#b3261e', desc: '檯面抖一抖，把卡住的幣抖鬆' },
 };
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
 const TICKET_CHANCE = 0.015; // 每秒放一張彩券的機率（保底式，平均大約 67 秒一張）
@@ -1236,8 +1236,11 @@ function propMaterial(type, kind) {
     const edge = new THREE.MeshStandardMaterial({ color: 0xf4c95d, metalness: 0.6, roughness: 0.4 });
     propMats[key] = [edge, edge, face, face, edge, edge];
   } else {
-    // 像玩具一樣亮亮的塑膠感
-    propMats[key] = new THREE.MeshPhysicalMaterial({ color: ITEMS[kind].color, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.3 });
+    // 像玩具一樣亮亮的塑膠感；正反兩面畫圖案，側邊是純色
+    const tex = itemFaceTexture(kind);
+    const face = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.4, clearcoat: 0.5, clearcoatRoughness: 0.3, envMapIntensity: 0.4 });
+    const side = new THREE.MeshPhysicalMaterial({ color: ITEMS[kind].dark, roughness: 0.4, clearcoat: 0.4 });
+    propMats[key] = [face, side];
   }
   return propMats[key];
 }
@@ -1288,6 +1291,74 @@ function burstPoints() {
   }
   return pts;
 }
+// 道具正反面的圖案。貼圖座標跟形狀座標一樣（-0.5 到 0.5），所以照形狀的位置畫
+function itemFaceTexture(kind) {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const ctx = c.getContext('2d');
+  const it = ITEMS[kind];
+  ctx.fillStyle = it.color;
+  ctx.fillRect(0, 0, S, S);
+  const P = (x, y) => [(x + 0.5) * S, (0.5 - y) * S]; // 形狀座標 → 畫布座標
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (kind === 'wind') {
+    // 三道捲起來的強風
+    ctx.strokeStyle = it.dark;
+    ctx.lineWidth = 14;
+    for (const [y, len, curl] of [[0.12, 0.5, 0.08], [-0.02, 0.62, 0.1], [-0.15, 0.42, 0.07]]) {
+      const [x0, y0] = P(-0.34, y);
+      const [x1, y1] = P(-0.34 + len, y);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.arc(x1, y1 - curl * S, curl * S, Math.PI / 2, -Math.PI * 0.9, true);
+      ctx.stroke();
+    }
+  } else if (kind === 'glue') {
+    // 頂端往下滴的深綠色膠，加兩點亮光
+    ctx.fillStyle = it.dark;
+    ctx.beginPath();
+    const [sx, sy] = P(-0.3, 0.12);
+    ctx.moveTo(sx, sy);
+    const drips = [[-0.2, -0.05], [-0.08, 0.04], [0.04, -0.12], [0.16, 0.02], [0.28, -0.02]];
+    for (const [x, y] of drips) {
+      const [px, py] = P(x, y);
+      ctx.quadraticCurveTo(px - 10, py, px, py);
+      ctx.arc(px, py, 9, Math.PI, 0, true);
+    }
+    ctx.lineTo(...P(0.32, 0.12));
+    ctx.lineTo(...P(0.32, 0.5));
+    ctx.lineTo(...P(-0.32, 0.5));
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(...P(-0.08, -0.2), 16, 24, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(...P(0.08, -0.3), 7, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // 中間一道裂開的閃電，加驚嘆號
+    ctx.fillStyle = it.dark;
+    ctx.beginPath();
+    const bolt = [[0.06, 0.34], [-0.14, 0.02], [0.0, 0.02], [-0.08, -0.34], [0.16, 0.06], [0.02, 0.06], [0.12, 0.34]];
+    bolt.forEach(([x, y], i) => (i ? ctx.lineTo(...P(x, y)) : ctx.moveTo(...P(x, y))));
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#fff3c4';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.offset.set(0.5, 0.5); // 形狀座標 -0.5～0.5 對到貼圖 0～1
+  return t;
+}
+
 const itemGeos = {};
 function itemGeo(kind) {
   if (itemGeos[kind]) return itemGeos[kind];
