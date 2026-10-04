@@ -20,9 +20,9 @@ for (let m = 0; m < minutes; m++) {
       if (best) { g.buy(best[0]); __log.push(`${((__t + t) / 60).toFixed(1)}分 ${g.UPGRADES[best[0]].name}${g.upgrades[best[0]]} (${best[1]})`); }
     });
     __t += 60;
-    return { w: g.wallet, dolls: Object.values(g.collection).reduce((a, b) => a + b, 0) };
+    return { w: g.wallet, dolls: Object.values(g.collection).reduce((a, b) => a + b, 0), pos: g.dolls.map(d => { const t = d.body.translation(); return [t.x.toFixed(1), t.y.toFixed(1), t.z.toFixed(1)].join(','); }).join(' | ') };
   });
-  console.log(`第 ${m + 1} 分鐘結束：手上 ${r.w}，娃娃 ${r.dolls}`);
+  console.log(`第 ${m + 1} 分鐘結束：手上 ${r.w}，娃娃 ${r.dolls}，檯面娃娃位置 ${r.pos}`);
 }
 console.log((await page.evaluate(() => __log)).join('\n'));
 await browser.close();

@@ -413,3 +413,73 @@ html, body {
 #wheel .spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
 
 
+
+.float.big { font-size: 34px; color: #ffe08a; text-shadow: 0 0 12px rgba(244, 201, 93, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
+
+#flash { position: fixed; inset: 0; pointer-events: none; z-index: 5; opacity: 0; }
+#flash.go { animation: flashGo 0.7s ease-out; }
+@keyframes flashGo { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+#combo {
+  position: fixed;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  color: var(--gold);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7), 0 0 18px rgba(244, 201, 93, 0.5);
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+#combo.show { opacity: 1; }
+#combo.pop { animation: comboPop 0.25s ease-out; }
+@keyframes comboPop { 0% { transform: translateX(-50%) scale(1.35); } 100% { transform: translateX(-50%) scale(1); } }
+
+#celebrate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, rgba(20, 18, 28, 0.55), rgba(10, 8, 16, 0.75));
+  cursor: pointer;
+}
+#celebrate.show { display: flex; }
+.celebCard {
+  position: relative;
+  text-align: center;
+  padding: 20px 28px 22px;
+  background: rgba(20, 18, 28, 0.96);
+  border: 2px solid rgba(244, 201, 93, 0.6);
+  border-radius: 18px;
+  animation: celebIn 0.5s cubic-bezier(0.2, 1.4, 0.4, 1);
+  min-width: 220px;
+}
+#celebrate[data-rarity="legend"] .celebCard { border-color: #f4c95d; box-shadow: 0 0 40px rgba(244, 201, 93, 0.6); }
+#celebrate[data-rarity="rare"] .celebCard { border-color: #7ec8ff; box-shadow: 0 0 28px rgba(126, 200, 255, 0.4); }
+@keyframes celebIn { 0% { transform: scale(0.4) translateY(40px); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+#celebIcon { width: 150px; height: 128px; animation: celebBob 1.6s ease-in-out infinite; }
+@keyframes celebBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+#celebRarity { font-size: 14px; margin-top: 4px; }
+#celebName { font-size: 22px; font-weight: 800; margin-top: 4px; }
+#celebValue { font-size: 40px; font-weight: 900; color: var(--gold); margin-top: 6px; font-variant-numeric: tabular-nums; }
+#celebExtra { font-size: 13px; color: #8fd3ff; margin-top: 6px; min-height: 1em; }
+#confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#confetti i {
+  position: absolute;
+  top: -20px;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  animation-name: confettiFall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+@keyframes confettiFall {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate(var(--drift), 105vh) rotate(720deg); opacity: 0.8; }
+}

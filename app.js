@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.25';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.25';
+import { makeCoinMaterials } from './coin.js?v=0.0.26';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.26';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.25';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.25';
+} from './slime.js?v=0.0.26';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.26';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -48,7 +48,6 @@ const DROP_Z = -4.6;         // 投幣的前後位置（推板上方）
 const STEP = 1 / 60;           // 物理一步的秒數
 const START_WALLET = 30;
 const MAX_COINS = 420;       // 檯面上幣的上限（保護效能）
-const DROP_GAP = 0.28;       // 按住連投的間隔秒數
 const GUARD_H = 0.07;         // 側溝擋板的高度（一枚幣厚 0.1）
 const MOM_GIVE = 10;         // 媽媽每次給幾枚
 const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得掛機刷）
@@ -62,6 +61,12 @@ const UPGRADES = {
     desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
     levels: [30, 26, 22, 19, 16, 14, 12, 10],          // 媽媽幾秒給一次
     base: 10, growth: 1.45,
+  },
+  dropRate: {
+    name: '投幣速度',
+    desc: '手變快，一秒能投更多枚（一開始一秒一枚）',
+    levels: [1.0, 0.85, 0.72, 0.6, 0.5, 0.42, 0.35],  // 兩次投幣之間至少隔幾秒
+    base: 10, growth: 1.5,
   },
   speed: {
     name: '推板加速',
@@ -147,11 +152,11 @@ const equipped = {};
 let achTimer = 0;
 const dolls = [];            // 檯面上的史萊姆娃娃
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
-const DOLL_CHANCE = 0.06;    // 每秒放一隻娃娃的機率（保底式，平均大約 17 秒一隻）
+const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 35 秒一隻）
 const RARE_CHANCE = 0.2;     // 放出來的是稀有（第 7 到 9 隻）的機率
 const LEGEND_CHANCE = 0.03;  // 放出來的是傳說（第 10 隻）的機率
 let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
-const MAX_DOLLS = 3;         // 檯面上最多同時幾隻
+const MAX_DOLLS = 2;         // 檯面上最多同時幾隻
 let dollTimer = 0;
 
 // ===== 保底式假隨機 =====
@@ -466,10 +471,7 @@ const shopBtn = document.getElementById('shopBtn');
 // 手機沒有右鍵，用按鈕切換
 autoBtn.addEventListener('click', () => {
   setAuto(!autoDrop);
-  if (autoDrop) {
-    dropCoin();
-    lastDrop = simTime;
-  }
+  tryDrop();
 });
 
 function bump(el) {
@@ -493,10 +495,10 @@ function updateHud() {
     refillEl.textContent = `手上滿 ${MOM_CAP} 枚，先不會獲得`;
   }
 }
-function floatText(text, worldPos) {
+function floatText(text, worldPos, cls = '') {
   const p = worldPos.clone().project(camera);
   const el = document.createElement('div');
-  el.className = 'float';
+  el.className = cls ? `float ${cls}` : 'float';
   el.textContent = text;
   el.style.left = `${(p.x * 0.5 + 0.5) * window.innerWidth - 10}px`;
   el.style.top = `${(-p.y * 0.5 + 0.5) * window.innerHeight - 20}px`;
@@ -636,19 +638,21 @@ canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   aimFromEvent(e);
   setAuto(!autoDrop);
-  if (autoDrop) {
-    dropCoin();
-    lastDrop = simTime;
-  }
+  tryDrop();
 });
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   aimFromEvent(e);
   pointerDown = true;
-  canvas.setPointerCapture?.(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 有些情況抓不到，沒關係 */ }
+  tryDrop();
+});
+// 投幣速度有上限：離上一次還不夠久就先不投（按住或自動會等時間到再投）
+function tryDrop() {
+  if (simTime - lastDrop < upValue('dropRate')) return;
   dropCoin();
   lastDrop = simTime;
-});
+}
 const stop = () => { pointerDown = false; };
 canvas.addEventListener('pointerup', stop);
 canvas.addEventListener('pointercancel', stop);
@@ -913,6 +917,94 @@ function closeViewer() {
 }
 document.getElementById('viewerClose').addEventListener('click', closeViewer);
 viewerEl.addEventListener('click', (e) => { if (e.target === viewerEl) closeViewer(); });
+
+// ===== 掉下來的慶祝 =====
+// 連續推下來的幣：畫面下方有一個「+N」越疊越大，停一下才消失
+const comboEl = document.getElementById('combo');
+let comboCount = 0;
+let comboTimer = 0;
+function addCombo(v) {
+  comboCount += v;
+  comboTimer = 1.6;
+  comboEl.textContent = `+${comboCount}`;
+  comboEl.style.fontSize = `${Math.min(64, 26 + Math.sqrt(comboCount) * 5)}px`;
+  comboEl.classList.add('show');
+  comboEl.classList.remove('pop');
+  void comboEl.offsetWidth;
+  comboEl.classList.add('pop');
+}
+function updateCombo(frame) {
+  if (comboTimer <= 0) return;
+  comboTimer -= frame;
+  if (comboTimer <= 0) {
+    comboEl.classList.remove('show');
+    comboCount = 0;
+  }
+}
+
+function bigCoinFanfare() {
+  [1046, 1318, 1568, 2093].forEach((f, k) => setTimeout(() => beep(f, 0.22, 0.07, 'triangle', 'big'), k * 90));
+  flash('rgba(244, 201, 93, 0.18)');
+}
+
+function flash(color) {
+  const el = document.getElementById('flash');
+  el.style.background = color;
+  el.classList.remove('go');
+  void el.offsetWidth;
+  el.classList.add('go');
+}
+
+// 娃娃推下來：畫面中間跳出卡片，金額一路往上跳，彩紙飛出來
+const celebEl = document.getElementById('celebrate');
+let celebTimer = null;
+function celebrate(id, isNew, unlockedSet) {
+  const info = slimeInfo(id);
+  const r = RARITY[info.rarity];
+  const cv = document.getElementById('celebIcon');
+  drawSlimeIcon(cv.getContext('2d'), id, cv.width, cv.height, true);
+  document.getElementById('celebRarity').innerHTML = `<span style="color:${r.color}">${r.name}</span>${isNew ? '　<span class="newTag">新！</span>' : ''}`;
+  document.getElementById('celebName').textContent = info.skin.name;
+  document.getElementById('celebExtra').textContent = unlockedSet ? `解鎖新的一套：「${unlockedSet}」，可以在圖鑑換` : '';
+  const valEl = document.getElementById('celebValue');
+  const t0 = performance.now();
+  const dur = 900 + Math.min(1500, info.value * 4);
+  const count = (now) => {
+    const k = Math.min(1, (now - t0) / dur);
+    valEl.textContent = `+${Math.round(info.value * (1 - Math.pow(1 - k, 2)))} 枚`;
+    if (k < 1 && celebEl.classList.contains('show')) requestAnimationFrame(count);
+  };
+  celebEl.classList.add('show');
+  celebEl.dataset.rarity = info.rarity;
+  requestAnimationFrame(count);
+  // 彩紙
+  const conf = document.getElementById('confetti');
+  conf.innerHTML = '';
+  const n = info.rarity === 'legend' ? 70 : info.rarity === 'rare' ? 45 : 28;
+  const colors = ['#f4c95d', '#ff8fa8', '#8fd3ff', '#b4ee86', '#dcc8ff', '#ffffff'];
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i');
+    p.style.left = `${Math.random() * 100}%`;
+    p.style.background = colors[i % colors.length];
+    p.style.animationDelay = `${Math.random() * 0.5}s`;
+    p.style.animationDuration = `${1.6 + Math.random() * 1.4}s`;
+    p.style.setProperty('--drift', `${(Math.random() - 0.5) * 160}px`);
+    conf.appendChild(p);
+  }
+  flash(info.rarity === 'legend' ? 'rgba(244, 201, 93, 0.35)' : 'rgba(255, 255, 255, 0.18)');
+  // 音樂：稀有度越高越長
+  const tune = info.rarity === 'legend'
+    ? [523, 659, 784, 1046, 784, 1046, 1318, 1568, 2093]
+    : info.rarity === 'rare' ? [523, 659, 784, 1046, 1318, 1568] : [659, 784, 1046, 1318];
+  tune.forEach((f, k) => setTimeout(() => beep(f, 0.26, 0.07, 'triangle', 'doll'), k * 120));
+  clearTimeout(celebTimer);
+  celebTimer = setTimeout(closeCelebrate, info.rarity === 'legend' ? 4500 : 3200);
+}
+function closeCelebrate() {
+  celebEl.classList.remove('show');
+  document.getElementById('confetti').innerHTML = '';
+}
+celebEl.addEventListener('click', closeCelebrate);
 
 // 畫面上方的小通知
 const toastEl = document.getElementById('toast');
@@ -1626,6 +1718,11 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 let acc = 0;
 let lastT = performance.now();
 
+// 娃娃和道具比側溝寬，掉進去會卡在檯面邊緣和玻璃中間，這種就當作掉進側溝了
+function stuckInGutter(t) {
+  return Math.abs(t.x) > halfW + 0.05 && t.y < 0.5;
+}
+
 // 物理走一步，並處理掉下去的幣
 function stepSim() {
   simTime += STEP;
@@ -1641,12 +1738,14 @@ function stepSim() {
         wallet += value;
         stats.coinsWon += value;
         if (value > 1) stats.bigWon++;
-        floatText(`+${value}`, new THREE.Vector3(b.x, 0, FRONT_Z));
+        floatText(`+${value}`, new THREE.Vector3(b.x, 0, FRONT_Z), value > 1 ? 'big' : '');
         bump(walletEl);
+        addCombo(value);
         if (value > 1) {
-          [1320, 1660, 1980].forEach((f, k) => setTimeout(() => beep(f, 0.15, 0.07, 'sine', 'big'), k * 70));
+          bigCoinFanfare();
         } else {
-          beep(1320 + Math.random() * 200, 0.12, 0.07, 'sine', 'win');
+          // 連續掉下來時音越來越高，像一串叮叮叮
+          beep(1100 * (1 + Math.min(comboCount, 24) * 0.025), 0.14, 0.07, 'sine', 'win');
         }
       } else {
         lost += value;
@@ -1656,7 +1755,7 @@ function stepSim() {
   }
   for (let i = props.length - 1; i >= 0; i--) {
     const t = props[i].body.translation();
-    if (t.y >= -1.2) continue;
+    if (t.y >= -1.2 && !stuckInGutter(t)) continue;
     const pr = props[i];
     const front = t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2;
     removeProp(i);
@@ -1676,7 +1775,7 @@ function stepSim() {
   }
   for (let i = dolls.length - 1; i >= 0; i--) {
     const t = dolls[i].body.translation();
-    if (t.y >= -1.2) continue;
+    if (t.y >= -1.2 && !stuckInGutter(t)) continue;
     const d = dolls[i];
     const info = slimeInfo(d.id);
     if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
@@ -1692,8 +1791,7 @@ function stepSim() {
       let msg = `<span style="color:${r.color}">${r.name}</span>　${info.skin.name}${isNew ? '　<span class="newTag">新！</span>' : ''}　+${info.value} 枚`;
       const opened = lockedBefore.filter((sid) => setUnlocked(SET_BY_ID[sid]));
       if (opened.length) msg += `<br>解鎖新的一套：「${SET_BY_ID[opened[0]].name}」，可以在圖鑑換`;
-      toast(msg);
-      [880, 1175, 1480, 1760, 2350].forEach((f, k) => setTimeout(() => beep(f, 0.16, 0.06, 'triangle', 'doll'), k * 80));
+      celebrate(d.id, isNew, opened.length ? SET_BY_ID[opened[0]].name : null);
       if (bookEl.classList.contains('show')) renderBook();
       saveGame();
     } else {
@@ -1706,10 +1804,7 @@ function stepSim() {
 // 跟時間有關的事：連投、放娃娃、金幣雨、媽媽十元（每一幀呼叫一次）
 function updateTimers(frame) {
   // 按住連投，或自動投幣
-  if ((pointerDown || autoDrop) && simTime - lastDrop >= DROP_GAP) {
-    dropCoin();
-    lastDrop = simTime;
-  }
+  if (pointerDown || autoDrop) tryDrop();
 
   // 每一秒檢查一次成就
   achTimer += frame;
@@ -1783,6 +1878,7 @@ function tick(now) {
   if (steps === 4) acc = 0;
 
   updateTimers(frame);
+  updateCombo(frame);
 
   // 同步畫面
   for (const c of coins) {
