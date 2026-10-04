@@ -2,12 +2,12 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.19';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.19';
+import { makeCoinMaterials } from './coin.js?v=0.0.20';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.20';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, setSlimeFancy, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.19';
+} from './slime.js?v=0.0.20';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -48,6 +48,7 @@ const STEP = 1 / 60;           // 物理一步的秒數
 const START_WALLET = 30;
 const MAX_COINS = 420;       // 檯面上幣的上限（保護效能）
 const DROP_GAP = 0.28;       // 按住連投的間隔秒數
+const GUARD_H = 0.07;         // 側溝擋板的高度（一枚幣厚 0.1）
 const MOM_GIVE = 10;         // 媽媽每次給幾枚
 const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得掛機刷）
 
@@ -58,38 +59,44 @@ const UPGRADES = {
   refill: {
     name: '媽媽十元',
     desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
-    levels: [30, 25, 20, 15, 12, 10],         // 媽媽幾秒給一次
-    base: 8, growth: 1.6,
+    levels: [30, 26, 22, 19, 16, 14, 12, 10],          // 媽媽幾秒給一次
+    base: 10, growth: 1.45,
   },
   speed: {
     name: '推板加速',
     desc: '推板來回得更快，幣推得更勤',
-    levels: [3.2, 3.0, 2.8, 2.6, 2.4, 2.2],   // 推板來回一次幾秒
-    base: 20, growth: 1.7,
+    levels: [3.2, 3.05, 2.9, 2.75, 2.6, 2.45, 2.3, 2.2], // 推板來回一次幾秒
+    base: 20, growth: 1.45,
   },
   guard: {
     name: '側溝擋板',
-    desc: '從前緣往後裝擋板，幣比較不會掉進兩側溝',
-    levels: [0, 0.9, 1.8, 2.7, 3.6, 4.4],     // 擋板長度
-    base: 40, growth: 1.75,
+    desc: '從前緣往後裝矮矮的擋板，幣比較不會掉進兩側溝',
+    levels: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2],   // 擋板長度
+    base: 30, growth: 1.5,
   },
   lucky: {
     name: '大金幣',
     desc: '投幣時有機會掉出大金幣（推下去值 10 枚），升級讓機會變大',
-    levels: [0, 0.02, 0.03, 0.045, 0.06, 0.08], // 每投一枚變成大金幣的機率（沒買就沒有）
-    base: 80, growth: 1.8,
+    levels: [0, 0.015, 0.025, 0.035, 0.045, 0.055, 0.065, 0.08], // 每投一枚變成大金幣的機率（沒買就沒有）
+    base: 60, growth: 1.5,
   },
   rain: {
     name: '金幣雨機率',
     desc: '解鎖金幣雨：每一秒都有小小的機會下一場，升級讓機會變大',
-    levels: [0, 0.004, 0.006, 0.009, 0.013, 0.018], // 每秒下金幣雨的機率（沒買就不會下）
-    base: 150, growth: 1.9,
+    levels: [0, 0.003, 0.0045, 0.006, 0.0075, 0.009, 0.011, 0.013, 0.016], // 每秒下金幣雨的機率（沒買就不會下）
+    base: 100, growth: 1.5,
   },
   rainSize: {
     name: '金幣雨變大',
     desc: '每場金幣雨撒下來的幣變多',
-    levels: [30, 40, 50, 65, 80, 100],        // 一場金幣雨幾枚
-    base: 300, growth: 2,
+    levels: [30, 40, 50, 60, 75, 90, 110, 130],        // 一場金幣雨幾枚
+    base: 150, growth: 1.55,
+  },
+  multi: {
+    name: '一次多投',
+    desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
+    levels: [1, 2, 3, 4, 5],                            // 一次丟幾枚
+    base: 400, growth: 2,
   },
 };
 // 價錢一律取 10 的倍數，而且每一級至少比上一級貴 10
@@ -123,11 +130,11 @@ let rainQueue = 0;           // 金幣雨還有幾枚要下
 const coins = [];
 const dolls = [];            // 檯面上的史萊姆娃娃
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
-const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 30 秒一隻）
+const DOLL_CHANCE = 0.06;    // 每秒放一隻娃娃的機率（保底式，平均大約 17 秒一隻）
 const RARE_CHANCE = 0.2;     // 放出來的是稀有（第 7 到 9 隻）的機率
 const LEGEND_CHANCE = 0.03;  // 放出來的是傳說（第 10 隻）的機率
-let activeSet = 'jelly';     // 現在用哪一套娃娃
-const MAX_DOLLS = 2;         // 檯面上最多同時幾隻
+let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
+const MAX_DOLLS = 3;         // 檯面上最多同時幾隻
 let dollTimer = 0;
 
 // ===== 保底式假隨機 =====
@@ -373,7 +380,8 @@ function dropNewDoll() {
   else if (rareChance.roll()) rarity = 'rare';
   const pool = SLOTS.map((sl, i) => i).filter((i) => SLOTS[i].rarity === rarity);
   const slot = pool[Math.floor(Math.random() * pool.length)];
-  const id = `${activeSet}.${slot}`;
+  const set = activeSets[Math.floor(Math.random() * activeSets.length)];
+  const id = `${set}.${slot}`;
   const scale = 0.85 + Math.random() * 0.35; // 大小略有不同
   const yaw = (Math.random() - 0.5) * 0.8;   // 大致面向玩家
   spawnDoll(id, scale, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
@@ -407,10 +415,12 @@ function buildGuards() {
   for (const side of [-1, 1]) {
     const x = side * (halfW + 0.05);
     const z = FRONT_Z - len / 2;
-    const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, 0.15, z));
-    world.createCollider(RAPIER.ColliderDesc.cuboid(0.05, 0.15, len / 2).setFriction(TABLE_FRICTION), body);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, len), guardMat);
-    mesh.position.set(x, 0.15, z);
+    // 擋板只有一點點高（比一枚幣還矮），平平滑過來的幣會被擋住，被擠上來的還是會翻過去
+    const h = GUARD_H;
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, h / 2, z));
+    world.createCollider(RAPIER.ColliderDesc.cuboid(0.05, h / 2, len / 2).setFriction(TABLE_FRICTION), body);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, h, len), guardMat);
+    mesh.position.set(x, h / 2, z);
     mesh.castShadow = true;
     scene.add(mesh);
     guards.push({ body, mesh });
@@ -573,15 +583,25 @@ function dropCoin() {
   // 手上沒幣就安靜地什麼都不做；自動投幣不會關掉，有錢了會繼續投
   if (wallet <= 0) return;
   if (bigChance.p !== upValue('lucky')) bigChance.setChance(upValue('lucky'));
-  // 還沒買「大金幣」就完全不會出現，保底進度也不累積
-  const big = upValue('lucky') > 0 && bigChance.roll();
-  const c = spawnCoin(aimX + (Math.random() - 0.5) * 0.05, DROP_Y, DROP_Z, 0.4, big);
-  if (!c) return;
-  if (big) {
-    floatText('大金幣！', new THREE.Vector3(aimX, DROP_Y, DROP_Z));
-    beep(1500, 0.15, 0.05, 'triangle', 'big');
+  // 一次多投：一起丟出好幾枚，左右稍微散開；手上不夠就丟手上有的
+  const n = Math.min(wallet, upValue('multi'));
+  let dropped = 0;
+  for (let k = 0; k < n; k++) {
+    // 還沒買「大金幣」就完全不會出現，保底進度也不累積
+    const big = upValue('lucky') > 0 && bigChance.roll();
+    const spread = n > 1 ? (k - (n - 1) / 2) * 0.55 : 0;
+    const lim = halfW - COIN_R - 0.05;
+    const x = Math.max(-lim, Math.min(lim, aimX + spread + (Math.random() - 0.5) * 0.05));
+    const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + (Math.random() - 0.5) * 0.3, 0.4, big);
+    if (!c) break;
+    dropped++;
+    if (big) {
+      floatText('大金幣！', new THREE.Vector3(x, DROP_Y, DROP_Z));
+      beep(1500, 0.15, 0.05, 'triangle', 'big');
+    }
   }
-  wallet--;
+  if (!dropped) return;
+  wallet -= dropped;
   bump(walletEl);
   beep(900, 0.06, 0.05, 'triangle', 'drop');
   hintEl.style.opacity = 0;
@@ -716,17 +736,19 @@ function renderBook() {
   let head = '<div class="bookTabs">';
   for (const st of SLIME_SETS) {
     const lock = setUnlocked(st) ? '' : ' locked';
-    head += `<button type="button" class="bookTab${st.id === bookTab ? ' on' : ''}${lock}" data-set="${st.id}">${st.name}${st.id === activeSet ? '・使用中' : ''}</button>`;
+    head += `<button type="button" class="bookTab${st.id === bookTab ? ' on' : ''}${lock}" data-set="${st.id}">${st.name}${activeSets.includes(st.id) ? '・使用中' : ''}</button>`;
   }
   head += '</div>';
   if (!unlocked) {
     const need = SET_BY_ID[set.unlock.set];
     head += `<div class="bookLock">在「${need.name}」收集 ${set.unlock.kinds} 種就會解鎖（現在 ${kindsIn(need.id)} 種）</div>`;
-  } else if (set.id === activeSet) {
-    head += `<div class="bookUse">「${set.name}」使用中：機台現在放出來的都是這一套（${kindsIn(set.id)} / 10）</div>`;
+  } else if (activeSets.includes(set.id)) {
+    const off = activeSets.length > 1 ? `<button type="button" class="useSet off" data-use="${set.id}">不要用這套</button>` : '（至少要用一套）';
+    head += `<div class="bookUse">「${set.name}」使用中（${kindsIn(set.id)} / 10）${off}</div>`;
   } else {
-    head += `<div class="bookUse"><button type="button" class="useSet" data-use="${set.id}">改用「${set.name}」</button>（${kindsIn(set.id)} / 10）</div>`;
+    head += `<div class="bookUse"><button type="button" class="useSet" data-use="${set.id}">也用「${set.name}」</button>（${kindsIn(set.id)} / 10）</div>`;
   }
+  head += '<div class="bookTip">可以同時用好幾套，稀有度的機率不會變。想收集的話，只選還沒收集完的套就好。</div>';
   bookListEl.innerHTML = head + '<div class="bookGrid"></div>';
   const grid = bookListEl.querySelector('.bookGrid');
   set.skins.forEach((skin, i) => {
@@ -759,7 +781,12 @@ bookListEl.addEventListener('click', (e) => {
   }
   const use = e.target.closest('button[data-use]');
   if (use && setUnlocked(SET_BY_ID[use.dataset.use])) {
-    activeSet = use.dataset.use;
+    const id = use.dataset.use;
+    if (activeSets.includes(id)) {
+      if (activeSets.length > 1) activeSets = activeSets.filter((x) => x !== id);
+    } else {
+      activeSets.push(id);
+    }
     renderBook();
     saveGame();
   }
@@ -767,7 +794,7 @@ bookListEl.addEventListener('click', (e) => {
 document.getElementById('bookBtn').addEventListener('click', () => {
   shopEl.classList.remove('show');
   document.getElementById('settings').classList.remove('show');
-  bookTab = activeSet;
+  bookTab = activeSets[0];
   renderBook();
   bookEl.classList.toggle('show');
 });
@@ -888,7 +915,7 @@ function saveData() {
     rareCount: rareChance.count,
     legendCount: legendChance.count,
     collection: { ...collection },
-    activeSet,
+    activeSets,
     dolls: dolls.map((d) => {
       const t = d.body.translation();
       const r = d.body.rotation();
@@ -936,7 +963,8 @@ function applySave(d) {
   for (const [k, n] of Object.entries(d.collection || {})) {
     if (slimeInfo(k)) collection[k] = Math.max(0, Math.floor(Number(n) || 0));
   }
-  if (SET_BY_ID[d.activeSet] && setUnlocked(SET_BY_ID[d.activeSet])) activeSet = d.activeSet;
+  const sets = (Array.isArray(d.activeSets) ? d.activeSets : [d.activeSet]).filter((id) => SET_BY_ID[id] && setUnlocked(SET_BY_ID[id]));
+  if (sets.length) activeSets = [...new Set(sets)];
   for (const dd of (d.dolls || []).slice(0, MAX_DOLLS)) {
     if (!Array.isArray(dd.p) || !Array.isArray(dd.r)) continue;
     spawnDoll(dd.id, Number(dd.s) || 1, { x: dd.p[0], y: dd.p[1], z: dd.p[2] }, { x: dd.r[0], y: dd.r[1], z: dd.r[2], w: dd.r[3] });
@@ -1041,18 +1069,8 @@ function stepSim() {
   }
 }
 
-function tick(now) {
-  const frame = Math.min(0.1, (now - lastT) / 1000);
-  lastT = now;
-  acc += frame;
-  let steps = 0;
-  while (acc >= STEP && steps < 4) {
-    stepSim();
-    acc -= STEP;
-    steps++;
-  }
-  if (steps === 4) acc = 0;
-
+// 跟時間有關的事：連投、放娃娃、金幣雨、媽媽十元（每一幀呼叫一次）
+function updateTimers(frame) {
   // 按住連投，或自動投幣
   if ((pointerDown || autoDrop) && simTime - lastDrop >= DROP_GAP) {
     dropCoin();
@@ -1101,6 +1119,21 @@ function tick(now) {
   } else {
     refillTimer = 0;
   }
+}
+
+function tick(now) {
+  const frame = Math.min(0.1, (now - lastT) / 1000);
+  lastT = now;
+  acc += frame;
+  let steps = 0;
+  while (acc >= STEP && steps < 4) {
+    stepSim();
+    acc -= STEP;
+    steps++;
+  }
+  if (steps === 4) acc = 0;
+
+  updateTimers(frame);
 
   // 同步畫面
   for (const c of coins) {
@@ -1130,5 +1163,8 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, setActiveSet(id) { activeSet = id; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+  // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
+  play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
+  setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };
 requestAnimationFrame((t) => { lastT = t; tick(t); });

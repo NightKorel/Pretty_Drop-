@@ -179,43 +179,70 @@ function flakeTexture(skin) {
   });
 }
 
-// fancy：高／中畫質用比較好看（也比較吃效能）的真正透光材質
+// 假的半透明：一般的半透明（後面的金幣會透出來），再加「邊緣濃、中間透」，
+// 看起來像有厚度的果凍。比真正的透光計算省很多效能，所以每種畫質都用這個。
+function fakeJelly(color, { center = 0.38, edge = 0.93, glow = 0.12, rough = 0.42, back = false } = {}) {
+  const m = new THREE.MeshStandardMaterial({
+    color, roughness: rough, metalness: 0, transparent: true, depthWrite: false,
+    side: back ? THREE.BackSide : THREE.FrontSide,
+  });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uCenter = { value: center };
+    sh.uniforms.uEdge = { value: edge };
+    sh.uniforms.uGlow = { value: glow };
+    sh.fragmentShader = 'uniform float uCenter;\nuniform float uEdge;\nuniform float uGlow;\n' + sh.fragmentShader
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        float jellyFres = 1.0 - abs(dot(normal, normalize(vViewPosition)));
+        diffuseColor.a = mix(uCenter, uEdge, pow(jellyFres, 1.6));`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance += diffuseColor.rgb * uGlow * (1.0 - jellyFres);`);
+  };
+  m.customProgramCacheKey = () => 'fakeJelly';
+  return m;
+}
+
+// 果凍類要畫兩層：先畫內側（深一點），再畫外側
+function jellyLayers(skin) {
+  const color = new THREE.Color(skin.color);
+  if (skin.look === 'diamond') {
+    return [
+      fakeJelly(new THREE.Color('#dfe9ff'), { center: 0.2, edge: 0.5, glow: 0.1, rough: 0.3, back: true }),
+      fakeJelly(new THREE.Color('#f4f8ff'), { center: 0.18, edge: 0.85, glow: 0.2, rough: 0.25 }),
+    ];
+  }
+  const night = skin.look === 'night';
+  return [
+    fakeJelly(color.clone().multiplyScalar(0.7), { center: night ? 0.6 : 0.35, edge: 0.6, glow: 0.05, back: true }),
+    fakeJelly(color, { center: night ? 0.6 : 0.44, edge: 0.95, glow: night ? 0.05 : 0.14 }),
+  ];
+}
+
+const isJelly = (skin) => skin.look === 'jelly' || skin.look === 'night' || skin.look === 'diamond';
+
+// 整體走微微霧面：粗糙度高一點、亮面塗層淡一點，反光不要太刺
 function bodyMaterial(skin, fancy) {
   const color = new THREE.Color(skin.color);
   switch (skin.look) {
-    case 'jelly':
-    case 'night':
-      if (!fancy) return new THREE.MeshPhysicalMaterial({ color, roughness: 0.15, clearcoat: 1, transparent: true, opacity: 0.72 });
-      return new THREE.MeshPhysicalMaterial({
-        color, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.05,
-        transmission: 0.92, thickness: 0.7, ior: 1.33,
-        attenuationColor: color, attenuationDistance: skin.look === 'night' ? 0.35 : 0.9,
-      });
-    case 'diamond':
-      if (!fancy) return new THREE.MeshPhysicalMaterial({ color: 0xf2fbff, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.6 });
-      return new THREE.MeshPhysicalMaterial({
-        color: 0xffffff, roughness: 0.02, transmission: 1, thickness: 1, ior: 2.0,
-        iridescence: 1, iridescenceIOR: 1.6, clearcoat: 1,
-      });
     case 'cream':
       // 深色的不加白色絨光，不然會變灰灰的
-      if (isDark(skin.color)) return new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, clearcoat: 0.3 });
-      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.55, sheen: 0.6, sheenColor: 0xffffff, clearcoat: 0.15 });
+      if (isDark(skin.color)) return new THREE.MeshPhysicalMaterial({ color, roughness: 0.65 });
+      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.7, sheen: 0.5, sheenColor: 0xffffff });
     case 'twotone':
-      return new THREE.MeshPhysicalMaterial({ map: twotoneTexture(skin), roughness: 0.5, sheen: 0.5, clearcoat: 0.35 });
+      return new THREE.MeshPhysicalMaterial({ map: twotoneTexture(skin), roughness: 0.62, sheen: 0.4 });
     case 'flake':
-      return new THREE.MeshPhysicalMaterial({ map: flakeTexture(skin), roughness: 0.45, clearcoat: 0.6 });
+      return new THREE.MeshPhysicalMaterial({ map: flakeTexture(skin), roughness: 0.6, clearcoat: 0.15 });
     case 'pearl':
-      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.25, metalness: 0.1, clearcoat: 1, iridescence: 1, iridescenceIOR: 1.5 });
+      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, metalness: 0.1, clearcoat: 0.25, iridescence: 0.6, iridescenceIOR: 1.4 });
     case 'metal':
     default:
-      return new THREE.MeshStandardMaterial({ color, metalness: 1, roughness: 0.28 });
+      return new THREE.MeshStandardMaterial({ color, metalness: 0.9, roughness: 0.5 });
   }
 }
 
 const eyeGeo = new THREE.SphereGeometry(1, 16, 12);
-const eyeBlack = new THREE.MeshStandardMaterial({ color: 0x1e1724, roughness: 0.35 });
-const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+// 眼睛設成「半透明但其實不透明」，才能排在半透明的身體後面畫
+const eyeBlack = new THREE.MeshStandardMaterial({ color: 0x1e1724, roughness: 0.35, transparent: true, opacity: 1 });
+const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, transparent: true, opacity: 1 });
 
 function makePoints(n, size, color, at) {
   const pos = new Float32Array(n * 3);
@@ -229,14 +256,26 @@ function makePoints(n, size, color, at) {
 export function makeSlimeMesh(id, scale, fancy = true) {
   const { skin } = slimeInfo(id);
   const g = new THREE.Group();
-  const body = new THREE.Mesh(getBodyGeo(), bodyMaterial(skin, fancy));
-  body.castShadow = true;
-  body.receiveShadow = true;
+  let body;
+  if (isJelly(skin)) {
+    const [backMat, frontMat] = jellyLayers(skin);
+    const inner = new THREE.Mesh(getBodyGeo(), backMat);
+    inner.renderOrder = 1;
+    g.add(inner);
+    body = new THREE.Mesh(getBodyGeo(), frontMat);
+    body.renderOrder = 2;
+    body.castShadow = true;
+  } else {
+    body = new THREE.Mesh(getBodyGeo(), bodyMaterial(skin, fancy));
+    body.castShadow = true;
+    body.receiveShadow = true;
+  }
   g.add(body);
   // 豆豆眼：深色史萊姆用白的
   const eyeMat = isDark(skin.color) ? eyeWhite : eyeBlack;
   for (const side of [-1, 1]) {
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
+    eye.renderOrder = 3; // 眼睛最後畫，不會被半透明的身體蓋得霧霧的
     eye.scale.set(0.05, 0.08, 0.035);
     eye.position.set(side * 0.16, 0.3, 0.555);
     eye.lookAt(side * 0.16 * 3, 0.3, 3);
@@ -268,6 +307,7 @@ export function makeSlimeMesh(id, scale, fancy = true) {
 
 // 換畫質時換身體的材質
 export function setSlimeFancy(g, fancy) {
+  if (isJelly(g.userData.skin)) return; // 果凍類每種畫質都一樣
   g.userData.body.material = bodyMaterial(g.userData.skin, fancy);
 }
 
