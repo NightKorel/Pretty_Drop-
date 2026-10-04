@@ -4,7 +4,8 @@ const { chromium, devices } = require(process.env.NPMG + '/playwright');
 const out = '/tmp/pd-shots/';
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 for (const [name, ctxOpts] of [['pc', { viewport: { width: 1280, height: 800 } }], ['phone', devices['iPhone 13']]]) {
-  const page = await (await browser.newContext(ctxOpts)).newPage();
+  const ctx = await browser.newContext(ctxOpts);
+  const page = await ctx.newPage();
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
@@ -23,5 +24,6 @@ for (const [name, ctxOpts] of [['pc', { viewport: { width: 1280, height: 800 } }
   await page.screenshot({ path: out + name + '-after.png' });
   const q = await page.evaluate(() => __game.quality);
   console.log(name, q, JSON.stringify({ s0, s1, fps, errs }));
+  await ctx.close(); // 關掉上一個，不然它在背景一直畫，會拖慢下一個測試
 }
 await browser.close();
