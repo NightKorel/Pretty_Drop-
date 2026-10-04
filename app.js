@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.23';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.23';
+import { makeCoinMaterials } from './coin.js?v=0.0.24';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.24';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.23';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.23';
+} from './slime.js?v=0.0.24';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.24';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -932,7 +932,16 @@ let achTab = 'list';
 const decorView = { THREE, scene, table: table.mesh, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
 
 function checkAchievements() {
-  const state = { stats, collection, upgrades, wallet };
+  const kinds = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);
+  const state = {
+    stats, collection, upgrades, wallet,
+    kinds,
+    totalKinds: SLIME_SETS.length * 10,
+    setsDone: SLIME_SETS.filter((st) => kindsIn(st.id) >= 10).length,
+    legend: SLIME_SETS.some((st) => collection[`${st.id}.9`] > 0),
+    maxed: UPGRADE_KEYS.filter((k) => upgrades[k] >= UPGRADES[k].prices.length).length,
+    upgradeCount: UPGRADE_KEYS.length,
+  };
   for (const a of ACHIEVEMENTS) {
     if (achieved[a.id] || !a.check(state)) continue;
     achieved[a.id] = true;
@@ -1099,6 +1108,7 @@ const glueMatPlain = new THREE.MeshLambertMaterial({ color: 0x9ccf6a, emissive: 
 function useItem(key) {
   if (!items[key]) return;
   items[key]--;
+  stats.itemsUsed++;
   if (key === 'wind') {
     windTime = 2;
     toast('一陣風！');
@@ -1246,6 +1256,7 @@ function pickWheel() {
 function spinWheel() {
   if (wheelSpinning || tickets <= 0) return;
   tickets--;
+  stats.spins++;
   wheelSpinning = true;
   renderWheelInfo();
   const idx = pickWheel();
