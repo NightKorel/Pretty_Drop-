@@ -2,7 +2,7 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.11';
+import { makeCoinMaterials } from './coin.js?v=0.0.12';
 
 await RAPIER.init();
 
@@ -27,38 +27,54 @@ const MAX_COINS = 420;       // 檯面上幣的上限（保護效能）
 const DROP_GAP = 0.28;       // 按住連投的間隔秒數
 const REFILL_BELOW = 10;     // 手上少於這個數，倒數完直接補到這個數
 
-// ===== 商店升級（每一級的效果與價錢） =====
+// ===== 商店升級 =====
+// 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項，越後面的越好也越貴。
+// 每升一級價錢乘上 growth。levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
-  guard: {
-    name: '側溝擋板',
-    desc: '從前緣往後裝擋板，幣比較不會掉進兩側溝',
-    levels: [0, 1.5, 3, 4.4],     // 擋板長度
-    prices: [40, 100, 220],
+  refill: {
+    name: '補幣加快',
+    desc: '手上少於 10 枚時，補到 10 枚要等的秒數變短',
+    levels: [6, 5, 4, 3.2, 2.5, 2],
+    base: 8, growth: 1.6,
   },
   speed: {
     name: '推板加速',
-    desc: '推板來回得更快',
-    levels: [3.2, 2.7, 2.3, 2.0], // 推板來回一次幾秒
-    prices: [30, 80, 180],
+    desc: '推板來回得更快，幣推得更勤',
+    levels: [3.2, 3.0, 2.8, 2.6, 2.4, 2.2],   // 推板來回一次幾秒
+    base: 20, growth: 1.7,
+  },
+  guard: {
+    name: '側溝擋板',
+    desc: '從前緣往後裝擋板，幣比較不會掉進兩側溝',
+    levels: [0, 0.9, 1.8, 2.7, 3.6, 4.4],     // 擋板長度
+    base: 40, growth: 1.75,
   },
   lucky: {
     name: '大金幣機率',
     desc: '投幣時更常掉出大金幣（推下去值 10 枚）',
-    levels: [0.05, 0.08, 0.12, 0.16], // 每投一枚變成大金幣的機率
-    prices: [50, 120, 260],
+    levels: [0.05, 0.065, 0.08, 0.1, 0.12, 0.15], // 每投一枚變成大金幣的機率
+    base: 80, growth: 1.8,
   },
-  refill: {
-    name: '補幣加快',
-    desc: '手上少於 10 枚時，補滿 10 枚要等的時間變短',
-    levels: [6, 4, 3, 2],         // 每幾秒補 1 枚
-    prices: [25, 60, 140],
+  rain: {
+    name: '金幣雨機率',
+    desc: '每一秒都有小小的機會下一場金幣雨，升級讓機會變大',
+    levels: [0.004, 0.006, 0.008, 0.011, 0.014, 0.018], // 每秒下金幣雨的機率
+    base: 150, growth: 1.9,
+  },
+  rainSize: {
+    name: '金幣雨變大',
+    desc: '每場金幣雨撒下來的幣變多',
+    levels: [30, 40, 50, 65, 80, 100],        // 一場金幣雨幾枚
+    base: 300, growth: 2,
   },
 };
+for (const u of Object.values(UPGRADES)) {
+  u.prices = u.levels.slice(1).map((_, i) => Math.round(u.base * Math.pow(u.growth, i)));
+}
+const UPGRADE_KEYS = Object.keys(UPGRADES);
 const BIG_VALUE = 10;         // 大金幣推下去值幾枚
 const BIG_R = 0.55;
 const BIG_H = 0.14;
-const RAIN_PRICE = 30;       // 金幣雨的價錢
-const RAIN_COINS = 40;       // 金幣雨下幾枚
 
 // ===== 狀態 =====
 let wallet = START_WALLET;
@@ -71,7 +87,8 @@ let lastDrop = -1;
 let refillTimer = 0;
 let simTime = 0;
 let pusherPhase = 0;         // 推板走到來回的哪裡（0 到 1）
-const upgrades = { guard: 0, speed: 0, lucky: 0, refill: 0 };
+const upgrades = Object.fromEntries(UPGRADE_KEYS.map((k) => [k, 0]));
+let rainTimer = 0;           // 每滿一秒擲一次金幣雨
 let rainQueue = 0;           // 金幣雨還有幾枚要下
 const coins = [];
 
@@ -336,6 +353,7 @@ const walletEl = document.getElementById('wallet');
 const refillEl = document.getElementById('refill');
 const hintEl = document.getElementById('hint');
 const autoBtn = document.getElementById('autoBtn');
+const shopBtn = document.getElementById('shopBtn');
 // 手機沒有右鍵，用按鈕切換
 autoBtn.addEventListener('click', () => {
   setAuto(!autoDrop);
@@ -353,6 +371,7 @@ function bump(el) {
 let shopShownWallet = -1;
 function updateHud() {
   walletEl.textContent = wallet;
+  shopBtn.classList.toggle('ready', canAffordSomething());
   // 商店開著時，錢變了就更新按鈕能不能按
   if (shopEl.classList.contains('show') && shopShownWallet !== wallet) {
     shopShownWallet = wallet;
@@ -440,6 +459,7 @@ function aimFromEvent(e) {
 }
 
 const bigChance = new PseudoRandom(UPGRADES.lucky.levels[0]);
+const rainChance = new PseudoRandom(UPGRADES.rain.levels[0]);
 
 function setAuto(on) {
   autoDrop = on;
@@ -545,15 +565,39 @@ for (const b of document.querySelectorAll('#settings button[data-q]')) {
   b.addEventListener('click', () => applyQuality(b.dataset.q));
 }
 
+// ===== 金幣雨 =====
+const rainBanner = document.getElementById('rainBanner');
+function startRain() {
+  rainQueue = upValue('rainSize');
+  rainBanner.classList.remove('show');
+  void rainBanner.offsetWidth;
+  rainBanner.classList.add('show');
+  [880, 1100, 1320, 1760].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle'), k * 90));
+}
+
 // ===== 商店 =====
 const shopEl = document.getElementById('shop');
 const shopListEl = document.getElementById('shopList');
 const shopWalletEl = document.getElementById('shopWallet');
 
+// 上一項買過一次，下一項才會出現
+function shopVisible(i) {
+  return i === 0 || upgrades[UPGRADE_KEYS[i - 1]] >= 1;
+}
+
+function canAffordSomething() {
+  return UPGRADE_KEYS.some((key, i) => {
+    const lv = upgrades[key];
+    return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv];
+  });
+}
+
 function renderShop() {
   shopWalletEl.textContent = wallet;
   let html = '';
-  for (const [key, u] of Object.entries(UPGRADES)) {
+  UPGRADE_KEYS.forEach((key, i) => {
+    if (!shopVisible(i)) return;
+    const u = UPGRADES[key];
     const lv = upgrades[key];
     const max = u.prices.length;
     const dots = '●'.repeat(lv) + '○'.repeat(max - lv);
@@ -562,25 +606,21 @@ function renderShop() {
       ? '<button type="button" disabled>已滿級</button>'
       : `<button type="button" data-buy="${key}" ${wallet < price ? 'disabled' : ''}>${price} 枚</button>`;
     html += `<div class="item"><div class="info"><div class="name">${u.name}<span class="lv">${dots}</span></div><div class="desc">${u.desc}</div></div>${btn}</div>`;
-  }
-  html += `<div class="item"><div class="info"><div class="name">金幣雨</div><div class="desc">${RAIN_COINS} 枚金幣從天上撒下來，撒在檯面上推推看</div></div><button type="button" data-buy="rain" ${wallet < RAIN_PRICE || rainQueue > 0 ? 'disabled' : ''}>${RAIN_PRICE} 枚</button></div>`;
+  });
+  const next = UPGRADE_KEYS.findIndex((_, i) => !shopVisible(i));
+  if (next > 0) html += '<div class="item locked"><div class="info"><div class="desc">買下上面最後一項，就會出現新的升級</div></div></div>';
   shopListEl.innerHTML = html;
 }
 
 function buy(key) {
-  if (key === 'rain') {
-    if (wallet < RAIN_PRICE || rainQueue > 0) return;
-    wallet -= RAIN_PRICE;
-    rainQueue = RAIN_COINS;
-    shopEl.classList.remove('show');
-  } else {
-    const u = UPGRADES[key];
-    const lv = upgrades[key];
-    if (lv >= u.prices.length || wallet < u.prices[lv]) return;
-    wallet -= u.prices[lv];
-    upgrades[key]++;
-    if (key === 'guard') buildGuards();
-  }
+  const i = UPGRADE_KEYS.indexOf(key);
+  if (i < 0 || !shopVisible(i)) return;
+  const u = UPGRADES[key];
+  const lv = upgrades[key];
+  if (lv >= u.prices.length || wallet < u.prices[lv]) return;
+  wallet -= u.prices[lv];
+  upgrades[key]++;
+  if (key === 'guard') buildGuards();
   beep(660, 0.08, 0.06, 'triangle');
   setTimeout(() => beep(990, 0.12, 0.06, 'triangle'), 80);
   bump(walletEl);
@@ -588,7 +628,7 @@ function buy(key) {
   saveGame();
 }
 
-document.getElementById('shopBtn').addEventListener('click', () => {
+shopBtn.addEventListener('click', () => {
   document.getElementById('settings').classList.remove('show');
   renderShop();
   shopEl.classList.toggle('show');
@@ -611,6 +651,7 @@ function saveData() {
     upgrades: { ...upgrades },
     pusherPhase,
     bigCount: bigChance.count,
+    rainCount: rainChance.count,
     won,
     lost,
     coins: coins.map((c) => {
@@ -645,6 +686,7 @@ function applySave(d) {
   }
   pusherPhase = Number(d.pusherPhase) || 0;
   bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
+  rainChance.count = Math.max(0, Math.floor(Number(d.rainCount) || 0));
   won = Number(d.won) || 0;
   lost = Number(d.lost) || 0;
   for (const c of (d.coins || []).slice(0, MAX_COINS)) {
@@ -737,6 +779,14 @@ function tick(now) {
     lastDrop = simTime;
   }
 
+  // 每一秒擲一次金幣雨（保底式假隨機）
+  rainTimer += frame;
+  if (rainTimer >= 1) {
+    rainTimer -= 1;
+    if (rainChance.p !== upValue('rain')) rainChance.setChance(upValue('rain'));
+    if (rainQueue <= 0 && rainChance.roll()) startRain();
+  }
+
   // 金幣雨：一枚一枚從上面撒下來
   if (rainQueue > 0 && Math.random() < 0.6) {
     const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.2);
@@ -781,5 +831,5 @@ buildGuards();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, setAuto, saveGame, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, PseudoRandom, get auto() { return autoDrop; }, setAuto, saveGame, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); } };
 requestAnimationFrame((t) => { lastT = t; tick(t); });

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>推幣機</title>
-  <link rel="stylesheet" href="style.css?v=0.0.11">
+  <link rel="stylesheet" href="style.css?v=0.0.12">
 </head>
 <body>
   <div id="hud">
-    <div class="title">推幣機 <span class="ver">v0.0.11</span></div>
+    <div class="title">推幣機 <span class="ver">v0.0.12</span></div>
     <div class="money">
       <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
     </div>
@@ -44,6 +44,7 @@
     </div>
     <div id="shopList"></div>
   </div>
+  <div id="rainBanner">金幣雨！</div>
   <div id="hint">點檯面投幣，按住可以連投，右鍵（或「自動」）自動連續投</div>
   <div id="loading">機台準備中……</div>
   <canvas id="view"></canvas>
@@ -66,6 +67,6 @@
       if (!window.__game) showLoadError(e.reason && e.reason.message ? e.reason.message : e.reason);
     });
   </script>
-  <script type="module" src="app.js?v=0.0.11"></script>
+  <script type="module" src="app.js?v=0.0.12"></script>
 </body>
 </html>

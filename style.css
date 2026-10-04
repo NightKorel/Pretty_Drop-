@@ -225,3 +225,42 @@ html, body {
   border-color: rgba(255, 255, 255, 0.2);
   cursor: default;
 }
+
+/* 商店有買得起的東西時，按鈕右上角亮一個小點 */
+#shopBtn { position: relative; }
+#shopBtn.ready::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+}
+.item.locked .desc { font-style: normal; text-align: center; width: 100%; }
+
+#rainBanner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 30%;
+  text-align: center;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: var(--gold);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 0 24px rgba(244, 201, 93, 0.6);
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+}
+#rainBanner.show { animation: rainIn 2.2s ease-out forwards; }
+@keyframes rainIn {
+  0% { opacity: 0; transform: scale(0.6); }
+  15% { opacity: 1; transform: scale(1.1); }
+  25% { transform: scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
