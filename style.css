@@ -1,0 +1,125 @@
+:root {
+  --bg: #14121c;
+  --panel: rgba(20, 18, 28, 0.78);
+  --gold: #f4c95d;
+  --text: #f3eee2;
+  --dim: #a9a2b8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+#view {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+#hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.title { font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+.ver { font-size: 12px; color: var(--dim); font-weight: 400; letter-spacing: 0; }
+
+.money { display: flex; gap: 8px; }
+.box {
+  background: var(--panel);
+  border: 1px solid rgba(244, 201, 93, 0.35);
+  border-radius: 10px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.box .label { font-size: 12px; color: var(--dim); }
+.box span:nth-child(2) {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  min-width: 2ch;
+  text-align: right;
+}
+.box .unit { font-size: 12px; color: var(--dim); }
+
+.pop { animation: pop 0.35s ease-out; }
+@keyframes pop {
+  0% { transform: scale(1.5); }
+  100% { transform: scale(1); }
+}
+
+.refill {
+  width: 100%;
+  text-align: right;
+  font-size: 12px;
+  color: var(--dim);
+  min-height: 1em;
+}
+
+#hint {
+  position: fixed;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--dim);
+  z-index: 2;
+  pointer-events: none;
+  transition: opacity 1s;
+}
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--dim);
+  z-index: 3;
+  background: var(--bg);
+}
+#loading.hide { display: none; }
+
+.float {
+  position: fixed;
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 20px;
+  pointer-events: none;
+  z-index: 4;
+  animation: floatUp 0.9s ease-out forwards;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-40px); }
+}
