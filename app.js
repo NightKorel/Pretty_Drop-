@@ -2,8 +2,8 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.16';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.16';
+import { makeCoinMaterials } from './coin.js?v=0.0.17';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.17';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -53,7 +53,7 @@ const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得
 const UPGRADES = {
   refill: {
     name: '媽媽十元',
-    desc: '冒著被打的風險……每隔一段時間跟媽媽討 10 枚。升級讓你討得更勤，手上滿 100 枚就不好意思再討了。',
+    desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
     levels: [20, 17, 14, 11, 8, 6],           // 媽媽幾秒給一次
     base: 8, growth: 1.6,
   },
