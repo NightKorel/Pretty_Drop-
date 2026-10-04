@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.22';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.22';
+import { makeCoinMaterials } from './coin.js?v=0.0.23';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.23';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.22';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.22';
+} from './slime.js?v=0.0.23';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.23';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -515,6 +515,8 @@ const SOUND_KINDS = {
   mom: '媽媽給錢',
   shop: '商店購買',
   doll: '娃娃',
+  wheel: '轉盤',
+  item: '道具',
   ach: '成就達成',
 };
 const SOUND_KEY = 'pretty_drop_sound';
@@ -686,7 +688,10 @@ function applyQuality(q) {
   hemi.intensity = q === 'low' ? 1.4 : 0.6;
   coinMeshMat = q === 'low' ? coinMatPlain : coinMatFancy;
   bigMeshMat = q === 'low' ? bigMatPlain : bigMatFancy;
-  for (const c of coins) c.mesh.material = c.value > 1 ? bigMeshMat : coinMeshMat;
+  for (const c of coins) {
+    if (c.glued) c.mesh.material = q === 'low' ? glueMatPlain : glueMats;
+    else c.mesh.material = c.value > 1 ? bigMeshMat : coinMeshMat;
+  }
   // 娃娃換畫質要整隻重做（高／中是真的透光，低是假的半透明）
   for (const d of dolls) {
     scene.remove(d.mesh);
@@ -1024,6 +1029,9 @@ for (const b of document.querySelectorAll('#settings button[data-cheat]')) {
       // 每一套都補到解鎖下一套需要的種數
       for (const st of SLIME_SETS) for (let i = 0; i < 6; i++) collection[`${st.id}.${i}`] = Math.max(1, collection[`${st.id}.${i}`] || 0);
     } else if (c === 'ach') achPoints += 10;
+    else if (c === 'tickets') tickets += 5;
+    else if (c === 'items') for (const k of Object.keys(items)) items[k] += 3;
+    updateItemBar();
     bump(walletEl);
     toast(`作弊：${b.textContent}`);
     saveGame();
@@ -1044,6 +1052,31 @@ for (const b of document.querySelectorAll('#settings button[data-q]')) {
 const rainBanner = document.getElementById('rainBanner');
 let rainSpawn = 0;
 let rainRate = 0;
+// ===== 轉盤券與特殊道具 =====
+// 收集一隻娃娃拿 1 張轉盤券（傳說 3 張）。轉盤轉出錢或道具，道具放在畫面下方隨時用。
+const ITEMS = {
+  wind: { name: '一陣風', desc: '往前吹 2 秒，把檯面上的幣往前推' },
+  glue: { name: '黏黏球', desc: '把一小堆幣黏成一大塊' },
+  quake: { name: '地震', desc: '檯面抖一抖，把卡住的幣抖鬆' },
+};
+// 轉盤的格子（順時針）。weight 越大越容易轉到；大獎用保底式假隨機另外擲
+const WHEEL = [
+  { label: '50 枚', coins: 50, weight: 5, color: '#3b3150' },
+  { label: '一陣風', item: 'wind', weight: 4, color: '#2f4a5e' },
+  { label: '100 枚', coins: 100, weight: 3, color: '#4a3b2a' },
+  { label: '黏黏球', item: 'glue', weight: 4, color: '#2f5a44' },
+  { label: '150 枚', coins: 150, weight: 2, color: '#3b3150' },
+  { label: '地震', item: 'quake', weight: 4, color: '#5a3a3a' },
+  { label: '金幣雨', rain: true, weight: 2, color: '#2f4a5e' },
+  { label: '大獎 500 枚', coins: 500, jackpot: true, weight: 0, color: '#7a5a1a' },
+];
+const JACKPOT_CHANCE = 0.05; // 每轉一次中大獎的機率（保底式）
+let tickets = 0;
+const items = { wind: 0, glue: 0, quake: 0 };
+let windTime = 0;
+let quakeTime = 0;
+let quakeTick = 0;
+
 function startRain() {
   stats.rains++;
   rainQueue = upValue('rainSize');
@@ -1054,6 +1087,234 @@ function startRain() {
   rainBanner.classList.add('show');
   [880, 1100, 1320, 1760].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'rain'), k * 90));
 }
+
+// 道具效果：一陣風、地震在 stepSim 裡每一步施力；黏黏球馬上把一小堆幣黏起來
+const glueMats = coinMatFancy.map((m) => {
+  const c = m.clone();
+  c.color = c.color.clone().multiply(new THREE.Color(0xb8f0b0)); // 黏住的幣帶一點綠
+  return c;
+});
+const glueMatPlain = new THREE.MeshLambertMaterial({ color: 0x9ccf6a, emissive: 0x102000 });
+
+function useItem(key) {
+  if (!items[key]) return;
+  items[key]--;
+  if (key === 'wind') {
+    windTime = 2;
+    toast('一陣風！');
+  } else if (key === 'quake') {
+    quakeTime = 1.5;
+    toast('地震！');
+  } else if (key === 'glue') {
+    glueCoins();
+  }
+  beep(520, 0.2, 0.06, 'triangle', 'item');
+  setTimeout(() => beep(780, 0.2, 0.05, 'triangle', 'item'), 120);
+  updateItemBar();
+  saveGame();
+}
+
+// 在檯面中間一帶挑一枚幣，把它附近的幾枚黏成一塊（推起來會整塊一起動）
+function glueCoins() {
+  const onTable = coins.filter((c) => {
+    const t = c.body.translation();
+    return t.y > 0 && t.y < 1 && t.z > -2.5 && t.z < FRONT_Z - 0.8 && Math.abs(t.x) < halfW - 0.6;
+  });
+  if (!onTable.length) { toast('檯面上沒有幣可以黏'); return; }
+  const center = onTable[Math.floor(Math.random() * onTable.length)];
+  const p0 = center.body.translation();
+  const near = onTable
+    .map((c) => ({ c, d: Math.hypot(c.body.translation().x - p0.x, c.body.translation().z - p0.z) }))
+    .filter((o) => o.c !== center && o.d < 1.3)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 7)
+    .map((o) => o.c);
+  const q1 = new THREE.Quaternion().copy(center.body.rotation());
+  const q1inv = q1.clone().invert();
+  for (const c of near) {
+    const p = c.body.translation();
+    const local = new THREE.Vector3(p.x - p0.x, p.y - p0.y, p.z - p0.z).applyQuaternion(q1inv);
+    const q2 = new THREE.Quaternion().copy(c.body.rotation());
+    const frame2 = q2.clone().invert().multiply(q1);
+    const data = RAPIER.JointData.fixed(
+      { x: local.x, y: local.y, z: local.z }, { x: 0, y: 0, z: 0, w: 1 },
+      { x: 0, y: 0, z: 0 }, { x: frame2.x, y: frame2.y, z: frame2.z, w: frame2.w },
+    );
+    world.createImpulseJoint(data, center.body, c.body, true);
+  }
+  for (const c of [center, ...near]) {
+    c.glued = true;
+    c.mesh.material = quality === 'low' ? glueMatPlain : glueMats;
+  }
+  toast(`黏黏球！黏住了 ${near.length + 1} 枚幣`);
+}
+
+// 每一步：一陣風往前推、地震亂抖
+function applyEffects() {
+  if (windTime > 0) {
+    windTime -= STEP;
+    for (const c of coins) {
+      const t = c.body.translation();
+      if (t.y < -0.5 || t.z < -4) continue;
+      c.body.applyImpulse({ x: 0, y: 0, z: c.body.mass() * 4 * STEP }, true);
+    }
+    for (const d of dolls) d.body.applyImpulse({ x: 0, y: 0, z: d.body.mass() * 2.5 * STEP }, true);
+  }
+  if (quakeTime > 0) {
+    quakeTime -= STEP;
+    quakeTick += STEP;
+    if (quakeTick >= 0.12) {
+      quakeTick = 0;
+      for (const c of coins) {
+        if (c.body.translation().y < -0.5) continue;
+        const m = c.body.mass();
+        c.body.applyImpulse({ x: (Math.random() - 0.5) * m * 0.8, y: m * (0.6 + Math.random() * 0.6), z: (Math.random() - 0.2) * m * 0.8 }, true);
+      }
+    }
+  }
+}
+
+// ===== 轉盤 =====
+const wheelEl = document.getElementById('wheel');
+const wheelCanvas = document.getElementById('wheelCanvas');
+const jackpotChance = new PseudoRandom(JACKPOT_CHANCE);
+let wheelAngle = 0;
+let wheelSpinning = false;
+
+function drawWheel() {
+  const ctx = wheelCanvas.getContext('2d');
+  const W = wheelCanvas.width;
+  const R = W / 2 - 6;
+  ctx.clearRect(0, 0, W, W);
+  ctx.save();
+  ctx.translate(W / 2, W / 2);
+  ctx.rotate(wheelAngle);
+  const n = WHEEL.length;
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((i + 1) / n) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R, a0, a1);
+    ctx.closePath();
+    ctx.fillStyle = WHEEL[i].color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(244,201,93,0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.save();
+    ctx.rotate((a0 + a1) / 2);
+    ctx.fillStyle = WHEEL[i].jackpot ? '#f4c95d' : '#f3eee2';
+    ctx.font = `bold ${Math.round(W * 0.045)}px sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(WHEEL[i].label, R - 12, 0);
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, R * 0.14, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4c95d';
+  ctx.fill();
+  ctx.restore();
+  // 上方的指針
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - 12, 2);
+  ctx.lineTo(W / 2 + 12, 2);
+  ctx.lineTo(W / 2, 28);
+  ctx.closePath();
+  ctx.fillStyle = '#f4c95d';
+  ctx.fill();
+}
+
+function renderWheelInfo() {
+  document.getElementById('wheelTickets').textContent = tickets;
+  document.getElementById('spinBtn').disabled = tickets <= 0 || wheelSpinning;
+}
+
+// 先決定結果，再讓轉盤轉到那一格
+function pickWheel() {
+  if (jackpotChance.roll()) return WHEEL.findIndex((w) => w.jackpot);
+  const total = WHEEL.reduce((n, w) => n + w.weight, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < WHEEL.length; i++) {
+    r -= WHEEL[i].weight;
+    if (r < 0) return i;
+  }
+  return 0;
+}
+
+function spinWheel() {
+  if (wheelSpinning || tickets <= 0) return;
+  tickets--;
+  wheelSpinning = true;
+  renderWheelInfo();
+  const idx = pickWheel();
+  const n = WHEEL.length;
+  // 指針在上方：讓第 idx 格的中間轉到上方，多轉幾圈
+  const slice = (Math.PI * 2) / n;
+  const target = -(idx + 0.5) * slice + (Math.random() - 0.5) * slice * 0.6;
+  const start = wheelAngle;
+  const base = start - (start % (Math.PI * 2));
+  const end = base + Math.PI * 2 * 5 + target;
+  const t0 = performance.now();
+  const dur = 3200;
+  let lastTickSlice = -1;
+  const anim = (now) => {
+    const k = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    wheelAngle = start + (end - start) * e;
+    const cur = Math.floor(wheelAngle / slice);
+    if (cur !== lastTickSlice) { lastTickSlice = cur; beep(1400, 0.03, 0.03, 'square', 'wheel'); }
+    drawWheel();
+    if (k < 1) requestAnimationFrame(anim);
+    else finishSpin(idx);
+  };
+  requestAnimationFrame(anim);
+}
+
+function finishSpin(idx) {
+  wheelSpinning = false;
+  const w = WHEEL[idx];
+  if (w.coins) {
+    wallet += w.coins;
+    bump(walletEl);
+  } else if (w.item) {
+    items[w.item]++;
+  } else if (w.rain) {
+    startRain();
+  }
+  document.getElementById('wheelResult').textContent = `轉到：${w.label}`;
+  const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : [990, 1320];
+  notes.forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'wheel'), k * 90));
+  renderWheelInfo();
+  updateItemBar();
+  saveGame();
+}
+
+document.getElementById('spinBtn').addEventListener('click', spinWheel);
+document.getElementById('wheelClose').addEventListener('click', () => wheelEl.classList.remove('show'));
+
+// 畫面下方的道具列（轉盤券和三種道具）
+const itemBarEl = document.getElementById('itemBar');
+function updateItemBar() {
+  let html = `<button type="button" data-open="wheel" class="${tickets > 0 ? 'ready' : ''}">轉盤券 ×${tickets}</button>`;
+  for (const [k, it] of Object.entries(ITEMS)) {
+    html += `<button type="button" data-item="${k}" ${items[k] ? '' : 'disabled'} title="${it.desc}">${it.name} ×${items[k]}</button>`;
+  }
+  itemBarEl.innerHTML = html;
+}
+itemBarEl.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.open === 'wheel') {
+    document.getElementById('wheelResult').textContent = '';
+    renderWheelInfo();
+    drawWheel();
+    wheelEl.classList.add('show');
+  } else if (b.dataset.item) {
+    useItem(b.dataset.item);
+  }
+});
 
 // ===== 商店 =====
 const shopEl = document.getElementById('shop');
@@ -1137,6 +1398,9 @@ function saveData() {
     bigCount: bigChance.count,
     rainCount: rainChance.count,
     dollCount: dollChance.count,
+    jackpotCount: jackpotChance.count,
+    tickets,
+    items: { ...items },
     rareCount: rareChance.count,
     legendCount: legendChance.count,
     collection: { ...collection },
@@ -1187,6 +1451,9 @@ function applySave(d) {
   bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
   rainChance.count = Math.max(0, Math.floor(Number(d.rainCount) || 0));
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
+  jackpotChance.count = Math.max(0, Math.floor(Number(d.jackpotCount) || 0));
+  tickets = Math.max(0, Math.floor(Number(d.tickets) || 0));
+  for (const k of Object.keys(items)) items[k] = Math.max(0, Math.floor(Number(d.items?.[k]) || 0));
   rareChance.count = Math.max(0, Math.floor(Number(d.rareCount) || 0));
   legendChance.count = Math.max(0, Math.floor(Number(d.legendCount) || 0));
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
@@ -1257,6 +1524,7 @@ let lastT = performance.now();
 function stepSim() {
   simTime += STEP;
   movePusher();
+  applyEffects();
   world.step();
   for (let i = coins.length - 1; i >= 0; i--) {
     const b = coins[i].body.translation();
@@ -1298,6 +1566,10 @@ function stepSim() {
       let msg = `<span style="color:${r.color}">${r.name}</span>　${info.skin.name}${isNew ? '　<span class="newTag">新！</span>' : ''}　+${info.value} 枚`;
       const opened = lockedBefore.filter((sid) => setUnlocked(SET_BY_ID[sid]));
       if (opened.length) msg += `<br>解鎖新的一套：「${SET_BY_ID[opened[0]].name}」，可以在圖鑑換`;
+      const gain = info.rarity === 'legend' ? 3 : 1;
+      tickets += gain;
+      msg += `<br>轉盤券 +${gain}`;
+      updateItemBar();
       toast(msg);
       [880, 1175, 1480, 1760, 2350].forEach((f, k) => setTimeout(() => beep(f, 0.16, 0.06, 'triangle', 'doll'), k * 80));
       if (bookEl.classList.contains('show')) renderBook();
@@ -1407,10 +1679,11 @@ const saved = loadSave();
 if (saved) applySave(saved);
 else prefill();
 buildGuards();
+updateItemBar();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, items, useItem, get tickets() { return tickets; }, spinWheel, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };

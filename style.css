@@ -358,7 +358,7 @@ html, body {
 #settings .cheats button { padding: 8px 4px; font-size: 12px; }
 #settings .tabs .tab { font-size: 12px; }
 
-#viewer {
+#viewer, #wheel {
   display: none;
   position: fixed;
   inset: 0;
@@ -367,7 +367,7 @@ html, body {
   align-items: center;
   justify-content: center;
 }
-#viewer.show { display: flex; }
+#viewer.show, #wheel.show { display: flex; }
 .viewerBox {
   position: relative;
   width: min(360px, calc(100% - 32px));
@@ -381,7 +381,7 @@ html, body {
 #viewerName { font-size: 18px; font-weight: 700; margin-top: 8px; }
 #viewerInfo { font-size: 13px; color: var(--dim); margin-top: 4px; }
 .viewerTip { font-size: 12px; color: var(--dim); margin-top: 8px; opacity: 0.7; }
-#viewerClose {
+#viewerClose, #wheelClose {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -393,3 +393,46 @@ html, body {
   z-index: 1;
 }
 .bookCell.owned { cursor: pointer; }
+
+#wheelCanvas { width: 100%; aspect-ratio: 1; display: block; margin-top: 8px; }
+#wheelResult { min-height: 1.4em; font-size: 17px; font-weight: 700; color: var(--gold); margin-top: 6px; }
+#spinBtn {
+  margin-top: 8px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--gold);
+  background: var(--gold);
+  color: #1a1408;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+#spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
+
+#itemBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 40px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px;
+  z-index: 2;
+  pointer-events: none;
+}
+#itemBar button {
+  pointer-events: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+#itemBar button:disabled { opacity: 0.4; cursor: default; }
+#itemBar button.ready { border-color: var(--gold); color: var(--gold); font-weight: 700; }
