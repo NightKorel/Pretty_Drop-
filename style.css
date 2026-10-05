@@ -669,3 +669,30 @@ body.fever #feverBar b { box-shadow: 0 0 8px #ff8fab; }
 .float.gem-blue { color: #8fbcff; text-shadow: 0 0 10px rgba(80, 140, 255, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
 .float.gem-pink { color: #ffa3cc; text-shadow: 0 0 10px rgba(255, 110, 175, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
 .float.gem-pearl { color: #fff3e2; text-shadow: 0 0 10px rgba(255, 220, 235, 0.95), 0 0 18px rgba(180, 220, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.6); }
+
+/* 成就商店的預覽：面板收起來，下面一條顯示名字和價錢，可以直接買或返回 */
+.item .info[data-preview] { cursor: pointer; }
+.pvTag { font-size: 11px; font-weight: 400; color: var(--dim); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; padding: 0 5px; margin-left: 8px; vertical-align: 1px; }
+#previewBar {
+  display: none;
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  z-index: 6;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(20, 18, 28, 0.95);
+  border: 1px solid rgba(244, 201, 93, 0.5);
+  border-radius: 14px;
+}
+#previewBar.show { display: flex; }
+.pvInfo { flex: 1; min-width: 0; }
+#previewName { font-weight: 700; font-size: 15px; }
+#previewPrice { color: var(--gold); font-size: 12px; margin-top: 2px; }
+#previewBar button { width: 72px; padding: 9px 0; font-size: 14px; font-weight: 700; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); cursor: pointer; }
+#previewAct { background: var(--gold); color: #1a1408; }
+#previewAct:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
+#previewBack { background: transparent; color: var(--text); }

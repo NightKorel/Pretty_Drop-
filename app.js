@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.79';
-import { drawDigits } from './digits.js?v=0.0.79';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.79';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.79';
+import { makeCoinMaterials } from './coin.js?v=0.0.80';
+import { drawDigits } from './digits.js?v=0.0.80';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.80';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.80';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.79';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.79';
+} from './slime.js?v=0.0.80';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.80';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -707,9 +707,9 @@ document.addEventListener('toggle', (e) => {
   try { localStorage.setItem(GROUP_KEY, JSON.stringify(groupOpen)); } catch (err) { /* 存不了也沒關係 */ }
 }, true);
 // 一行可以買的東西：名字、等級、說明、價錢（買得起是金色），右邊一個一樣大的按鈕
-function buyRowHtml({ name, lv = '', desc = '', price = '', canPay = true, btn }) {
+function buyRowHtml({ name, lv = '', desc = '', price = '', canPay = true, btn, info = '' }) {
   const priceHtml = price ? `<div class="price${canPay ? '' : ' short'}">${price}</div>` : '';
-  return `<div class="item"><div class="info"><div class="name">${name}${lv ? `<span class="lv">${lv}</span>` : ''}</div>${desc ? `<div class="desc">${desc}</div>` : ''}${priceHtml}</div>${btn}</div>`;
+  return `<div class="item"><div class="info"${info}><div class="name">${name}${lv ? `<span class="lv">${lv}</span>` : ''}</div>${desc ? `<div class="desc">${desc}</div>` : ''}${priceHtml}</div>${btn}</div>`;
 }
 
 const walletEl = document.getElementById('wallet');
@@ -1524,7 +1524,7 @@ function renderAch() {
       html += groupHtml(`ach.${cat}`, title, `${n} / ${list.length}`, inner);
     }
   } else {
-    html += '<div class="bookTip">用成就點數買裝飾品，只改外觀，不影響遊戲。</div>';
+    html += '<div class="bookTip">用成就點數買裝飾品，只改外觀，不影響遊戲。點名字可以先預覽。</div>';
     if (!DECORATIONS.length) {
       html += '<div class="bookLock">裝飾品準備中，之後會上架。</div>';
     }
@@ -1535,7 +1535,8 @@ function renderAch() {
       for (const d of items) {
         const owned = ownedDecor[d.id];
         inner += buyRowHtml({
-          name: d.name,
+          info: ` data-preview="${d.id}"`,
+          name: `${d.name}<span class="pvTag">預覽</span>`,
           price: owned ? (equipped[slot] === d.id ? '裝著' : '已擁有') : `${d.price} 點`,
           canPay: owned || achPoints >= d.price,
           btn: owned ? `<button type="button" data-decoruse="${d.id}">${equipped[slot] === d.id ? '拿下' : '裝上'}</button>`
@@ -1549,7 +1550,62 @@ function renderAch() {
   achListEl.innerHTML = html;
 }
 
+// 預覽（納可定：裝飾品要有預覽）：成就面板先收起來，把裝飾品暫時裝上去看，下面一條可以直接買或返回
+const previewBar = document.getElementById('previewBar');
+let previewing = null;
+function previewDecor(id) {
+  const d = DECORATIONS.find((x) => x.id === id);
+  if (!d) return;
+  const cur = DECORATIONS.find((x) => x.id === equipped[d.slot]);
+  if (cur) cur.remove(decorView);
+  d.apply(decorView);
+  previewing = d;
+  achEl.classList.remove('show');
+  const owned = ownedDecor[d.id];
+  document.getElementById('previewName').textContent = d.name;
+  document.getElementById('previewPrice').textContent = owned ? (equipped[d.slot] === d.id ? '裝著' : '已擁有') : `${d.price} 點（手上 ${achPoints} 點）`;
+  const act = document.getElementById('previewAct');
+  act.textContent = owned ? '裝上' : '購買';
+  act.disabled = owned ? equipped[d.slot] === d.id : achPoints < d.price;
+  previewBar.classList.add('show');
+}
+function cancelPreview() {
+  const d = previewing;
+  if (!d) return;
+  previewing = null;
+  d.remove(decorView);
+  const cur = DECORATIONS.find((x) => x.id === equipped[d.slot]);
+  if (cur) cur.apply(decorView);
+  previewBar.classList.remove('show');
+}
+function endPreview() {
+  if (!previewing) return;
+  cancelPreview();
+  renderAch();
+  achEl.classList.add('show');
+}
+// 預覽中按了上面其他按鈕：換回原本的樣子
+document.addEventListener('click', (e) => {
+  if (previewing && e.target.closest('#shopBtn, #bookBtn, #settingsBtn, #achBtn, #lotteryBtn')) cancelPreview();
+}, true);
+document.getElementById('previewBack').addEventListener('click', endPreview);
+document.getElementById('previewAct').addEventListener('click', () => {
+  const d = previewing;
+  if (!d) return;
+  endPreview();
+  if (!ownedDecor[d.id]) {
+    if (achPoints < d.price) return;
+    achPoints -= d.price;
+    ownedDecor[d.id] = true;
+  }
+  if (equipped[d.slot] !== d.id) equipDecor(d.id);
+  saveGame();
+  renderAch();
+});
+
 achListEl.addEventListener('click', (e) => {
+  const pv = e.target.closest('[data-preview]');
+  if (pv) { previewDecor(pv.dataset.preview); return; }
   const tab = e.target.closest('button[data-achtab]');
   if (tab) { achTab = tab.dataset.achtab; renderAch(); return; }
   const buyB = e.target.closest('button[data-decorbuy]');
@@ -1558,7 +1614,7 @@ achListEl.addEventListener('click', (e) => {
     if (d && !ownedDecor[d.id] && achPoints >= d.price) {
       achPoints -= d.price;
       ownedDecor[d.id] = true;
-      equipDecor(d.id);
+      if (equipped[d.slot] !== d.id) equipDecor(d.id);
       saveGame();
     }
     renderAch();
