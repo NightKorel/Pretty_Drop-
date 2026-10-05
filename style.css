@@ -540,3 +540,18 @@ html, body {
 #celebValue { font-size: 26px; margin-top: 0; line-height: 1.1; }
 #celebExtra { font-size: 12px; margin-top: 2px; min-height: 0; }
 @media (max-width: 480px) { .celebCard { margin-top: 118px; } }
+
+/* 輪迴分頁 */
+.rebirthBox {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(244, 201, 93, 0.4);
+  border-radius: 10px;
+  background: rgba(244, 201, 93, 0.06);
+  line-height: 1.7;
+  font-size: 14px;
+}
+.rebirthBox b, .rebirthHead b { color: var(--gold); }
+.rebirthBox .bookNote { margin: 6px 0 10px; }
+#rebirthGo { width: 100%; padding: 10px 0; font-size: 15px; font-weight: 700; }
+.rebirthHead { margin: 4px 0 8px; font-weight: 700; }

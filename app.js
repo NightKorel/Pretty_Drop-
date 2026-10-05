@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.44';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.44';
+import { makeCoinMaterials } from './coin.js?v=0.0.45';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.45';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.44';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.44';
+} from './slime.js?v=0.0.45';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.45';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -136,6 +136,33 @@ for (const u of Object.values(UPGRADES)) {
   });
 }
 const UPGRADE_KEYS = Object.keys(UPGRADES);
+
+// ===== 輪迴 =====
+// 玩家自己選什麼時候輪迴：清空錢、商店升級、檯面；保留圖鑑、成就、裝飾品和輪迴點買的東西。
+// 輪迴點照「這一輪累計賺的錢」換，像經驗值表：第 n 點要累計賺到 REBIRTH_BASE × n^1.5 枚（越後面越難）。
+// 數值是 Claude 先隨意設定的（2026-10-05），之後看手感調。
+const REBIRTH_BASE = 2000;
+function rebirthNeed(n) {
+  const x = REBIRTH_BASE * Math.pow(n, 1.5);
+  return x < 10000 ? Math.round(x / 100) * 100 : Math.round(x / 1000) * 1000;
+}
+// 輪迴點商店：costs 是每一級要幾點
+const PERKS = {
+  mult: { name: '收入加成', desc: '推下來的幣、娃娃、轉盤都多拿 10%（每一級）', costs: [1, 2, 3, 5, 8] },
+  startMoney: { name: '初始資金', desc: '輪迴後一開始手上多 50 枚（每一級）', costs: [1, 1, 2, 3, 4] },
+  headStart: { name: '起跑', desc: '輪迴後「媽媽十元」「投幣速度」「推板加速」直接從這一級開始', costs: [2, 3, 5] },
+  discount: { name: '商店打折', desc: '商店升級便宜 8%（每一級）', costs: [1, 2, 4, 6] },
+  dollCap: { name: '娃娃上限', desc: '檯面上同時可以多放 1 隻娃娃（每一級）', costs: [3, 6] },
+};
+const PERK_KEYS = Object.keys(PERKS);
+const rebirth = { points: 0, count: 0, perks: Object.fromEntries(PERK_KEYS.map((k) => [k, 0])) };
+const perkLv = (k) => rebirth.perks[k];
+// 商店升級的價錢（打折後一樣取乾脆的數字）
+function upPrice(key, lv = upgrades[key]) {
+  const p = UPGRADES[key].prices[lv];
+  const off = 1 - perkLv('discount') * 0.08;
+  return off < 1 ? niceMoney(p * off) : p;
+}
 const BIG_VALUE = 10;         // 大金幣推下去值幾枚
 const BIG_R = 0.7;
 const BIG_H = 0.18;
@@ -166,7 +193,8 @@ const dolls = [];            // 檯面上的史萊姆娃娃
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
 const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 35 秒一隻）
 let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
-const MAX_DOLLS = 4;         // 檯面上最多同時幾隻
+const MAX_DOLLS = 4;         // 檯面上最多同時幾隻（輪迴點「娃娃上限」可以再加）
+const maxDolls = () => MAX_DOLLS + perkLv('dollCap');
 let dollTimer = 0;
 
 // ===== 保底式假隨機 =====
@@ -512,6 +540,17 @@ function prefill() {
   }
   // 開局先放一隻普通的娃娃在檯面中間，讓玩家一眼看到目標
   spawnDoll('jelly.0', 1, { x: 0.3, y: 1.6, z: -0.6 });
+}
+
+// 賺錢都走這裡：算上輪迴的收入加成（小數存起來，湊滿 1 枚再給）
+let earnCarry = 0;
+function earn(v) {
+  const x = v * (1 + perkLv('mult') * 0.1) + earnCarry;
+  const n = Math.floor(x);
+  earnCarry = x - n;
+  wallet += n;
+  won += n;
+  return n;
 }
 
 // ===== 介面 =====
@@ -1768,7 +1807,7 @@ function spinWheel(free) {
 function finishSpin(idx) {
   wheelSpinning = false;
   const w = WHEEL[idx];
-  wallet += w.coins;
+  earn(w.coins);
   bump(walletEl);
   document.getElementById('wheelResult').textContent = `轉到：${w.label}`;
   const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : [990, 1320];
@@ -1801,20 +1840,28 @@ function shopVisible(i) {
 function canAffordSomething() {
   return UPGRADE_KEYS.some((key, i) => {
     const lv = upgrades[key];
-    return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv];
+    return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key);
   });
 }
 
+let shopTab = 'up';
+let rebirthArmed = 0;        // 輪迴按鈕按第一次只是確認，3 秒內再按一次才真的輪迴
 function renderShop() {
   shopWalletEl.textContent = wallet;
-  let html = '';
+  let html = '<div class="bookTabs">'
+    + `<button type="button" class="bookTab${shopTab === 'up' ? ' on' : ''}" data-shoptab="up">升級</button>`
+    + `<button type="button" class="bookTab${shopTab === 'rebirth' ? ' on' : ''}" data-shoptab="rebirth">輪迴${rebirthPending() ? `（+${rebirthPending()}）` : ''}</button></div>`;
+  if (shopTab === 'rebirth') {
+    shopListEl.innerHTML = html + rebirthHtml();
+    return;
+  }
   UPGRADE_KEYS.forEach((key, i) => {
     if (!shopVisible(i)) return;
     const u = UPGRADES[key];
     const lv = upgrades[key];
     const max = u.prices.length;
     const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
-    const price = u.prices[lv];
+    const price = lv < max ? upPrice(key) : 0;
     const btn = lv >= max
       ? '<button type="button" disabled>已滿級</button>'
       : `<button type="button" data-buy="${key}" ${wallet < price ? 'disabled' : ''}>${price} 枚</button>`;
@@ -1825,13 +1872,83 @@ function renderShop() {
   shopListEl.innerHTML = html;
 }
 
+// 現在輪迴可以拿到幾點
+function rebirthPending() {
+  let n = 0;
+  while (rebirthNeed(n + 1) <= won) n++;
+  return n;
+}
+function rebirthHtml() {
+  const n = rebirthPending();
+  const need = rebirthNeed(n + 1);
+  let html = `<div class="rebirthBox">
+    <div>這一輪累計賺了 <b>${Math.floor(won)}</b> 枚</div>
+    <div>現在輪迴可以拿到 <b>${n}</b> 點輪迴點（再賺 ${need - Math.floor(won)} 枚多 1 點）</div>
+    <div class="bookNote">輪迴會清空：手上的錢、商店升級、檯面上的東西。<br>會保留：圖鑑、成就、裝飾品、輪迴點和輪迴點買的東西。</div>
+    <button type="button" id="rebirthGo" ${n ? '' : 'disabled'}>${rebirthArmed ? `確定？再按一次就輪迴（+${n} 點）` : n ? `輪迴（+${n} 點）` : `累計賺到 ${rebirthNeed(1)} 枚才能輪迴`}</button>
+  </div>
+  <div class="rebirthHead">輪迴點：<b>${rebirth.points}</b> 點${rebirth.count ? `　已經輪迴 ${rebirth.count} 次` : ''}</div>`;
+  for (const k of PERK_KEYS) {
+    const p = PERKS[k];
+    const lv = perkLv(k);
+    const max = p.costs.length;
+    const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
+    const btn = lv >= max
+      ? '<button type="button" disabled>已滿級</button>'
+      : `<button type="button" data-perk="${k}" ${rebirth.points < p.costs[lv] ? 'disabled' : ''}>${p.costs[lv]} 點</button>`;
+    html += `<div class="item"><div class="info"><div class="name">${p.name}<span class="lv">${lvText}</span></div><div class="desc">${p.desc}</div></div>${btn}</div>`;
+  }
+  return html;
+}
+function buyPerk(k) {
+  const lv = perkLv(k);
+  const cost = PERKS[k].costs[lv];
+  if (cost === undefined || rebirth.points < cost) return;
+  rebirth.points -= cost;
+  rebirth.perks[k]++;
+  beep(660, 0.08, 0.06, 'triangle', 'shop');
+  setTimeout(() => beep(1320, 0.12, 0.06, 'triangle', 'shop'), 80);
+  renderShop();
+  saveGame();
+}
+function doRebirth() {
+  const n = rebirthPending();
+  if (!n) return;
+  rebirth.points += n;
+  rebirth.count++;
+  // 清空檯面、錢、升級，照開新遊戲的樣子重新鋪幣
+  while (coins.length) removeCoin(coins.length - 1);
+  while (dolls.length) removeDoll(dolls.length - 1);
+  while (props.length) removeProp(props.length - 1);
+  for (const k of UPGRADE_KEYS) upgrades[k] = 0;
+  for (const k of ['refill', 'dropRate', 'speed']) upgrades[k] = Math.min(perkLv('headStart'), UPGRADES[k].prices.length);
+  wallet = START_WALLET + perkLv('startMoney') * 50;
+  won = 0;
+  lost = 0;
+  earnCarry = 0;
+  rainQueue = 0;
+  refillTimer = 0;
+  windTime = quakeTime = reachTime = reachExtra = 0;
+  shakeTime = shakeGuard = shakeCd = 0;
+  prefill();
+  buildGuards();
+  setAuto(false);
+  rebirthArmed = 0;
+  shopTab = 'rebirth';
+  renderShop();
+  bump(walletEl);
+  toast(`輪迴！拿到 ${n} 點輪迴點`);
+  [523, 659, 784, 1047, 1319].forEach((f, k) => setTimeout(() => beep(f, 0.22, 0.06, 'triangle', 'shop'), k * 110));
+  saveGame();
+}
+
 function buy(key) {
   const i = UPGRADE_KEYS.indexOf(key);
   if (i < 0 || !shopVisible(i)) return;
   const u = UPGRADES[key];
   const lv = upgrades[key];
-  if (lv >= u.prices.length || wallet < u.prices[lv]) return;
-  wallet -= u.prices[lv];
+  if (lv >= u.prices.length || wallet < upPrice(key)) return;
+  wallet -= upPrice(key);
   upgrades[key]++;
   stats.upgradesBought++;
   checkAchievements();
@@ -1854,6 +1971,15 @@ document.getElementById('shopClose').addEventListener('click', () => shopEl.clas
 shopListEl.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-buy]');
   if (b) buy(b.dataset.buy);
+  const t = e.target.closest('button[data-shoptab]');
+  if (t) { shopTab = t.dataset.shoptab; rebirthArmed = 0; renderShop(); }
+  const pk = e.target.closest('button[data-perk]');
+  if (pk) buyPerk(pk.dataset.perk);
+  if (e.target.closest('#rebirthGo')) {
+    if (rebirthArmed) { doRebirth(); return; }
+    rebirthArmed = setTimeout(() => { rebirthArmed = 0; if (shopTab === 'rebirth') renderShop(); }, 3000);
+    renderShop();
+  }
 });
 
 // ===== 存檔 =====
@@ -1886,6 +2012,7 @@ function saveData() {
     stats: { ...stats },
     achieved: { ...achieved },
     achPoints,
+    rebirth: { points: rebirth.points, count: rebirth.count, perks: { ...rebirth.perks } },
     ownedDecor: { ...ownedDecor },
     equipped: { ...equipped },
     dolls: dolls.map((d) => {
@@ -1920,6 +2047,9 @@ function loadSave() {
 }
 
 function applySave(d) {
+  rebirth.points = Math.max(0, Math.floor(Number(d.rebirth?.points) || 0));
+  rebirth.count = Math.max(0, Math.floor(Number(d.rebirth?.count) || 0));
+  for (const k of PERK_KEYS) rebirth.perks[k] = Math.min(PERKS[k].costs.length, Math.max(0, Math.floor(Number(d.rebirth?.perks?.[k]) || 0)));
   wallet = Math.max(0, Math.floor(Number(d.wallet) || 0));
   for (const key of Object.keys(upgrades)) {
     const lv = Math.floor(Number(d.upgrades?.[key]) || 0);
@@ -1955,7 +2085,7 @@ function applySave(d) {
   for (const [slot, id] of Object.entries(d.equipped || {})) {
     if (DECORATION_SLOTS[slot] && ownedDecor[id]) equipDecor(id);
   }
-  for (const dd of (d.dolls || []).slice(0, MAX_DOLLS)) {
+  for (const dd of (d.dolls || []).slice(0, maxDolls())) {
     if (!Array.isArray(dd.p) || !Array.isArray(dd.r)) continue;
     spawnDoll(dd.id, Number(dd.s) || 1, { x: dd.p[0], y: dd.p[1], z: dd.p[2] }, { x: dd.r[0], y: dd.r[1], z: dd.r[2], w: dd.r[3] });
   }
@@ -2019,11 +2149,10 @@ function stepSim() {
       putBack(coins[i].body);
     } else if (b.y < -1.2) {
       if (b.z > FRONT_Z - 0.5 && Math.abs(b.x) < halfW + 0.1) {
-        won += value;
-        wallet += value;
-        stats.coinsWon += value;
+        const got = earn(value);
+        stats.coinsWon += got;
         if (value > 1) stats.bigWon++;
-        floatText(`+${value}`, new THREE.Vector3(b.x, 0, FRONT_Z), value > 1 ? 'big' : '');
+        floatText(`+${got}`, new THREE.Vector3(b.x, 0, FRONT_Z), value > 1 ? 'big' : '');
         bump(walletEl);
         addCombo(value);
         if (value > 1) {
@@ -2073,10 +2202,9 @@ function stepSim() {
       const lockedBefore = SLIME_SETS.filter((st) => !setUnlocked(st)).map((st) => st.id);
       collection[d.id] = (collection[d.id] || 0) + 1;
       stats.dollsCollected++;
-      wallet += info.value;
-      won += info.value;
+      const got = earn(info.value);
       bump(walletEl);
-      floatText(`+${info.value}`, new THREE.Vector3(t.x, 0, FRONT_Z));
+      floatText(`+${got}`, new THREE.Vector3(t.x, 0, FRONT_Z));
       let msg = `<span style="color:${r.color}">${r.name}</span>　${info.skin.name}${isNew ? '　<span class="newTag">新！</span>' : ''}　+${info.value} 枚`;
       const opened = lockedBefore.filter((sid) => setUnlocked(SET_BY_ID[sid]));
       if (opened.length) msg += `<br>解鎖新的一套：「${SET_BY_ID[opened[0]].name}」，可以在圖鑑換`;
@@ -2106,7 +2234,7 @@ function updateTimers(frame) {
   dollTimer += frame;
   if (dollTimer >= 1) {
     dollTimer -= 1;
-    if (dolls.length < MAX_DOLLS && dollChance.roll()) dropNewDoll();
+    if (dolls.length < maxDolls() && dollChance.roll()) dropNewDoll();
   }
 
   // 每一秒擲一次要不要放道具、彩券（保底式假隨機）
@@ -2208,8 +2336,8 @@ updateLotteryBadge();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, startShake, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
-  setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };
+  setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
