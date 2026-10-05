@@ -549,13 +549,26 @@ html, body {
 #rebirthGo { width: 100%; padding: 10px 0; font-size: 15px; font-weight: 700; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); background: var(--gold); color: #1a1408; cursor: pointer; }
 #rebirthGo:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
 .rebirthHead { margin: 4px 0 8px; font-weight: 700; }
+/* 輪迴中：機台和其他按鈕都蓋掉，只剩輪迴點商店（納可定） */
+body.rebirthing::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: radial-gradient(circle at 50% 30%, #3a2c58 0%, #1a1426 70%, #0e0b16 100%);
+}
+body.rebirthing #shop { z-index: 26; }
+body.rebirthing #shopClose, body.rebirthing .shopWallet { visibility: hidden; }
+.rebirthLine { font-size: 17px; font-weight: 800; color: var(--gold); margin-bottom: 4px; }
+.perkList { margin-bottom: 12px; }
+#rebornGo { width: 100%; padding: 12px 0; font-size: 17px; font-weight: 800; letter-spacing: 4px; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); background: var(--gold); color: #1a1408; cursor: pointer; }
 
 /* 轉生動畫：整個畫面蓋上一層，中間天使史萊姆跳來跳去 */
 #reborn {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 27;
   flex-direction: column;
   align-items: center;
   justify-content: center;

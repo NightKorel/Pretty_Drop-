@@ -168,7 +168,8 @@ const PERKS = {
   gemCap: { name: '寶物上限', costs: [1, 1, 1], eff: (lv) => `檯面上同時最多 ${MAX_TREASURES + lv} 個小寶物` },
 };
 const PERK_KEYS = Object.keys(PERKS);
-const rebirth = { points: 0, count: 0, perks: Object.fromEntries(PERK_KEYS.map((k) => [k, 0])) };
+// shopping：按了兩次輪迴、正在輪迴點商店裡（點數已經拿到，還沒按「重生」）；gained 是這次拿到幾點
+const rebirth = { points: 0, count: 0, shopping: false, gained: 0, perks: Object.fromEntries(PERK_KEYS.map((k) => [k, 0])) };
 const perkLv = (k) => rebirth.perks[k];
 // 商店升級的價錢（打折後一樣取乾脆的數字）
 function upPrice(key, lv = upgrades[key]) {
@@ -2269,9 +2270,12 @@ function canAffordSomething() {
 }
 
 let shopTab = 'up';
+const shopTitleEl = document.querySelector('#shop .shopTitle');
 let rebirthArmed = 0;        // 輪迴按鈕按第一次只是確認，3 秒內再按一次才真的輪迴
 function renderShop() {
   shopWalletEl.textContent = wallet;
+  shopTitleEl.textContent = rebirth.shopping ? '輪迴' : '商店';
+  if (rebirth.shopping) { shopListEl.innerHTML = rebirthShopHtml(); return; }
   let html = '<div class="bookTabs">'
     + `<button type="button" class="bookTab${shopTab === 'up' ? ' on' : ''}" data-shoptab="up">升級</button>`
     + `<button type="button" class="bookTab${shopTab === 'rebirth' ? ' on' : ''}" data-shoptab="rebirth">輪迴${rebirthPending() ? `（+${rebirthPending()}）` : ''}</button></div>`;
@@ -2316,36 +2320,85 @@ function rebirthPending() {
   return n;
 }
 function rebirthHtml() {
+  if (rebirth.shopping) return rebirthShopHtml();
   const n = rebirthPending();
   const need = rebirthNeed(n + 1);
   let html = `<div class="rebirthBox">
     <div>這一輪累計賺了 <b>${Math.floor(won)}</b> 枚</div>
     <div>現在輪迴可以拿到 <b>${n}</b> 點輪迴點（再賺 ${need - Math.floor(won)} 枚多 1 點）</div>
-    <div class="bookNote">輪迴會清空：手上的錢、商店升級、檯面上的東西。<br>會保留：圖鑑、成就、裝飾品、輪迴點和輪迴點買的東西。</div>
+    <div class="bookNote">輪迴會清空：手上的錢、商店升級、檯面上的東西。<br>會保留：圖鑑、成就、裝飾品、輪迴點和輪迴點買的東西。<br>輪迴點要在輪迴的時候才能用。</div>
     <button type="button" id="rebirthGo" ${n ? '' : 'disabled'}>${rebirthArmed ? `確定？再按一次就輪迴（+${n} 點）` : n ? `輪迴（+${n} 點）` : `累計賺到 ${rebirthNeed(1)} 枚才能輪迴`}</button>
   </div>
   <div class="rebirthHead">輪迴點：<b>${rebirth.points}</b> 點${rebirth.count ? `　已經輪迴 ${rebirth.count} 次` : ''}</div>`;
+  // 平常只看得到現在的等級和效果，不能買
   let inner = '';
-  let can = 0;
   for (const k of PERK_KEYS) {
     const p = PERKS[k];
     const lv = perkLv(k);
     const max = p.costs.length;
-    const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
-    const cost = p.costs[lv];
-    if (lv < max && rebirth.points >= cost) can++;
     inner += buyRowHtml({
-      name: p.name, lv: lvText,
+      name: p.name, lv: lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`,
+      desc: lv ? `現在：${p.eff(lv)}` : `還沒買。Lv 1：${p.eff(1)}`,
+      btn: '',
+    });
+  }
+  html += groupHtml('rebirth.perks', '輪迴點商店（輪迴時才能買）', `${PERK_KEYS.length} 項`, inner);
+  return html;
+}
+// 輪迴中的商店：只剩這個面板，買完按「重生」
+const REBIRTH_LINES = ['改機被老闆發現了，快溜！', '玩太多被媽媽發現了，塊陶啊！'];
+let rebirthLine = REBIRTH_LINES[0];
+function rebirthShopHtml() {
+  let html = `<div class="rebirthBox">
+    <div class="rebirthLine">${rebirthLine}</div>
+    <div>這次拿到 <b>${rebirth.gained}</b> 點輪迴點，手上共 <b>${rebirth.points}</b> 點</div>
+    <div class="bookNote">想買什麼就買，不買也可以。按「重生」就重新開始。</div>
+  </div>`;
+  let inner = '';
+  for (const k of PERK_KEYS) {
+    const p = PERKS[k];
+    const lv = perkLv(k);
+    const max = p.costs.length;
+    const cost = p.costs[lv];
+    inner += buyRowHtml({
+      name: p.name, lv: lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`,
       desc: lv >= max ? `已滿級：${p.eff(lv)}` : `升級後：${p.eff(lv + 1)}`,
       price: lv < max ? `${cost} 點` : '', canPay: rebirth.points >= cost,
       btn: lv >= max ? '<button type="button" disabled>滿級</button>'
         : `<button type="button" data-perk="${k}" ${rebirth.points < cost ? 'disabled' : ''}>升級</button>`,
     });
   }
-  html += groupHtml('rebirth.perks', '輪迴點商店', can ? `${can} 項買得起` : `${PERK_KEYS.length} 項`, inner, true);
+  html += `<div class="perkList">${inner}</div>`;
+  html += '<button type="button" id="rebornGo">重生</button>';
   return html;
 }
+// 按兩次輪迴：拿到點數，機台收起來，只剩輪迴點商店
+function enterRebirthShop() {
+  const n = rebirthPending();
+  if (!n || rebirth.shopping) return;
+  rebirth.points += n;
+  rebirth.count++;
+  rebirth.gained = n;
+  rebirth.shopping = true;
+  won = 0; // 點數已經拿了，避免重新整理後又算一次
+  rebirthLine = REBIRTH_LINES[Math.floor(Math.random() * REBIRTH_LINES.length)];
+  setAuto(false);
+  pointerDown = false;
+  showRebirthShop();
+  saveGame();
+}
+function showRebirthShop() {
+  for (const id of ['ach', 'book', 'settings', 'wheel', 'viewer']) document.getElementById(id).classList.remove('show');
+  document.body.classList.add('rebirthing');
+  shopTab = 'rebirth';
+  rebirthArmed = 0;
+  renderShop();
+  shopEl.classList.add('show');
+  shopListEl.scrollTop = 0;
+  shopEl.scrollTop = 0;
+}
 function buyPerk(k) {
+  if (!rebirth.shopping) return;
   const lv = perkLv(k);
   const cost = PERKS[k].costs[lv];
   if (cost === undefined || rebirth.points < cost) return;
@@ -2356,11 +2409,17 @@ function buyPerk(k) {
   renderShop();
   saveGame();
 }
+// 重新開始：清空檯面、錢、升級。還沒進輪迴點商店就先拿點數（測試會直接叫這個）
 function doRebirth() {
-  const n = rebirthPending();
-  if (!n) return;
-  rebirth.points += n;
-  rebirth.count++;
+  if (!rebirth.shopping) {
+    const n = rebirthPending();
+    if (!n) return;
+    rebirth.points += n;
+    rebirth.count++;
+    rebirth.gained = n;
+  }
+  const n = rebirth.gained;
+  rebirth.shopping = false;
   // 清空檯面、錢、升級，照開新遊戲的樣子重新鋪幣
   while (coins.length) removeCoin(coins.length - 1);
   while (dolls.length) removeDoll(dolls.length - 1);
@@ -2384,7 +2443,9 @@ function doRebirth() {
   buildGuards();
   setAuto(false);
   rebirthArmed = 0;
-  shopTab = 'rebirth';
+  shopTab = 'up';
+  document.body.classList.remove('rebirthing');
+  shopEl.classList.remove('show');
   renderShop();
   saveGame();
   return n;
@@ -2397,7 +2458,7 @@ let rebornView = null;
 let rebornBusy = false;
 const REBORN_TIME = 4.2;     // 整段動畫幾秒
 function rebirthWithAnim() {
-  if (rebornBusy || !rebirthPending()) return;
+  if (rebornBusy || (!rebirth.shopping && !rebirthPending())) return;
   rebornBusy = true;
   shopEl.classList.remove('show');
   setAuto(false);
@@ -2513,8 +2574,9 @@ shopListEl.addEventListener('click', (e) => {
   if (t) { shopTab = t.dataset.shoptab; rebirthArmed = 0; renderShop(); }
   const pk = e.target.closest('button[data-perk]');
   if (pk) buyPerk(pk.dataset.perk);
+  if (e.target.closest('#rebornGo')) { rebirthWithAnim(); return; }
   if (e.target.closest('#rebirthGo')) {
-    if (rebirthArmed) { clearTimeout(rebirthArmed); rebirthArmed = 0; rebirthWithAnim(); return; }
+    if (rebirthArmed) { clearTimeout(rebirthArmed); rebirthArmed = 0; enterRebirthShop(); return; }
     rebirthArmed = setTimeout(() => { rebirthArmed = 0; if (shopTab === 'rebirth') renderShop(); }, 3000);
     renderShop();
   }
@@ -2562,7 +2624,7 @@ function saveData() {
     stats: { ...stats },
     achieved: { ...achieved },
     achPoints,
-    rebirth: { points: rebirth.points, count: rebirth.count, perks: { ...rebirth.perks } },
+    rebirth: { points: rebirth.points, count: rebirth.count, shopping: rebirth.shopping, gained: rebirth.gained, perks: { ...rebirth.perks } },
     ownedDecor: { ...ownedDecor },
     equipped: { ...equipped },
     dolls: dolls.map((d) => {
@@ -2604,6 +2666,8 @@ function applySave(d) {
   }
   rebirth.points = Math.max(0, Math.floor(Number(d.rebirth?.points) || 0));
   rebirth.count = Math.max(0, Math.floor(Number(d.rebirth?.count) || 0));
+  rebirth.shopping = !!d.rebirth?.shopping;
+  rebirth.gained = Math.max(0, Math.floor(Number(d.rebirth?.gained) || 0));
   for (const k of PERK_KEYS) rebirth.perks[k] = Math.min(PERKS[k].costs.length, Math.max(0, Math.floor(Number(d.rebirth?.perks?.[k]) || 0)));
   wallet = Math.max(0, Math.floor(Number(d.wallet) || 0));
   for (const key of Object.keys(upgrades)) {
@@ -2904,6 +2968,7 @@ function tick(now) {
   lastT = now;
   acc += frame;
   let steps = 0;
+  if (rebirth.shopping) acc = 0; // 輪迴點商店開著的時候機台停著
   while (acc >= STEP && steps < 4) {
     stepSim();
     acc -= STEP;
@@ -2911,7 +2976,7 @@ function tick(now) {
   }
   if (steps === 4) acc = 0;
 
-  updateTimers(frame);
+  if (!rebirth.shopping) updateTimers(frame);
   updateCombo(frame);
 
   // 同步畫面
@@ -2959,6 +3024,7 @@ applyQuality(quality);
 const saved = loadSave();
 if (saved) applySave(saved);
 else prefill();
+if (rebirth.shopping) showRebirthShop(); // 上次在輪迴點商店裡關掉的，回到那裡
 buildGuards();
 updateLotteryBadge();
 updateHud();
@@ -2966,7 +3032,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };

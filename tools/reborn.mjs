@@ -10,13 +10,15 @@ for (const [name, vp] of [['pc', { width: 1000, height: 650 }], ['phone', { widt
   page.on('pageerror', (e) => errs.push(e.message));
   await page.goto('http://localhost:8765/');
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
-  await page.evaluate(() => { const g = __game; g.earned = g.rebirthNeed(8); g.doRebirth(); g.buyPerk('startMoney'); g.buyPerk('startMoney'); g.earned = g.rebirthNeed(2); });
+  await page.evaluate(() => { const g = __game; g.earned = g.rebirthNeed(8); g.enterRebirthShop(); g.buyPerk('startMoney'); g.buyPerk('startMoney'); g.doRebirth(); g.earned = g.rebirthNeed(2); });
   await page.click('#shopBtn');
   await page.click('button[data-shoptab="rebirth"]');
   const descs = await page.evaluate(() => [...document.querySelectorAll('#shopList .item .desc')].map((d) => d.textContent));
   await page.click('#rebirthGo');
   await page.evaluate(() => { window.__rebornT = 1.0; });
   await page.click('#rebirthGo');
+  await page.waitForTimeout(200);
+  await page.click('#rebornGo');
   const t0 = Date.now();
   const at = [];
   await page.waitForTimeout(1300);

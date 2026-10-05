@@ -1,4 +1,4 @@
-// 輪迴：點數表、輪迴後清空與保留、輪迴點商店（收入加成、初始資金、起跑、打折、娃娃上限）、存檔；電腦和手機各一次
+// 輪迴：點數表、按兩次進輪迴點商店（機台蓋掉、只剩商店）、買東西、重新整理還在商店、按重生後清空與保留、存檔；電腦和手機各一次
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NPMG + '/playwright');
@@ -33,15 +33,24 @@ for (const [name, vp] of [['pc', { width: 1000, height: 650 }], ['phone', { widt
   await page.click('#rebirthGo');
   const armed = await page.textContent('#rebirthGo');
   await page.click('#rebirthGo');
-  const after = await page.evaluate(() => { const g = __game; return { points: g.rebirth.points, count: g.rebirth.count, wallet: g.wallet, earned: g.earned, ups: { ...g.upgrades }, coins: g.coins.length, dolls: g.dolls.length, book: g.collection['jelly.0'] }; });
-  // 買輪迴點商店
-  const perks = await page.evaluate(() => { const g = __game; for (const k of ['startMoney', 'headStart', 'discount']) g.buyPerk(k); return { points: g.rebirth.points, perks: { ...g.rebirth.perks }, price: g.upPrice('refill'), base: g.UPGRADES.refill.prices[g.upgrades.refill] }; });
+  await page.waitForTimeout(300);
+  // 進了輪迴點商店：點數拿到了，檯面還沒清；其他按鈕被蓋住點不到
+  const inShop = await page.evaluate(() => { const g = __game; return { shopping: g.rebirth.shopping, points: g.rebirth.points, count: g.rebirth.count, coins: g.coins.length, title: document.querySelector('#shop .shopTitle').textContent, top: document.elementFromPoint(document.getElementById('shopBtn').getBoundingClientRect().x + 5, document.getElementById('shopBtn').getBoundingClientRect().y + 5).id || 'curtain', reborn: !!document.getElementById('rebornGo') }; });
   await page.screenshot({ path: `/tmp/pd-shots/rebirth-${name}-2.png` });
-  await page.evaluate(() => __game.saveGame());
+  for (const k of ['startMoney', 'headStart', 'discount']) await page.click(`button[data-perk="${k}"]`);
+  const perks = await page.evaluate(() => { const g = __game; return { points: g.rebirth.points, perks: { ...g.rebirth.perks } }; });
+  // 重新整理：還在輪迴點商店
   await page.reload();
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
-  const loaded = await page.evaluate(() => ({ points: __game.rebirth.points, perks: { ...__game.rebirth.perks }, count: __game.rebirth.count }));
-  console.log(name, JSON.stringify({ table, before, pend, armed, after, perks, loaded, errs }));
+  await page.waitForTimeout(300);
+  const reloaded = await page.evaluate(() => ({ shopping: __game.rebirth.shopping, show: document.getElementById('shop').classList.contains('show'), points: __game.rebirth.points, pending: __game.rebirthPending() }));
+  await page.evaluate(() => { window.__rebornT = 5; });
+  await page.click('#rebornGo');
+  await page.waitForTimeout(1500);
+  const after = await page.evaluate(() => { const g = __game; return { shopping: g.rebirth.shopping, body: document.body.className, points: g.rebirth.points, count: g.rebirth.count, wallet: g.wallet, earned: g.earned, ups: { ...g.upgrades }, coins: g.coins.length, dolls: g.dolls.length, book: g.collection['jelly.0'], price: g.upPrice('refill'), base: g.UPGRADES.refill.prices[g.upgrades.refill] }; });
+  await page.screenshot({ path: `/tmp/pd-shots/rebirth-${name}-3.png` });
+  const loaded = after;
+  console.log(name, JSON.stringify({ table, before, pend, armed, inShop, perks, reloaded, after, errs }));
   await page.evaluate(() => localStorage.clear());
   await ctx.close();
 }
