@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.77';
-import { drawDigits } from './digits.js?v=0.0.77';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.77';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.77';
+import { makeCoinMaterials } from './coin.js?v=0.0.78';
+import { drawDigits } from './digits.js?v=0.0.78';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.78';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.78';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.77';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.77';
+} from './slime.js?v=0.0.78';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.78';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1212,6 +1212,11 @@ function miniSetSlime(view, id) {
   if (view.mesh) view.sc.remove(view.mesh);
   view.mesh = makeSlimeMesh(id, 1, quality !== 'low');
   view.sc.add(view.mesh);
+  // 頭上有甜筒帽、長耳朵這種高高的東西，鏡頭退後一點，才不會被切掉
+  const top = new THREE.Box3().setFromObject(view.mesh).max.y;
+  const k = Math.max(1, (top + 0.08) / 1.18);
+  view.cam.position.set(0, 0.42 + 0.68 * k, 2.9 * k);
+  view.cam.lookAt(0, 0.42 + (k - 1) * 0.5, 0);
 }
 // 史萊姆熱身：第一次出現某種史萊姆時，顯示卡要現場準備那種材質的畫法，畫面會頓一下；
 // 慶祝小卡第一次出現還要開一個新的 3D 畫面。所以趁空檔先把「選的那幾組」都準備好（主畫面和慶祝小卡都要）。
