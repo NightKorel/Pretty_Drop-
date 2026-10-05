@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.81';
-import { drawDigits } from './digits.js?v=0.0.81';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.81';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.81';
+import { makeCoinMaterials } from './coin.js?v=0.0.82';
+import { drawDigits } from './digits.js?v=0.0.82';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.82';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.82';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.81';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.81';
+} from './slime.js?v=0.0.82';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.82';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -432,6 +432,114 @@ for (const side of [-1, 1]) {
   scene.add(pit);
 }
 // 前緣下面沒有出幣口了：畫面只看到檯面，下面那塊沒用的拿掉
+
+// ===== 入賞口 =====
+// 後牆上一條軌道，一個金色的洞左右慢慢移動，高度在投幣會經過的地方（2026-10-04 納可：讓瞄準有意義）。
+// 幣從洞口正中間掉進去就「入賞」，給一個小獎；沒對準的會撞到洞的邊緣彈開。入賞後洞口暗下來一陣子
+const PRIZE_Y = 1.75;        // 洞口的高度（投幣從 3.2 掉下來）
+const PRIZE_R = 0.78;        // 洞口邊緣的半徑
+const PRIZE_CATCH = 0.36;    // 幣的中心離洞口中心多近算掉進去
+const PRIZE_AMP = 2.7;       // 左右移動的幅度
+const PRIZE_PERIOD = 9;      // 來回一次幾秒
+const PRIZE_CD = 8;          // 入賞後幾秒才再亮
+let prizeX = 0;
+let prizeCd = 0;
+let prizeDrops = 0;          // 小獎還有幾枚幣要掉
+let prizeDropBig = false;
+let prizeDropT = 0;
+const prizeBody = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, PRIZE_Y, DROP_Z));
+for (let i = 0; i < 14; i++) {
+  const a = (i / 14) * Math.PI * 2;
+  world.createCollider(
+    // 邊緣用小圓球，幣比較不會卡在上面
+    RAPIER.ColliderDesc.ball(0.08).setTranslation(Math.cos(a) * PRIZE_R, 0, Math.sin(a) * PRIZE_R).setRestitution(0.3).setFriction(0.05),
+    prizeBody,
+  );
+}
+const prizeRingMat = new THREE.MeshStandardMaterial({ color: 0xf4c95d, metalness: 0.8, roughness: 0.3, emissive: 0x8a5a10, emissiveIntensity: 1 });
+const prizeMesh = new THREE.Group();
+{
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(PRIZE_R, 0.07, 10, 40), prizeRingMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.castShadow = true;
+  // 洞口裡面一圈淡淡的光，看得出是「洞」
+  const glow = new THREE.Mesh(new THREE.RingGeometry(PRIZE_R * 0.55, PRIZE_R - 0.04, 40), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  glow.rotation.x = -Math.PI / 2;
+  glow.userData.glow = true;
+  // 接到後牆軌道的手臂
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, Math.abs(WALL_Z - DROP_Z) - PRIZE_R), new THREE.MeshStandardMaterial({ color: 0x8d92a3, metalness: 0.7, roughness: 0.35 }));
+  arm.position.z = -(Math.abs(WALL_Z - DROP_Z) + PRIZE_R) / 2;
+  prizeMesh.add(ring, glow, arm);
+}
+prizeMesh.position.set(0, PRIZE_Y, DROP_Z);
+scene.add(prizeMesh);
+{
+  // 後牆上的軌道（只有樣子）
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(TABLE_W, 0.12, 0.12), new THREE.MeshStandardMaterial({ color: 0x8d92a3, metalness: 0.7, roughness: 0.35 }));
+  rail.position.set(0, PRIZE_Y, WALL_Z + 0.26);
+  scene.add(rail);
+}
+function movePrize() {
+  prizeX = Math.sin((simTime / PRIZE_PERIOD) * Math.PI * 2) * PRIZE_AMP;
+  prizeBody.setNextKinematicTranslation({ x: prizeX, y: PRIZE_Y, z: DROP_Z });
+  if (prizeCd > 0) prizeCd = Math.max(0, prizeCd - STEP);
+  // 掉進洞口的幣：中心剛好往下穿過洞口上方一點點、又夠靠近中間
+  if (prizeCd <= 0) {
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const c = coins[i];
+      const t = c.body.translation();
+      if (t.y > PRIZE_Y + 0.35 || t.y < PRIZE_Y || Math.abs(t.z - DROP_Z) > 0.5) continue;
+      if (c.body.linvel().y > -0.5) continue;
+      if (Math.abs(t.x - prizeX) > PRIZE_CATCH) continue;
+      removeCoin(i);
+      prizeWin();
+      break;
+    }
+  }
+  // 停在洞口邊緣上的幣，輕輕往前推下去
+  if (simTime % 0.5 < STEP) {
+    for (const c of coins) {
+      const t = c.body.translation();
+      if (Math.abs(t.y - PRIZE_Y) > 0.45 || Math.abs(t.z - DROP_Z) > 1.3 || Math.abs(t.x - prizeX) > 1.4) continue;
+      const v = c.body.linvel();
+      if (Math.hypot(v.x, v.y, v.z) > 0.6) continue;
+      const m = c.body.mass();
+      c.body.applyImpulse({ x: Math.sign(t.x - prizeX) * m * 0.8, y: 0, z: m * 2.2 }, true);
+    }
+  }
+  // 小獎的幣：從洞口前面一枚一枚掉下來
+  if (prizeDrops > 0) {
+    prizeDropT += STEP;
+    if (prizeDropT >= 0.12) {
+      prizeDropT = 0;
+      const c = spawnCoin(prizeX + (Math.random() - 0.5) * 0.8, PRIZE_Y - 0.2, DROP_Z + 0.9 + Math.random() * 0.3, 0.6, prizeDropBig);
+      prizeDropBig = false;
+      if (!c) prizeDrops = 0; else prizeDrops--;
+    }
+  }
+}
+// 小獎（Claude 定）：大多是 8 枚幣，有時 1 枚大金幣加 4 枚幣，偶爾一張免費彩券
+function prizeWin() {
+  prizeCd = PRIZE_CD;
+  stats.prizes++;
+  checkAchievements();
+  const r = Math.random();
+  let text;
+  if (r < 0.1) {
+    freeSpins++;
+    updateLotteryBadge();
+    text = '入賞！彩券一張';
+  } else if (r < 0.3) {
+    prizeDrops += 5;
+    prizeDropBig = true;
+    text = '入賞！大金幣';
+  } else {
+    prizeDrops += 8;
+    text = '入賞！';
+  }
+  floatText(text, new THREE.Vector3(prizeX, PRIZE_Y + 0.6, DROP_Z), 'prize');
+  [880, 1175, 1568].forEach((f, k) => setTimeout(() => beep(f, 0.12, 0.05, 'triangle', 'item'), k * 70));
+}
 
 // ===== 幣 =====
 const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_H, 28);
@@ -2924,6 +3032,7 @@ function rescueBehind(body) {
 function stepSim() {
   simTime += STEP;
   movePusher();
+  movePrize();
   if (dollQueue.length) placeQueuedDolls();
   applyEffects();
   world.step();
@@ -3130,6 +3239,10 @@ function tick(now) {
     updateSlimeEffects(d.mesh, now / 1000);
   }
   aimGhost.position.x = aimX;
+  // 入賞口：亮著的時候一閃一閃，冷卻中暗暗的
+  prizeMesh.position.x = prizeX;
+  prizeRingMat.emissiveIntensity = prizeCd > 0 ? 0.05 : 0.7 + 0.3 * Math.sin(now / 160);
+  prizeMesh.children[1].material.opacity = prizeCd > 0 ? 0.06 : 0.35;
   aimGhost.rotation.y += frame * 2;
 
   updateCoinSound();
@@ -3163,7 +3276,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { get prize() { return { x: prizeX, cd: prizeCd, v: Math.cos((simTime / PRIZE_PERIOD) * Math.PI * 2) * PRIZE_AMP * Math.PI * 2 / PRIZE_PERIOD }; }, coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };

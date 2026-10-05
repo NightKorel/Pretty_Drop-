@@ -15,6 +15,7 @@ export const STAT_NAMES = {
   shakes: '甩過幾次',
   fevers: '狂熱時間幾次',
   treasures: '推下的小寶物',
+  prizes: '入賞幾次',
 };
 
 // 成就：check(遊戲狀態) 回傳 true 就達成；points 是給多少成就點數
@@ -26,6 +27,7 @@ const C = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}"/>`;
 const coin = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="currentColor" fill-opacity="0.25"/><circle cx="${x}" cy="${y}" r="${r * 0.55}"/>`;
 const slimePath = (x, y, w, h) => `<path d="M${x - w} ${y} C${x - w} ${y - h * 1.1} ${x + w} ${y - h * 1.1} ${x + w} ${y} Z" fill="currentColor" fill-opacity="0.25"/><circle cx="${x - w * 0.35}" cy="${y - h * 0.45}" r="${w * 0.1}" fill="currentColor"/><circle cx="${x + w * 0.35}" cy="${y - h * 0.45}" r="${w * 0.1}" fill="currentColor"/>`;
 export const ACH_ICONS = {
+  target: '<circle cx="16" cy="16" r="11"/><circle cx="16" cy="16" r="6"/><circle cx="16" cy="16" r="1.5" fill="currentColor"/>',
   coinDrop: coin(16, 21, 7) + '<path d="M16 3v8M12 8l4 4 4-4"/>',
   coinStack: '<ellipse cx="16" cy="24" rx="9" ry="3.5"/><ellipse cx="16" cy="18" rx="9" ry="3.5"/><ellipse cx="16" cy="12" rx="9" ry="3.5" fill="currentColor" fill-opacity="0.25"/><path d="M7 12v12M25 12v12"/>',
   bell: '<path d="M9 22c2-2 2-5 2-9a5 5 0 0 1 10 0c0 4 0 7 2 9z" fill="currentColor" fill-opacity="0.25"/><path d="M7 22h18M14 26a2 2 0 0 0 4 0M16 6V4"/>',
@@ -71,6 +73,8 @@ export const ACHIEVEMENTS = [
   { id: 'maxOne', icon: 'maxBar', cat: 'upgrade', name: '升好升滿', desc: '把一項升級升到滿級', points: 30, check: (g) => g.maxed >= 1 },
   { id: 'maxAll', icon: 'trophy', cat: 'upgrade', name: '終極機台', desc: '把所有升級升到滿級', points: 100, check: (g) => g.maxed >= g.upgradeCount },
   { id: 'spin10', icon: 'wheel', cat: 'machine', name: '轉轉轉', desc: '總共轉 10 次轉盤', points: 20, check: (g) => g.stats.spins >= 10 },
+  { id: 'prize1', icon: 'target', cat: 'machine', name: '一桿進洞', desc: '投進入賞口一次', points: 10, check: (g) => g.stats.prizes >= 1 },
+  { id: 'prize20', icon: 'target', cat: 'machine', name: '神準', desc: '總共投進入賞口 20 次', points: 30, check: (g) => g.stats.prizes >= 20 },
   { id: 'item10', icon: 'bolt', cat: 'machine', name: '道具達人', desc: '總共用 10 次道具', points: 20, check: (g) => g.stats.itemsUsed >= 10 },
 ];
 
