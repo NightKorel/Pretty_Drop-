@@ -45,27 +45,11 @@ export const SLIME_SETS = [
       { name: '彩虹果凍', look: 'rainbow', color: '#ffe3ef', sparkle: true },
     ],
   },
-  {
-    id: 'sweets',
-    name: '甜點',
-    unlock: { set: 'jelly', kinds: 6 },
-    skins: [
-      { name: '牛奶史萊姆', look: 'cream', color: '#fbf5ea' },
-      { name: '香蕉史萊姆', look: 'cream', color: '#ffd23a' },
-      { name: '抹茶史萊姆', look: 'cream', color: '#6fa83c' },
-      { name: '草莓牛奶史萊姆', look: 'cream', color: '#ff8fae' },
-      { name: '芋頭史萊姆', look: 'cream', color: '#9466cc' },
-      { name: '芒果史萊姆', look: 'cream', color: '#ff9a1f' },
-      { name: '焦糖布丁史萊姆', look: 'twotone', color: '#ffe29a', color2: '#a65a1e' },
-      { name: '薄荷巧克力史萊姆', look: 'twotone', color: '#7fe0b8', color2: '#5a3a28' },
-      { name: '黑芝麻史萊姆', look: 'cream', color: '#3a3532' },
-      { name: '金箔巧克力史萊姆', look: 'flake', color: '#4a2b1d', sparkle: true },
-    ],
-  },
+  // 解鎖順序照好看程度：果凍 → 金屬 → 甜點 → 動物 → 寶石（2026-10-05 納可定）
   {
     id: 'metal',
     name: '金屬',
-    unlock: { set: 'sweets', kinds: 6 },
+    unlock: { set: 'jelly', kinds: 6 },
     skins: [
       { name: '銅史萊姆', look: 'metal', color: '#c97d4c' },
       { name: '鐵史萊姆', look: 'metal', color: '#8d9299' },
@@ -80,10 +64,27 @@ export const SLIME_SETS = [
     ],
   },
   {
+    id: 'sweets',
+    name: '甜點',
+    unlock: { set: 'metal', kinds: 6 },
+    skins: [
+      { name: '牛奶史萊姆', look: 'cream', color: '#fbf5ea' },
+      { name: '香蕉史萊姆', look: 'cream', color: '#ffd23a' },
+      { name: '抹茶史萊姆', look: 'cream', color: '#6fa83c' },
+      { name: '草莓牛奶史萊姆', look: 'cream', color: '#ff8fae' },
+      { name: '芋頭史萊姆', look: 'cream', color: '#9466cc' },
+      { name: '芒果史萊姆', look: 'cream', color: '#ff9a1f' },
+      { name: '焦糖布丁史萊姆', look: 'twotone', color: '#ffe29a', color2: '#a65a1e' },
+      { name: '薄荷巧克力史萊姆', look: 'twotone', color: '#7fe0b8', color2: '#5a3a28' },
+      { name: '黑芝麻史萊姆', look: 'cream', color: '#3a3532' },
+      { name: '金箔巧克力史萊姆', look: 'flake', color: '#4a2b1d', sparkle: true },
+    ],
+  },
+  {
     // 動物：一樣的奶油感身體，用耳朵、翅膀分出是什麼動物。ear 是耳朵（或耳朵裡面）的顏色
     id: 'animal',
     name: '動物',
-    unlock: { set: 'metal', kinds: 6 },
+    unlock: { set: 'sweets', kinds: 6 },
     skins: [
       { name: '白兔史萊姆', look: 'cream', animal: 'rabbit', color: '#f7f0e6', ear: '#ffb3c6' },
       { name: '橘貓史萊姆', look: 'cream', animal: 'cat', color: '#ffb15c', ear: '#ffd9c2' },

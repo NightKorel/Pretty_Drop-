@@ -72,27 +72,29 @@ export const ACHIEVEMENTS = [
   { id: 'item10', icon: 'bolt', cat: 'machine', name: '道具達人', desc: '總共用 10 次道具', points: 20, check: (g) => g.stats.itemsUsed >= 10 },
 ];
 
-// 裝飾品：slot 是裝在哪裡（同一個 slot 一次只能裝一個），price 是成就點數
+// 裝飾品：slot 是裝在哪裡（同一個 slot 一次只能裝一個），價錢是成就點數。
+// 同一類（slot）的價錢都一樣，不同類可以不一樣（2026-10-05 納可定）
+const SLOT_PRICE = { table: 60, background: 50, coin: 120 };
 // apply(畫面) 把外觀換上去，remove(畫面) 換回原本的
-function tableColor(id, name, color, price) {
+function tableColor(id, name, color) {
   return {
-    id, name, slot: 'table', price,
+    id, name, slot: 'table', price: SLOT_PRICE.table,
     apply: (v) => { v.table.material.color.set(color); },
     remove: (v) => { v.table.material.color.set(0x1f5b57); },
   };
 }
-function bgColor(id, name, color, price) {
+function bgColor(id, name, color) {
   return {
-    id, name, slot: 'background', price,
+    id, name, slot: 'background', price: SLOT_PRICE.background,
     apply: (v) => { v.scene.background.set(color); },
     remove: (v) => { v.scene.background.set(0x14121c); },
   };
 }
 // 硬幣換色：在原本的顏色上乘一個色調（一般幣和大金幣都會換）
-function coinTint(id, name, tint, plain, price) {
+function coinTint(id, name, tint, plain) {
   const mats = (v) => [...v.coinMatFancy, ...v.bigMatFancy];
   return {
-    id, name, slot: 'coin', price,
+    id, name, slot: 'coin', price: SLOT_PRICE.coin,
     apply: (v) => {
       for (const m of mats(v)) {
         if (!m.userData.baseColor) m.userData.baseColor = m.color.clone();
@@ -109,15 +111,15 @@ function coinTint(id, name, tint, plain, price) {
 }
 
 export const DECORATIONS = [
-  tableColor('tableRed', '紅絨布檯面', 0x7a2433, 50),
-  tableColor('tableBlue', '深藍絨布檯面', 0x1f3f6b, 50),
-  tableColor('tableBlack', '黑絨布檯面', 0x1d1b22, 80),
-  tableColor('tableLavender', '薰衣草檯面', 0x6b5a8e, 80),
-  bgColor('bgNight', '夜空藍背景', 0x0d1530, 50),
-  bgColor('bgWarm', '暖咖啡背景', 0x2a1d16, 50),
-  bgColor('bgPlum', '梅子紫背景', 0x2e1c2e, 50),
-  coinTint('coinBronze', '古銅硬幣', 0xb8906e, 0xa87a4e, 100),
-  coinTint('coinRose', '玫瑰金硬幣', 0xffc9bd, 0xe0a090, 150),
+  tableColor('tableRed', '紅絨布檯面', 0x7a2433),
+  tableColor('tableBlue', '深藍絨布檯面', 0x1f3f6b),
+  tableColor('tableBlack', '黑絨布檯面', 0x1d1b22),
+  tableColor('tableLavender', '薰衣草檯面', 0x6b5a8e),
+  bgColor('bgNight', '夜空藍背景', 0x0d1530),
+  bgColor('bgWarm', '暖咖啡背景', 0x2a1d16),
+  bgColor('bgPlum', '梅子紫背景', 0x2e1c2e),
+  coinTint('coinBronze', '古銅硬幣', 0xb8906e, 0xa87a4e),
+  coinTint('coinRose', '玫瑰金硬幣', 0xffc9bd, 0xe0a090),
 ];
 
 export const DECORATION_SLOTS = {

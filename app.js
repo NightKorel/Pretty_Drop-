@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.55';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.55';
+import { makeCoinMaterials } from './coin.js?v=0.0.56';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.56';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.55';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.55';
+} from './slime.js?v=0.0.56';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.56';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -947,8 +947,13 @@ function kindsIn(setId) {
   return SET_BY_ID[setId].skins.filter((_, i) => collection[`${setId}.${i}`] > 0).length;
 }
 // 上一套收集到指定種數，下一套就解鎖
+// 解鎖過的組記在存檔裡，之後就算改了解鎖順序也不會被鎖回去
+const unlockedSets = new Set(['jelly']);
 function setUnlocked(set) {
-  return !set.unlock || kindsIn(set.unlock.set) >= set.unlock.kinds;
+  if (unlockedSets.has(set.id)) return true;
+  const ok = !set.unlock || kindsIn(set.unlock.set) >= set.unlock.kinds;
+  if (ok) unlockedSets.add(set.id);
+  return ok;
 }
 let bookTab = 'jelly';
 
@@ -2256,6 +2261,7 @@ function saveData() {
     lastDollSet,
     collection: { ...collection },
     activeSets,
+    unlockedSets: [...unlockedSets],
     stats: { ...stats },
     achieved: { ...achieved },
     achPoints,
@@ -2325,7 +2331,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.55 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.56 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2333,6 +2339,13 @@ function applySave(d) {
   }
   for (const [k, n] of Object.entries(oldCol)) {
     if (slimeInfo(k)) collection[k] = Math.max(0, Math.floor(Number(n) || 0));
+  }
+  if (Array.isArray(d.unlockedSets)) {
+    for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
+  } else {
+    // v0.0.56 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
+    for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
   const sets = (Array.isArray(d.activeSets) ? d.activeSets : [d.activeSet]).filter((id) => SET_BY_ID[id] && setUnlocked(SET_BY_ID[id]));
   if (sets.length) activeSets = [...new Set(sets)];

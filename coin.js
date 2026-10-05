@@ -1,7 +1,7 @@
 // 硬幣的外觀：幣面浮雕（史萊姆＋閃亮＋外圈）和側邊直紋。
 // 只是貼在表面的皮，物理還是一個扁圓柱，不會多算。
 import * as THREE from './lib/three.module.js';
-import { drawDigits } from './digits.js?v=0.0.55';
+import { drawDigits } from './digits.js?v=0.0.56';
 
 const SIZE = 256;
 // 貼圖在硬幣上下兩面的轉向（試出來的）
