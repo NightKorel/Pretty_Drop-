@@ -421,11 +421,11 @@ html, body {
 .bookCell.owned { cursor: pointer; }
 
 #wheelCanvas { width: 100%; aspect-ratio: 1; display: block; margin-top: 8px; }
-#wheelResult { min-height: 1.4em; font-size: 17px; font-weight: 700; color: var(--gold); margin-top: 6px; }
+#wheelResult { min-height: 1.4em; font-size: 22px; font-weight: 900; color: var(--gold); margin-top: 4px; text-align: center; }
+/* 兩顆按鈕並排、一樣大 */
+.spinRow { display: flex; gap: 8px; margin-top: 8px; }
 #wheel .spinBtn {
-  display: block;
-  width: 100%;
-  margin-top: 8px;
+  flex: 1;
   padding: 10px 18px;
   border-radius: 10px;
   border: 1px solid var(--gold);
@@ -437,6 +437,9 @@ html, body {
   cursor: pointer;
 }
 #wheel .spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
+#wheel .spinBtn[hidden] { display: none; }
+#wheel #freeSpinBtn { background: #ff8fab; border-color: #ff8fab; color: #3a1020; }
+#wheel #freeSpinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); }
 
 
 

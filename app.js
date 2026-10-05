@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.56';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.56';
+import { makeCoinMaterials } from './coin.js?v=0.0.57';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.57';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.56';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.56';
+} from './slime.js?v=0.0.57';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.57';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1477,18 +1477,32 @@ const ITEMS = {
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
 const TICKET_CHANCE = 0.006; // 每秒放一張彩券的機率（保底式，平均大約 3 分鐘一張），檯面上同時最多 1 張
 const MAX_PROPS = 3;         // 檯面上道具加彩券最多幾個
-// 彩券轉盤：推下檯面上的彩券免費轉一次；也可以花錢轉
+// 彩券轉盤：推下檯面上的彩券免費轉一次；也可以花錢轉。
+// 上下左右四格是大獎（格子比較寬），中間夾著的都是小獎（格子窄、錢很少）（2026-10-05 納可定）。
+// 從最上面開始順時針排；span 是格子寬度（大獎 2、小獎 1），weight 是抽到的機會（跟格子寬度無關）。
+// 平均一次大約拿回 96 枚（價錢 100），大多是小獎，偶爾中大的
 const WHEEL = [
-  { label: '10 枚', coins: 10, weight: 4, color: '#3b3150' },
-  { label: '20 枚', coins: 20, weight: 4, color: '#2f4a5e' },
-  { label: '30 枚', coins: 30, weight: 3, color: '#4a3b2a' },
-  { label: '50 枚', coins: 50, weight: 3, color: '#2f5a44' },
-  { label: '80 枚', coins: 80, weight: 2, color: '#3b3150' },
-  { label: '100 枚', coins: 100, weight: 2, color: '#5a3a3a' },
-  { label: '150 枚', coins: 150, weight: 1, color: '#2f4a5e' },
-  { label: '大獎 500 枚', coins: 500, jackpot: true, weight: 0, color: '#7a5a1a' },
+  { coins: 500, big: true, jackpot: true, weight: 0 }, // 上：大獎，用保底式機率
+  { coins: 10, weight: 7.75 }, { coins: 20, weight: 7.75 },
+  { coins: 150, big: true, weight: 16 },               // 右
+  { coins: 10, weight: 7.75 }, { coins: 30, weight: 7.75 },
+  { coins: 300, big: true, weight: 7 },                // 下
+  { coins: 20, weight: 7.75 }, { coins: 10, weight: 7.75 },
+  { coins: 200, big: true, weight: 12 },               // 左
+  { coins: 30, weight: 7.75 }, { coins: 20, weight: 7.75 },
 ];
-const WHEEL_PRICE = 60;      // 花錢轉一次的價錢（平均大約拿回 60，有賺有賠）
+const WHEEL_UNIT = (Math.PI * 2) / WHEEL.reduce((n, w) => n + (w.big ? 2 : 1), 0);
+// 每一格的中心角度（從正上方開始順時針算）和半寬
+{
+  let cum = 0;
+  for (const w of WHEEL) {
+    const span = (w.big ? 2 : 1) * WHEEL_UNIT;
+    w.mid = cum + span / 2 - WHEEL_UNIT; // 第一格（大獎）的中心在正上方
+    w.half = span / 2;
+    cum += span;
+  }
+}
+const WHEEL_PRICE = 100;     // 花錢轉一次的價錢（納可定）
 const JACKPOT_CHANCE = 0.03; // 每轉一次中大獎的機率（保底式）
 let freeSpins = 0;           // 推下彩券拿到的免費次數
 const props = [];            // 檯面上的道具和彩券
@@ -1858,60 +1872,124 @@ const ticketChance = new PseudoRandom(TICKET_CHANCE);
 let wheelAngle = 0;
 let wheelSpinning = false;
 
-function drawWheel() {
+const WHEEL_FONT = '"Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
+const WHEEL_SMALL_COLORS = ['#fff1d6', '#ffd6e5', '#d9f2e6', '#e3dcff'];
+function drawWheel(now = performance.now()) {
   const ctx = wheelCanvas.getContext('2d');
   const W = wheelCanvas.width;
-  const R = W / 2 - 6;
+  const cx = W / 2;
+  const cy = W / 2 + 10;
+  const R = W / 2 - 36;          // 格子的半徑
+  const rim = 20;                // 外圈的厚度
   ctx.clearRect(0, 0, W, W);
-  ctx.save();
-  ctx.translate(W / 2, W / 2);
-  ctx.rotate(wheelAngle);
-  const n = WHEEL.length;
-  for (let i = 0; i < n; i++) {
-    const a0 = (i / n) * Math.PI * 2 - Math.PI / 2;
-    const a1 = ((i + 1) / n) * Math.PI * 2 - Math.PI / 2;
+  // 外圈（深色，一圈小燈）
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + rim, 0, Math.PI * 2);
+  ctx.fillStyle = '#3b2f4f';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#f4c95d';
+  ctx.stroke();
+  const bulbs = 24;
+  const blink = wheelSpinning ? Math.floor(now / 120) % 2 : -1;
+  for (let i = 0; i < bulbs; i++) {
+    const a = (i / bulbs) * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.arc(0, 0, R, a0, a1);
-    ctx.closePath();
-    ctx.fillStyle = WHEEL[i].color;
+    ctx.arc(cx + Math.cos(a) * (R + rim / 2), cy + Math.sin(a) * (R + rim / 2), 5, 0, Math.PI * 2);
+    const on = blink < 0 || i % 2 === blink;
+    ctx.fillStyle = on ? '#fff6d8' : '#8a7a5a';
+    ctx.shadowColor = on ? '#ffe9a8' : 'transparent';
+    ctx.shadowBlur = on ? 10 : 0;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(244,201,93,0.6)';
-    ctx.lineWidth = 2;
+  }
+  ctx.shadowBlur = 0;
+  // 格子
+  let smallK = 0;
+  for (const w of WHEEL) {
+    const a0 = wheelAngle + w.mid - w.half - Math.PI / 2;
+    const a1 = wheelAngle + w.mid + w.half - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, R, a0, a1);
+    ctx.closePath();
+    if (w.jackpot) {
+      const g = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
+      g.addColorStop(0, '#ff8fab');
+      g.addColorStop(1, '#d6336c');
+      ctx.fillStyle = g;
+    } else if (w.big) {
+      const g = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
+      g.addColorStop(0, '#ffe08a');
+      g.addColorStop(1, '#e8a23a');
+      ctx.fillStyle = g;
+    } else {
+      ctx.fillStyle = WHEEL_SMALL_COLORS[smallK++ % WHEEL_SMALL_COLORS.length];
+    }
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 3;
     ctx.stroke();
+    // 字一直是正的（像摩天輪的車廂），不會倒過來
+    const am = wheelAngle + w.mid - Math.PI / 2;
+    const tr = w.big ? R * 0.66 : R * 0.74;
     ctx.save();
-    ctx.rotate((a0 + a1) / 2);
-    ctx.fillStyle = WHEEL[i].jackpot ? '#f4c95d' : '#f3eee2';
-    ctx.font = `bold ${Math.round(W * 0.045)}px sans-serif`;
-    ctx.textAlign = 'right';
+    ctx.translate(cx + Math.cos(am) * tr, cy + Math.sin(am) * tr);
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(WHEEL[i].label, R - 12, 0);
+    if (w.big) {
+      ctx.fillStyle = w.jackpot ? '#ffffff' : '#5a3410';
+      if (w.jackpot) {
+        ctx.font = `900 ${Math.round(W * 0.05)}px ${WHEEL_FONT}`;
+        ctx.fillText('大獎', 0, -W * 0.038);
+      }
+      ctx.font = `900 ${Math.round(W * 0.075)}px ${WHEEL_FONT}`;
+      ctx.fillText(String(w.coins), 0, w.jackpot ? W * 0.025 : 0);
+    } else {
+      ctx.fillStyle = '#6b5a7a';
+      ctx.font = `700 ${Math.round(W * 0.042)}px ${WHEEL_FONT}`;
+      ctx.fillText(String(w.coins), 0, 0);
+    }
     ctx.restore();
   }
+  // 中間的金色圓心，上面一顆星
   ctx.beginPath();
-  ctx.arc(0, 0, R * 0.14, 0, Math.PI * 2);
+  ctx.arc(cx, cy, R * 0.15, 0, Math.PI * 2);
   ctx.fillStyle = '#f4c95d';
   ctx.fill();
-  ctx.restore();
-  // 上方的指針
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#fff6d8';
+  ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(W / 2 - 12, 2);
-  ctx.lineTo(W / 2 + 12, 2);
-  ctx.lineTo(W / 2, 28);
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 ? R * 0.045 : R * 0.1;
+    ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
   ctx.closePath();
-  ctx.fillStyle = '#f4c95d';
+  ctx.fillStyle = '#fff6d8';
   ctx.fill();
+  // 上方的指針（紅色，白邊），尖端指進格子裡
+  ctx.beginPath();
+  ctx.moveTo(cx - 20, cy - R - rim - 6);
+  ctx.lineTo(cx + 20, cy - R - rim - 6);
+  ctx.lineTo(cx, cy - R + 26);
+  ctx.closePath();
+  ctx.fillStyle = '#e8435f';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
 }
 
 function renderWheelInfo() {
   const freeBtn = document.getElementById('freeSpinBtn');
   freeBtn.textContent = '免費抽一次';
   freeBtn.disabled = freeSpins <= 0 || wheelSpinning;
-  freeBtn.style.display = freeSpins > 0 ? '' : 'none';
+  freeBtn.hidden = freeSpins <= 0;
   const payBtn = document.getElementById('paySpinBtn');
   payBtn.textContent = '花錢抽一次';
   payBtn.disabled = wallet < WHEEL_PRICE || wheelSpinning;
-  document.getElementById('wheelCost').textContent = `${freeSpins > 0 ? `免費還有 ${freeSpins} 次　` : ''}花錢抽一次 ${WHEEL_PRICE} 枚`;
+  document.getElementById('wheelCost').textContent = `${freeSpins > 0 ? `免費還有 ${freeSpins} 次　・　` : ''}花錢抽一次 ${WHEEL_PRICE} 枚`;
 }
 
 function openWheel() {
@@ -1948,10 +2026,10 @@ function spinWheel(free) {
   wheelSpinning = true;
   renderWheelInfo();
   const idx = pickWheel();
-  const n = WHEEL.length;
-  // 指針在上方：讓第 idx 格的中間轉到上方，多轉幾圈
-  const slice = (Math.PI * 2) / n;
-  const target = -(idx + 0.5) * slice + (Math.random() - 0.5) * slice * 0.6;
+  // 指針在上方：讓第 idx 格轉到上方（停在格子裡隨機一點，不貼邊），多轉幾圈
+  const slice = WHEEL_UNIT;
+  const w = WHEEL[idx];
+  const target = -(w.mid + (Math.random() - 0.5) * 2 * w.half * 0.6);
   const start = wheelAngle;
   const base = start - (start % (Math.PI * 2));
   const end = base + Math.PI * 2 * 5 + target;
@@ -1964,7 +2042,7 @@ function spinWheel(free) {
     wheelAngle = start + (end - start) * e;
     const cur = Math.floor(wheelAngle / slice);
     if (cur !== lastTickSlice) { lastTickSlice = cur; beep(1400, 0.03, 0.03, 'square', 'wheel'); }
-    drawWheel();
+    drawWheel(now);
     if (k < 1) requestAnimationFrame(anim);
     else finishSpin(idx);
   };
@@ -1976,8 +2054,9 @@ function finishSpin(idx) {
   const w = WHEEL[idx];
   earn(w.coins);
   bump(walletEl);
-  document.getElementById('wheelResult').textContent = `轉到：${w.label}`;
-  const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : [990, 1320];
+  document.getElementById('wheelResult').textContent = w.jackpot ? `大獎！+${w.coins} 枚` : w.big ? `中了！+${w.coins} 枚` : `+${w.coins} 枚`;
+  const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : w.big ? [990, 1320, 1760] : [990, 1320];
+  drawWheel();
   notes.forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'wheel'), k * 90));
   renderWheelInfo();
   saveGame();
@@ -2331,7 +2410,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.56 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.57 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2343,7 +2422,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.56 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.57 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
@@ -2629,7 +2708,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
