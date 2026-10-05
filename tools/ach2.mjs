@@ -10,9 +10,12 @@ await page.evaluate(() => { const g = __game; g.applyQuality('mid'); g.dropAt(0)
 const pts = await page.evaluate(() => __game.achPoints);
 await page.click('#achBtn'); await page.waitForTimeout(200);
 await page.click('button[data-achtab="shop"]'); await page.waitForTimeout(200);
-await page.click('button[data-decorbuy="tableRed"]'); await page.waitForTimeout(100);
-await page.evaluate(() => { const b = document.querySelector('button[data-cheat="ach"]'); for (let i = 0; i < 20; i++) b.click(); });
+await page.evaluate(() => document.querySelectorAll('#ach details.grp').forEach((d) => { d.open = true; })); await page.waitForTimeout(100);
+await page.evaluate(() => { const b = document.querySelector('button[data-cheat="ach"]'); for (let i = 0; i < 25; i++) b.click(); });
 await page.click('button[data-achtab="list"]'); await page.click('button[data-achtab="shop"]');
+await page.click('button[data-decorbuy="tableRed"]'); await page.waitForTimeout(100);
+await page.click('button[data-achtab="list"]'); await page.click('button[data-achtab="shop"]');
+await page.evaluate(() => document.querySelectorAll('#ach details.grp').forEach((d) => { d.open = true; })); await page.waitForTimeout(100);
 await page.click('button[data-decorbuy="coinRose"]'); await page.click('button[data-decorbuy="bgPlum"]'); await page.waitForTimeout(200);
 await page.screenshot({ path: '/tmp/pd-shots/ach-shop2.png' });
 await page.click('#achClose'); await page.waitForTimeout(800);
