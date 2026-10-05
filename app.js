@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.85';
-import { drawDigits } from './digits.js?v=0.0.85';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.85';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.85';
+import { makeCoinMaterials } from './coin.js?v=0.0.86';
+import { drawDigits } from './digits.js?v=0.0.86';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.86';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.86';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.85';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.85';
+} from './slime.js?v=0.0.86';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.86';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -332,6 +332,38 @@ function setLight(m) {
   if (neonLights) for (const n of neonLights) n.visible = !!L.neon;
 }
 
+// 機台主題（成就商店）：換後牆的花樣、前緣金邊的顏色。draw 畫後牆的圖（512×384），lip 是前緣的顏色；null 換回原本的
+const themeCanvas = document.createElement('canvas');
+themeCanvas.width = 512;
+themeCanvas.height = 384;
+const themeTex = new THREE.CanvasTexture(themeCanvas);
+themeTex.colorSpace = THREE.SRGBColorSpace;
+// 後牆從鏡頭只看得到下面一段，整張圖縮到那一段（上面延伸最上面那一排的顏色）
+themeTex.repeat.set(1, 2.4);
+themeTex.wrapT = THREE.ClampToEdgeWrapping;
+let themeBase = null;
+function setTheme(t) {
+  const wm = backWall.material;
+  const lm = lip.material;
+  if (!themeBase) themeBase = { wall: wm.color.getHex(), lip: lm.color.getHex(), lipMetal: lm.metalness };
+  if (!t) {
+    wm.map = null;
+    wm.color.set(themeBase.wall);
+    lm.color.set(themeBase.lip);
+    lm.metalness = themeBase.lipMetal;
+  } else {
+    const ctx = themeCanvas.getContext('2d');
+    ctx.clearRect(0, 0, 512, 384);
+    t.draw(ctx, 512, 384);
+    themeTex.needsUpdate = true;
+    wm.map = themeTex;
+    wm.color.set(0xffffff);
+    lm.color.set(t.lip);
+    lm.metalness = t.lipMetal ?? 0.8;
+  }
+  wm.needsUpdate = true;
+}
+
 // ===== 物理 =====
 const world = new RAPIER.World({ x: 0, y: -19.6, z: 0 });
 world.timestep = 1 / 60;
@@ -376,7 +408,7 @@ const COIN_GROUPS = groups(GROUP_COIN, 0xffff);
 const OTHER_GROUPS = groups(GROUP_OTHER, 0xffff & ~GROUP_WALL);
 // 左右的牆拿掉了（2026-10-05 納可：偶爾有金幣卡在兩邊很奇怪），推到側邊的東西直接掉進側溝
 // 推板上方的擋牆（推板往回縮時，把推板上的幣刮下來）
-addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
+const backWall = addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 }).mesh;
 // 推板
 const pusher = addBox(halfW - 0.02, PUSHER_H / 2, PUSHER_DEPTH / 2, 0, PUSHER_H / 2, PUSHER_MID, 0x8d92a3, { kinematic: true, metal: 0.7, rough: 0.3 });
 // 推板表面比較澀，推板變快時上面的幣才會跟著走，不會一直滑來滑去
@@ -1675,7 +1707,7 @@ const achEl = document.getElementById('ach');
 const achListEl = document.getElementById('achList');
 let achTab = 'list';
 // 裝飾品換外觀時可以動到的東西
-const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
+const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, setTheme, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
 
 function checkAchievements() {
   const kinds = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);

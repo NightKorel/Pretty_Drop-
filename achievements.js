@@ -80,7 +80,7 @@ export const ACHIEVEMENTS = [
 
 // 裝飾品：slot 是裝在哪裡（同一個 slot 一次只能裝一個），價錢是成就點數。
 // 同一類（slot）的價錢都一樣，不同類可以不一樣（2026-10-05 納可定）
-const SLOT_PRICE = { pusher: 60, pusherDeco: 80, table: 60, background: 50, coin: 120, light: 70 };
+const SLOT_PRICE = { theme: 150, pusher: 60, pusherDeco: 80, table: 60, background: 50, coin: 120, light: 70 };
 // apply(畫面) 把外觀換上去，remove(畫面) 換回原本的
 function tableColor(id, name, color) {
   return {
@@ -190,6 +190,104 @@ function lightMood(id, name, m) {
     remove: (v) => v.setLight(null),
   };
 }
+// 機台主題（2026-10-04 納可：整台換皮，放成就商店）：換後牆的花樣和前緣的顏色，跟檯面、背景、燈光可以自由搭
+function machineTheme(id, name, t) {
+  return {
+    id, name, slot: 'theme', price: SLOT_PRICE.theme,
+    apply: (v) => v.setTheme(t),
+    remove: (v) => v.setTheme(null),
+  };
+}
+const THEME_DRAW = {
+  // 糖果屋：粉白直條紋，上面一圈糖霜往下滴，撒彩色糖珠
+  candy: (ctx, W, H) => {
+    for (let x = 0; x < W; x += 32) {
+      ctx.fillStyle = (x / 32) % 2 ? '#fff2f7' : '#ffb3cf';
+      ctx.fillRect(x, 0, 32, H);
+    }
+    ctx.fillStyle = '#fffaf2';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    for (let x = 0; x <= W; x += 4) ctx.lineTo(x, 46 + Math.max(0, Math.sin(x / W * Math.PI * 18)) ** 4 * 30 + Math.sin(x / 9) * 3);
+    ctx.lineTo(W, 0);
+    ctx.closePath();
+    ctx.fill();
+    const cols = ['#ff6fa5', '#7fd3ff', '#ffe066', '#8fe0a8', '#c9a2ff'];
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = cols[i % cols.length];
+      ctx.beginPath();
+      ctx.ellipse(rnd() * W, 90 + rnd() * (H - 100), 6, 3.5, rnd() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  // 深海：上亮下暗的藍，幾道光從上面照下來，泡泡往上飄，底下一排海草
+  sea: (ctx, W, H) => {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#1d6fa8');
+    g.addColorStop(1, '#06223f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(180, 230, 255, 0.10)';
+    for (const x of [60, 190, 330, 450]) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0); ctx.lineTo(x + 40, 0); ctx.lineTo(x + 110, H); ctx.lineTo(x + 30, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+    let seed = 5;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    ctx.strokeStyle = 'rgba(210, 245, 255, 0.7)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 34; i++) {
+      ctx.beginPath();
+      ctx.arc(rnd() * W, rnd() * H * 0.8, 3 + rnd() * 9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let k = 0; k < 16; k++) {
+      const x = k * 33 + rnd() * 14;
+      ctx.strokeStyle = k % 2 ? '#2f9e6e' : '#3fbf86';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, H);
+      for (let y = H; y > H - 90 - rnd() * 60; y -= 8) ctx.lineTo(x + Math.sin(y / 14 + k) * 8, y);
+      ctx.stroke();
+    }
+  },
+  // 復古街機：黑紫色的夜空加星星，地平線一顆條紋夕陽，下面一片粉紅霓虹格子
+  arcade: (ctx, W, H) => {
+    ctx.fillStyle = '#140a28';
+    ctx.fillRect(0, 0, W, H);
+    let seed = 9;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    ctx.fillStyle = '#fff6d0';
+    for (let i = 0; i < 70; i++) ctx.fillRect(rnd() * W, rnd() * H * 0.5, 2, 2);
+    const hy = H * 0.58;
+    const sun = ctx.createLinearGradient(0, hy - 120, 0, hy);
+    sun.addColorStop(0, '#ffd36e');
+    sun.addColorStop(1, '#ff4f9a');
+    ctx.fillStyle = sun;
+    ctx.beginPath();
+    ctx.arc(W / 2, hy, 110, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#140a28';
+    for (let k = 0; k < 6; k++) ctx.fillRect(W / 2 - 120, hy - 12 - k * 16, 240, 3 + k * 0.6);
+    ctx.strokeStyle = '#ff3fa0';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#ff3fa0';
+    ctx.shadowBlur = 8;
+    for (let k = 0; k < 8; k++) {
+      const y = hy + Math.pow(k / 7, 1.8) * (H - hy);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    for (let k = -10; k <= 10; k++) {
+      ctx.beginPath(); ctx.moveTo(W / 2 + k * 14, hy); ctx.lineTo(W / 2 + k * 90, H); ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  },
+};
 function star(ctx, x, y, r) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -250,6 +348,9 @@ const DECO_DRAW = {
 };
 
 export const DECORATIONS = [
+  machineTheme('themeCandy', '糖果屋', { draw: THEME_DRAW.candy, lip: 0x8fe0c4, lipMetal: 0.2 }),
+  machineTheme('themeSea', '深海', { draw: THEME_DRAW.sea, lip: 0x7fd6e6, lipMetal: 0.6 }),
+  machineTheme('themeArcade', '復古街機', { draw: THEME_DRAW.arcade, lip: 0xff3fa0, lipMetal: 0.3 }),
   pusherColor('pusherGold', '金色推板', 0xd9a842, 0.85, 0.28),
   pusherColor('pusherRose', '玫瑰金推板', 0xe8a99a, 0.8, 0.3),
   pusherColor('pusherBlack', '黑鉻推板', 0x2b2a31, 0.9, 0.22),
@@ -280,6 +381,7 @@ export const DECORATIONS = [
 ];
 
 export const DECORATION_SLOTS = {
+  theme: '機台主題',
   pusher: '推板顏色',
   pusherDeco: '推板花紋',
   light: '燈光',
