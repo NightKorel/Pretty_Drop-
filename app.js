@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.92';
-import { drawDigits } from './digits.js?v=0.0.92';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.92';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.92';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.93';
+import { drawDigits } from './digits.js?v=0.0.93';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.93';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.93';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.92';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.92';
+} from './slime.js?v=0.0.93';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.93';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -529,7 +529,6 @@ function toggleShelf(id) {
 // 平常收在檯面外面，偶爾才從旁邊滑出來，移動忽快忽慢；入賞一次或時間到就滑回去（2026-10-05 納可：太容易中）
 const PRIZE_Y = 1.75;        // 洞口的高度（投幣從 3.2 掉下來）
 const PRIZE_R = 0.78;        // 洞口邊緣的半徑
-const PRIZE_CATCH = 0.36;    // 幣的中心離洞口中心多近算掉進去
 const PRIZE_AMP = 2.7;       // 左右移動的幅度
 const PRIZE_CD = 8;          // 入賞後暗下來（滑回去的時候）
 const PRIZE_OPEN = 10;       // 出來後開幾秒（2026-10-05 納可：10 秒沒投進就跑走）
@@ -630,20 +629,22 @@ function movePrize() {
   }
   prizeBody.setNextKinematicTranslation({ x: prizeX, y: PRIZE_Y, z: DROP_Z });
   if (prizeCd > 0) prizeCd = Math.max(0, prizeCd - STEP);
-  if (prizeState === 'off') return;
-  // 掉進洞口的幣：中心剛好往下穿過洞口上方一點點、又夠靠近中間
-  if (prizeState === 'on' && prizeCd <= 0) {
-    for (let i = coins.length - 1; i >= 0; i--) {
-      const c = coins[i];
-      const t = c.body.translation();
-      if (t.y > PRIZE_Y + 0.35 || t.y < PRIZE_Y || Math.abs(t.z - DROP_Z) > 0.5) continue;
-      if (c.body.linvel().y > -0.5) continue;
-      if (Math.abs(t.x - prizeX) > PRIZE_CATCH) continue;
-      removeCoin(i);
-      prizeWin();
-      break;
-    }
+  // 穿過洞口的幣：中心從圈圈上面跑到下面、而且在圈圈裡面，就算入賞。
+  // 直直掉的、撞到邊滾進去的都算（2026-10-05 納可：滾進去不算很怪）。幣比洞小沒多少，在圈圈外面的穿不過去
+  // 每一步都記下每枚幣的高度，才知道是不是「剛好穿過」
+  const open = prizeState === 'on' && prizeCd <= 0;
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    const t = c.body.translation();
+    const py = c.prizeY;
+    c.prizeY = t.y;
+    if (!open || py === undefined || py < PRIZE_Y || t.y >= PRIZE_Y) continue;
+    if (Math.hypot(t.x - prizeX, t.z - DROP_Z) > PRIZE_R) continue;
+    removeCoin(i);
+    prizeWin();
+    break;
   }
+  if (prizeState === 'off') return;
   // 停在洞口邊緣上的幣，輕輕往前推下去
   if (simTime % 0.5 < STEP) {
     for (const c of coins) {
