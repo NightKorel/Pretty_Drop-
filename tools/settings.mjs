@@ -1,0 +1,35 @@
+// 設定跟著存檔：自動投幣、瞄準位置、畫質、音量；重新整理和匯入存檔都要回來
+import { createRequire } from 'module';
+import fs from 'fs';
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.NPMG + '/playwright');
+const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const ctx = await browser.newContext({ viewport: { width: 900, height: 600 } });
+const page = await ctx.newPage();
+const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+await page.goto('http://localhost:8765/');
+await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
+const get = () => page.evaluate(() => ({ auto: __game.auto, quality: __game.quality, volume: __game.soundOn.volume, autoBtn: document.getElementById('autoBtn').textContent, aim: Math.round(__game.saveData().settings.aimX * 10) / 10 }));
+await page.click('#autoBtn');
+await page.evaluate(() => { const g = __game; g.applyQuality('mid'); g.setAim(1.5); g.soundOn.volume = 3; localStorage.setItem('pretty_drop_sound', JSON.stringify(g.soundOn)); });
+const set = await get();
+await page.reload();
+await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
+const reloaded = await get();
+// 匯出存檔，清光，再匯入
+const json = await page.evaluate(() => { __game.setWallet(777); __game.saveGame(); return localStorage.getItem('pretty_drop_save'); });
+const file = '/tmp/pd-shots/save-test.json';
+fs.writeFileSync(file, json);
+await ctx.close();
+const ctx2 = await browser.newContext({ viewport: { width: 900, height: 600 } });
+const p2 = await ctx2.newPage();
+p2.on('pageerror', (e) => errs.push(e.message));
+await p2.goto('http://localhost:8765/');
+await p2.waitForFunction(() => window.__game, null, { timeout: 90000 });
+const fresh = await p2.evaluate(() => ({ auto: __game.auto, quality: __game.quality, volume: __game.soundOn.volume, wallet: __game.wallet }));
+await p2.setInputFiles('#importFile', file);
+await p2.waitForTimeout(1500);
+await p2.waitForFunction(() => window.__game, null, { timeout: 90000 });
+const imported = await p2.evaluate(() => ({ wallet: __game.wallet, auto: __game.auto, quality: __game.quality, volume: __game.soundOn.volume, autoBtn: document.getElementById('autoBtn').textContent, aim: Math.round(__game.saveData().settings.aimX * 10) / 10 }));
+console.log(JSON.stringify({ set, reloaded, fresh, imported, errs }));
+await browser.close();

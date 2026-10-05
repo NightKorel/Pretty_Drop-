@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.51';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.51';
+import { makeCoinMaterials } from './coin.js?v=0.0.52';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.52';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.51';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.51';
+} from './slime.js?v=0.0.52';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.52';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -179,6 +179,7 @@ let lost = 0;
 let aimX = 0;
 let pointerDown = false;
 let autoDrop = false;         // 右鍵切換的自動連續投幣
+let gameReady = false;        // 讀完存檔才開始存（免得讀檔途中存到一半的東西）
 let lastDrop = -1;
 let refillTimer = 0;
 let simTime = 0;
@@ -527,15 +528,20 @@ function dropNewDoll(forceRarity) {
 
 // ===== 推板移動 =====
 // 用「走到哪裡」記推板位置，這樣升級加速時推板不會突然跳位置
-// 長推板：往後的位置不變，只有往前多伸出去 reachExtra
+// 長推板（納可定）：速度跟平常一樣，只是那一下推得特別長。等推板退到最後面（那時候推板是停住的），
+// 下一趟往前多伸 reachExtra；推得遠要走比較久，所以那一趟的時間跟著拉長，速度就不變。推完一趟再恢復
 function movePusher() {
-  reachExtra += ((reachTime > 0 ? REACH_EXTRA : 0) - reachExtra) * Math.min(1, STEP * 3);
+  const prev = pusherPhase;
   pusherPhase = (pusherPhase + STEP / pusherPeriod()) % 1;
+  if (prev < 0.75 && pusherPhase >= 0.75) {
+    reachExtra = reachQueued ? REACH_EXTRA : 0;
+    reachQueued = false;
+  }
   const z = PUSHER_MID + reachExtra / 2 + (PUSHER_AMP + reachExtra / 2) * Math.sin(pusherPhase * Math.PI * 2);
   pusher.body.setNextKinematicTranslation({ x: 0, y: PUSHER_H / 2, z });
 }
 function pusherPeriod() {
-  return upValue('speed') / (1 + (REACH_SPEED - 1) * (reachExtra / REACH_EXTRA));
+  return upValue('speed') * (PUSHER_AMP + reachExtra / 2) / PUSHER_AMP;
 }
 function pusherSpeedZ() {
   const w = (Math.PI * 2) / pusherPeriod();
@@ -739,9 +745,11 @@ const dollChance = new PseudoRandom(DOLL_CHANCE);
 
 
 function setAuto(on) {
+  const changed = autoDrop !== on;
   autoDrop = on;
   autoBtn.classList.toggle('on', on);
   autoBtn.textContent = on ? '自動中' : '自動';
+  if (changed && gameReady) saveGame(); // 切換就存，重新整理也記得
 }
 
 function dropCoin() {
@@ -1342,7 +1350,7 @@ let rainRate = 0;
 // 特殊道具：機台隨機（保底式）放上檯面，推下前緣馬上發動
 const ITEMS = {
   wind: { name: '一陣風', label: '風', color: '#9fd8ff', dark: '#2a6fb0', desc: '往前吹 2 秒，把檯面上的幣往前推' },
-  reach: { name: '長推板', label: '推', color: '#ffd166', dark: '#c0661c', desc: '推板伸長、變快，往前多推一大段' },
+  reach: { name: '長推板', label: '推', color: '#ffd166', dark: '#c0661c', desc: '推板下一下推得特別長，速度不變' },
   quake: { name: '地震', label: '震', color: '#ff8a3d', dark: '#b3261e', desc: '檯面抖一抖，把卡住的幣抖鬆' },
 };
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
@@ -1367,7 +1375,7 @@ let propTimer = 0;
 let windTime = 0;
 let quakeTime = 0;
 let quakeTick = 0;
-let reachTime = 0;
+let reachQueued = false;     // 長推板：等推板退到最後面，下一趟推長的
 // 甩一甩：甩的期間（加上甩完一下子）掉下去的東西都放回檯面上
 const SHAKE_TIME = 1.2;      // 甩幾秒
 const SHAKE_GUARD = 3;       // 從開始甩算起幾秒內掉下去的都不算
@@ -1376,9 +1384,8 @@ let shakeGuard = 0;
 let shakeTick = 0;
 let shakeDir = 1;
 let shakeCd = 0;             // 冷卻還剩幾秒
-let reachExtra = 0;          // 長推板：推板現在多伸出去多少
-const REACH_EXTRA = 1.0;     // 最多多伸 1 格（再多，推板尾巴會離開擋牆，幣會掉到推板後面）
-const REACH_SPEED = 1.5;     // 長推板的期間推板快 1.5 倍
+let reachExtra = 0;          // 長推板：這一趟推板多伸出去多少
+const REACH_EXTRA = 3.0;     // 多伸 3 格。推板尾巴會離開擋牆，掉到推板後面的東西由 rescueBehind() 放回來
 
 function startRain() {
   stats.rains++;
@@ -1651,8 +1658,8 @@ function triggerItem(kind) {
     quakeTime = 1.5;
     toast('地震！');
   } else if (kind === 'reach') {
-    reachTime = 6;
-    toast('長推板！');
+    reachQueued = true;
+    toast('長推板！下一下推得特別長');
   }
   beep(520, 0.2, 0.06, 'triangle', 'item');
   setTimeout(() => beep(780, 0.2, 0.05, 'triangle', 'item'), 120);
@@ -1677,7 +1684,6 @@ function putBack(body) {
 
 // 每一步：一陣風往前推、地震亂抖、長推板倒數、甩一甩
 function applyEffects() {
-  if (reachTime > 0) reachTime -= STEP;
   if (shakeGuard > 0) shakeGuard -= STEP;
   if (shakeTime > 0) {
     shakeTime -= STEP;
@@ -1968,7 +1974,8 @@ function doRebirth() {
   earnCarry = 0;
   rainQueue = 0;
   refillTimer = 0;
-  windTime = quakeTime = reachTime = reachExtra = 0;
+  windTime = quakeTime = reachExtra = 0;
+  reachQueued = false;
   shakeTime = shakeGuard = shakeCd = 0;
   prefill();
   buildGuards();
@@ -2092,6 +2099,8 @@ function saveData() {
   return {
     version: 1,
     gemSet: true,
+    // 設定也跟著存（納可：重新載入、讀檔都要回來）：自動投幣、瞄準位置、畫質、音效
+    settings: { auto: autoDrop, aimX, quality, sound: { ...soundOn } },
     wallet,
     upgrades: { ...upgrades },
     pusherPhase,
@@ -2150,6 +2159,10 @@ function loadSave() {
 }
 
 function applySave(d) {
+  if (d.settings) {
+    if (d.settings.auto) setAuto(true);
+    if (Number.isFinite(d.settings.aimX)) aimX = Math.max(-3, Math.min(3, d.settings.aimX));
+  }
   rebirth.points = Math.max(0, Math.floor(Number(d.rebirth?.points) || 0));
   rebirth.count = Math.max(0, Math.floor(Number(d.rebirth?.count) || 0));
   for (const k of PERK_KEYS) rebirth.perks[k] = Math.min(PERKS[k].costs.length, Math.max(0, Math.floor(Number(d.rebirth?.perks?.[k]) || 0)));
@@ -2177,7 +2190,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.51 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.52 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2229,7 +2242,11 @@ importFile.addEventListener('change', async () => {
   try {
     const d = JSON.parse(await f.text());
     if (typeof d.wallet !== 'number' || !Array.isArray(d.coins)) throw new Error('bad');
+    resetting = true; // 重新整理前不要再存，不然會把剛匯入的存檔蓋掉
     localStorage.setItem(SAVE_KEY, JSON.stringify(d));
+    // 存檔裡的畫質、音效也一起帶過來（自動投幣、瞄準位置讀檔時會從存檔拿）
+    if (d.settings?.quality) localStorage.setItem(QUALITY_KEY, d.settings.quality);
+    if (d.settings?.sound) localStorage.setItem(SOUND_KEY, JSON.stringify(d.settings.sound));
     location.reload();
   } catch (e) {
     alert('這個檔案讀不出來，可能不是推幣機的存檔。');
@@ -2247,11 +2264,27 @@ let acc = 0;
 let lastT = performance.now();
 
 // 物理走一步，並處理掉下去的幣
+// 長推板推很長的時候，推板尾巴會離開擋牆，東西可能掉到推板後面的地上，被推回牆後卡死。
+// 掉到牆後面地上的東西，放回推板前面（推板上面的東西比較高，不會被誤抓）
+function rescueBehind(body) {
+  const t = body.translation();
+  if (t.z > WALL_Z - 0.2 || t.y > 0.45 || t.y < -0.5) return;
+  const front = pusher.body.translation().z + PUSHER_DEPTH / 2;
+  body.setTranslation({ x: t.x, y: 1.2, z: front + 0.6 }, true);
+  body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+}
+
 function stepSim() {
   simTime += STEP;
   movePusher();
   applyEffects();
   world.step();
+  if (reachExtra > 0 || simTime % 1 < STEP) {
+    for (const c of coins) rescueBehind(c.body);
+    for (const d of dolls) rescueBehind(d.body);
+    for (const pr of props) rescueBehind(pr.body);
+  }
   for (let i = coins.length - 1; i >= 0; i--) {
     const b = coins[i].body.translation();
     const value = coins[i].value;
@@ -2444,6 +2477,7 @@ else prefill();
 buildGuards();
 updateLotteryBadge();
 updateHud();
+gameReady = true;
 document.getElementById('loading').classList.add('hide');
 // 給測試用
 window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); }, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
