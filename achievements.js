@@ -80,7 +80,7 @@ export const ACHIEVEMENTS = [
 
 // 裝飾品：slot 是裝在哪裡（同一個 slot 一次只能裝一個），價錢是成就點數。
 // 同一類（slot）的價錢都一樣，不同類可以不一樣（2026-10-05 納可定）
-const SLOT_PRICE = { theme: 150, pusher: 60, pusherDeco: 80, table: 60, background: 50, coin: 120, light: 70 };
+const SLOT_PRICE = { coinFace: 150, theme: 150, pusher: 60, pusherDeco: 80, table: 60, background: 50, coin: 120, light: 70 };
 // apply(畫面) 把外觀換上去，remove(畫面) 換回原本的
 function tableColor(id, name, color) {
   return {
@@ -149,6 +149,15 @@ function coinTint(id, name, tint, plain, grey = false) {
       }
       if (v.coinMatPlain.userData.baseColor) v.coinMatPlain.color.copy(v.coinMatPlain.userData.baseColor);
     },
+  };
+}
+
+// 硬幣圖案（2026-10-05 納可：以後可以買不同圖案的硬幣）：換正面的浮雕，背面數字不變，可以跟硬幣顏色一起搭
+function coinFace(id, name, kind) {
+  return {
+    id, name, slot: 'coinFace', price: SLOT_PRICE.coinFace,
+    apply: (v) => v.setCoinFace(kind),
+    remove: (v) => v.setCoinFace(null),
   };
 }
 
@@ -378,6 +387,11 @@ export const DECORATIONS = [
   coinTint('coinBronze', '古銅硬幣', 0xb8906e, 0xa87a4e),
   coinTint('coinRose', '玫瑰金硬幣', 0xffc9bd, 0xe0a090),
   coinTint('coinSilver', '銀色硬幣', 0xe4e8ee, 0xbfc4cc, true),
+  coinFace('faceStar', '星星', 'star'),
+  coinFace('faceHeart', '愛心', 'heart'),
+  coinFace('facePaw', '貓掌', 'paw'),
+  coinFace('faceClover', '四葉草', 'clover'),
+  coinFace('faceCrown', '皇冠', 'crown'),
 ];
 
 export const DECORATION_SLOTS = {
@@ -386,6 +400,7 @@ export const DECORATION_SLOTS = {
   pusherDeco: '推板花紋',
   light: '燈光',
   table: '檯面',
-  coin: '硬幣',
+  coin: '硬幣顏色',
+  coinFace: '硬幣圖案',
   background: '背景',
 };

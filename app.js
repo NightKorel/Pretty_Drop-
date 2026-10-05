@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.86';
-import { drawDigits } from './digits.js?v=0.0.86';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.86';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.86';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.87';
+import { drawDigits } from './digits.js?v=0.0.87';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.87';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.87';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.86';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.86';
+} from './slime.js?v=0.0.87';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.87';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1702,12 +1702,31 @@ function toast(html) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
 }
 
+// 硬幣圖案：換一般幣和大金幣正面的貼圖。裝著硬幣顏色（例如銀色）的話，先拿下再裝回去，顏色才會跟著新圖案
+const faceMapCache = {};
+let faceBase = null;
+function setCoinFace(kind) {
+  const fronts = [coinMatFancy[1], bigMatFancy[1]];
+  if (!faceBase) faceBase = { map: fronts[0].map, normalMap: fronts[0].normalMap, roughnessMap: fronts[0].roughnessMap };
+  const maps = kind ? (faceMapCache[kind] ||= makeFaceMaps(kind)) : faceBase;
+  const tint = DECORATIONS.find((x) => x.id === equipped.coin);
+  if (tint) tint.remove(decorView);
+  for (const m of fronts) {
+    m.map = maps.map;
+    m.normalMap = maps.normalMap;
+    m.roughnessMap = maps.roughnessMap;
+    m.userData.baseMap = undefined;
+    m.needsUpdate = true;
+  }
+  if (tint) tint.apply(decorView);
+}
+
 // ===== 成就與成就商店 =====
 const achEl = document.getElementById('ach');
 const achListEl = document.getElementById('achList');
 let achTab = 'list';
 // 裝飾品換外觀時可以動到的東西
-const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, setTheme, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
+const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, setTheme, setCoinFace, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
 
 function checkAchievements() {
   const kinds = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);

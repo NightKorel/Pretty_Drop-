@@ -1,7 +1,7 @@
 // 硬幣的外觀：幣面浮雕（史萊姆＋閃亮＋外圈）和側邊直紋。
 // 只是貼在表面的皮，物理還是一個扁圓柱，不會多算。
 import * as THREE from './lib/three.module.js';
-import { drawDigits } from './digits.js?v=0.0.86';
+import { drawDigits } from './digits.js?v=0.0.87';
 
 const SIZE = 256;
 // 貼圖在硬幣上下兩面的轉向（試出來的）
@@ -219,6 +219,107 @@ function orient(maps, rotation, flipX) {
     if (flipX) t.repeat.set(-1, 1);
     t.wrapS = THREE.RepeatWrapping;
   }
+}
+
+// ===== 幣面換圖案（成就商店的「硬幣圖案」）=====
+// 圖案畫成白色剪影，模糊一下邊緣，變成凸起的浮雕；外圈、珠圈跟原本一樣
+const FACE_DRAW = {
+  star: (ctx) => {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const r = i % 2 ? 34 : 82;
+      ctx.lineTo(128 + Math.cos(a) * r, 136 + Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+  },
+  heart: (ctx) => {
+    ctx.beginPath();
+    ctx.moveTo(128, 198);
+    ctx.bezierCurveTo(30, 136, 52, 52, 128, 92);
+    ctx.bezierCurveTo(204, 52, 226, 136, 128, 198);
+    ctx.fill();
+  },
+  paw: (ctx) => {
+    ctx.beginPath();
+    ctx.ellipse(128, 156, 46, 38, 0, 0, Math.PI * 2);
+    ctx.fill();
+    for (const [x, y, r] of [[74, 104, 19], [106, 76, 20], [150, 76, 20], [182, 104, 19]]) {
+      ctx.beginPath();
+      ctx.ellipse(x, y, r * 0.85, r, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  clover: (ctx) => {
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2 + Math.PI / 4;
+      ctx.save();
+      ctx.translate(128 + Math.cos(a) * 36, 124 + Math.sin(a) * 36);
+      ctx.rotate(a + Math.PI / 4);
+      ctx.beginPath();
+      ctx.moveTo(0, 22);
+      ctx.bezierCurveTo(-46, -6, -14, -46, 0, -20);
+      ctx.bezierCurveTo(14, -46, 46, -6, 0, 22);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.lineWidth = 9;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(128, 128);
+    ctx.quadraticCurveTo(140, 180, 168, 200);
+    ctx.stroke();
+  },
+  crown: (ctx) => {
+    ctx.beginPath();
+    ctx.moveTo(56, 176);
+    ctx.lineTo(48, 92);
+    ctx.lineTo(92, 130);
+    ctx.lineTo(128, 70);
+    ctx.lineTo(164, 130);
+    ctx.lineTo(208, 92);
+    ctx.lineTo(200, 176);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(56, 184, 144, 18);
+    for (const x of [48, 128, 208]) {
+      ctx.beginPath();
+      ctx.arc(x, x === 128 ? 64 : 86, 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+};
+function patternHeightMap(kind) {
+  const c = makeCanvas(SIZE, SIZE);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  ctx.fillStyle = '#fff';
+  FACE_DRAW[kind](ctx);
+  const px = ctx.getImageData(0, 0, SIZE, SIZE).data;
+  const mask = new Float32Array(SIZE * SIZE);
+  for (let i = 0; i < mask.length; i++) mask[i] = px[i * 4] / 255;
+  const soft = blur(blur(mask, SIZE, SIZE, 3), SIZE, SIZE, 3);
+  const hmap = new Float32Array(SIZE * SIZE);
+  for (let py = 0; py < SIZE; py++) {
+    for (let pxi = 0; pxi < SIZE; pxi++) {
+      const x = ((pxi + 0.5) / SIZE) * 2 - 1;
+      const y = ((py + 0.5) / SIZE) * 2 - 1;
+      const r = Math.hypot(x, y);
+      const i = py * SIZE + pxi;
+      hmap[i] = Math.max(0.3, rimHeight(r), beadHeight(x, y, r), 0.3 + 0.5 * Math.sqrt(soft[i]));
+    }
+  }
+  return hmap;
+}
+export const COIN_FACES = Object.keys(FACE_DRAW);
+// 回傳正面要用的三張貼圖（顏色、凹凸、粗糙度），方向跟原本的正面一樣
+export function makeFaceMaps(kind) {
+  const f = faceMaterial(patternHeightMap(kind));
+  orient(f.maps, FRONT_ROT, FRONT_FLIP);
+  return { map: f.maps[0], normalMap: f.maps[1], roughnessMap: f.maps[2] };
 }
 
 export function makeCoinMaterials(backText = '1') {
