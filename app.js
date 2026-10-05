@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.74';
-import { drawDigits } from './digits.js?v=0.0.74';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.74';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.74';
+import { makeCoinMaterials } from './coin.js?v=0.0.75';
+import { drawDigits } from './digits.js?v=0.0.75';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.75';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.75';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.74';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.74';
+} from './slime.js?v=0.0.75';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.75';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -82,7 +82,7 @@ const UPGRADES = {
   speed: {
     name: '推板加速',
     desc: '推板來回得更快，幣推得更勤',
-    levels: [4.4, 4.15, 3.9, 3.7, 3.5, 3.3, 3.15, 3.0], // 推板來回一次幾秒（一開始慢；滿級和每級幅度都收小，2026-10-05 納可：最快太快）
+    levels: [4.4, 4.25, 4.1, 3.95, 3.8, 3.65, 3.5, 3.4], // 推板來回一次幾秒（一開始慢；滿級和每級幅度都收小，2026-10-05 納可：最快太快，滿級再從 3.0 放慢到 3.4）
     base: 20, growth: 1.5,
   },
   dropRate: {
