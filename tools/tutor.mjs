@@ -23,7 +23,6 @@ const seq = await page.evaluate(() => {
   g.giveSpins(1); g.play(4, note);
   return { log, seen: [...g.tutorSeen] };
 });
-await page.evaluate(() => { __game.showPrize(); __game.play(2.5); });
 await page.waitForTimeout(800);
 const now = await page.evaluate(() => __game.tutorNow);
 await page.screenshot({ path: '/tmp/pd-shots/tutor.png' });
@@ -39,5 +38,5 @@ await p2.goto('http://localhost:8765/');
 await p2.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const old = await p2.evaluate(() => { __game.play(5); return { now: __game.tutorNow, seen: __game.tutorSeen.size }; });
 const pickTip = await p2.evaluate(() => document.querySelector('#qualityPick .viewerTip').textContent + ' / rec=' + document.querySelector('#qualityPick .rec').dataset.pick);
-console.log(JSON.stringify({ seq, prizeNow: now, old, pickTip, errs }));
+console.log(JSON.stringify({ seq, now, old, pickTip, errs }));
 await browser.close();

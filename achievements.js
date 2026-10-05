@@ -15,7 +15,6 @@ export const STAT_NAMES = {
   shakes: '甩過幾次',
   fevers: '狂熱時間幾次',
   treasures: '推下的小寶物',
-  prizes: '入賞幾次',
 };
 
 // 成就：check(遊戲狀態) 回傳 true 就達成；points 是給多少成就點數
@@ -73,8 +72,6 @@ export const ACHIEVEMENTS = [
   { id: 'maxOne', icon: 'maxBar', cat: 'upgrade', name: '升好升滿', desc: '把一項升級升到滿級', points: 30, check: (g) => g.maxed >= 1 },
   { id: 'maxAll', icon: 'trophy', cat: 'upgrade', name: '終極機台', desc: '把所有升級升到滿級', points: 100, check: (g) => g.maxed >= g.upgradeCount },
   { id: 'spin10', icon: 'wheel', cat: 'machine', name: '轉轉轉', desc: '總共轉 10 次轉盤', points: 20, check: (g) => g.stats.spins >= 10 },
-  { id: 'prize1', icon: 'target', cat: 'machine', name: '一桿進洞', desc: '投進入賞口一次', points: 10, check: (g) => g.stats.prizes >= 1 },
-  { id: 'prize20', icon: 'target', cat: 'machine', name: '神準', desc: '總共投進入賞口 20 次', points: 30, check: (g) => g.stats.prizes >= 20 },
   { id: 'item10', icon: 'bolt', cat: 'machine', name: '道具達人', desc: '總共用 10 次道具', points: 20, check: (g) => g.stats.itemsUsed >= 10 },
 ];
 
