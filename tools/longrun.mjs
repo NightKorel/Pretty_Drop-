@@ -1,4 +1,4 @@
-// 長時間節奏模擬：自動投幣、瞄準隨機移動、買得起最便宜的升級就買、甩一甩和金幣雨冷卻好就按。
+// 長時間節奏模擬：自動投幣、瞄準隨機移動、買得起最便宜的升級就買、甩一甩、金幣雨、召喚冷卻好就按。
 // 參數：分鐘數、輪迴點商店等級（JSON，可省略）。例：node tools/longrun.mjs 60
 //      node tools/longrun.mjs 40 '{"headStart":1,"mult":1,"startMoney":1}'
 // 給了輪迴點商店等級，就先照那個等級輪迴一次再開始算（初始資金、起跑都會生效）。
@@ -44,6 +44,7 @@ for (let m = 1; m <= minutes; m++) {
         }
         if (g.upValue('shake') > 0 && g.shakeCd <= 0) g.startShake();
         if (g.upValue('rain') > 0 && g.rainCd <= 0) g.startRainSkill();
+        if (g.upValue('summon') > 0 && g.summonCd <= 0) g.startSummon();
       }
     });
     __t += 60;
