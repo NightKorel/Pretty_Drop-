@@ -456,11 +456,13 @@ function addAnimalParts(g, skin, bodyMat) {
     g.add(m);
     return m;
   };
+  // 大的零件（外耳、翅膀、羽毛）標記起來，物理那邊會幫它們加碰撞盒，才不會穿進硬幣和別的史萊姆
+  const hit = (m) => { m.userData.hit = true; return m; };
   for (const side of [-1, 1]) {
     switch (skin.animal) {
       case 'rabbit':
         // 長長的兔耳朵，裡面粉粉的
-        part(ballGeo, bodyMat, [0.075, 0.26, 0.05], [side * 0.15, H + 0.12, 0], -side * 0.16);
+        hit(part(ballGeo, bodyMat, [0.075, 0.26, 0.05], [side * 0.15, H + 0.12, 0], -side * 0.16));
         part(ballGeo, earMat, [0.042, 0.19, 0.02], [side * 0.157, H + 0.13, 0.035], -side * 0.16);
         break;
       case 'cat':
@@ -468,24 +470,24 @@ function addAnimalParts(g, skin, bodyMat) {
       case 'fox': {
         // 三角形的尖耳朵；狐狸的比較大
         const big = skin.animal === 'fox' ? 1.3 : skin.animal === 'bat' ? 0.85 : 1;
-        part(coneGeo, bodyMat, [0.13 * big, 0.24 * big, 0.07 * big], [side * 0.27, H - 0.06 + 0.1 * big, 0], -side * 0.38);
+        hit(part(coneGeo, bodyMat, [0.13 * big, 0.24 * big, 0.07 * big], [side * 0.27, H - 0.06 + 0.1 * big, 0], -side * 0.38));
         part(coneGeo, earMat, [0.075 * big, 0.15 * big, 0.03 * big], [side * 0.275, H - 0.07 + 0.09 * big, 0.04 * big], -side * 0.38);
         break;
       }
       case 'dog':
         // 垂下來的狗耳朵
-        part(ballGeo, earMat, [0.1, 0.21, 0.05], [side * 0.5, H * 0.74, 0.06], side * 0.32);
+        hit(part(ballGeo, earMat, [0.1, 0.21, 0.05], [side * 0.5, H * 0.74, 0.06], side * 0.32));
         break;
       case 'bear':
       case 'panda':
         // 圓圓的熊耳朵
-        part(ballGeo, skin.animal === 'panda' ? earMat : bodyMat, [0.11, 0.11, 0.06], [side * 0.3, H - 0.06, -0.02]);
+        hit(part(ballGeo, skin.animal === 'panda' ? earMat : bodyMat, [0.11, 0.11, 0.06], [side * 0.3, H - 0.06, -0.02]));
         if (skin.animal === 'bear') part(ballGeo, earMat, [0.06, 0.06, 0.02], [side * 0.3, H - 0.06, 0.03]);
         break;
     }
     // 翅膀長在背後兩側，往後斜
     if (skin.animal === 'bat' || skin.animal === 'angel') {
-      const w = part(wingGeo(skin.animal), skin.animal === 'bat' ? earMat : partMat('#ffffff'), [side * 1.4, 1.4, 1.4], [side * 0.36, H * 0.38, -0.26], 0, side * 0.35);
+      const w = hit(part(wingGeo(skin.animal), skin.animal === 'bat' ? earMat : partMat('#ffffff'), [side * 1.4, 1.4, 1.4], [side * 0.36, H * 0.38, -0.26], 0, side * 0.35));
       w.castShadow = false;
     }
   }
@@ -502,7 +504,7 @@ function addAnimalParts(g, skin, bodyMat) {
       const a = (i - 3) * 0.28;                    // 左右張開
       const dir = new THREE.Vector3(Math.sin(a), Math.cos(a), 0);
       const base = new THREE.Vector3(0, H * 0.35, -0.42);
-      const f = part(ballGeo, earMat, [0.09, 0.42, 0.025], [0, 0, 0]);
+      const f = hit(part(ballGeo, earMat, [0.09, 0.42, 0.025], [0, 0, 0]));
       f.position.copy(base).addScaledVector(dir, 0.4);
       f.rotation.set(-0.35, 0, -a);
       f.castShadow = false;
@@ -521,6 +523,24 @@ function addAnimalParts(g, skin, bodyMat) {
     halo.position.set(0, H + 0.13, 0);
     g.add(halo);
   }
+}
+
+// 耳朵、翅膀的碰撞盒：照模型上標記 hit 的零件，算出每個零件的盒子（大小、位置、方向，都已經乘上整隻的大小）。
+// 橢圓、圓錐用盒子包會比較胖，所以縮成八成
+export function slimePartBoxes(mesh) {
+  const out = [];
+  const k = mesh.scale.x;
+  for (const ch of mesh.children) {
+    if (!ch.userData.hit) continue;
+    ch.geometry.computeBoundingBox();
+    const bb = ch.geometry.boundingBox;
+    const half = bb.getSize(new THREE.Vector3()).multiply(ch.scale).multiplyScalar(0.5 * 0.8 * k);
+    half.set(Math.abs(half.x), Math.abs(half.y), Math.abs(half.z));
+    const c = bb.getCenter(new THREE.Vector3()).multiply(ch.scale).applyQuaternion(ch.quaternion).add(ch.position).multiplyScalar(k);
+    const q = ch.quaternion;
+    out.push({ half: [Math.max(half.x, 0.01), Math.max(half.y, 0.01), Math.max(half.z, 0.01)], pos: [c.x, c.y, c.z], rot: { x: q.x, y: q.y, z: q.z, w: q.w } });
+  }
+  return out;
 }
 
 // 做一隻史萊姆娃娃（模型的原點在底部中心，臉朝 +z）
