@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.104';
-import { drawDigits } from './digits.js?v=0.0.104';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.104';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.104';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.105';
+import { drawDigits } from './digits.js?v=0.0.105';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.105';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.105';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.104';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.104';
+} from './slime.js?v=0.0.105';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.105';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -342,31 +342,11 @@ function setLight(m) {
 }
 
 // ===== 物理 =====
-// 切換「難推」：檯面上所有摩擦力是 0.3 的（硬幣、檯面）一起換掉，之後投的幣也照新的
-function setHardPush(on, quiet = false) {
-  const from = hardPush ? HARD_FRICTION : COIN_FRICTION;
-  hardPush = on;
-  const to = coinFriction();
-  world.colliders.forEach((col) => {
-    if (Math.abs(col.friction() - from) < 1e-6) col.setFriction(to);
-    if (Math.abs(col.restitution() - (on ? 0.05 : 0)) < 1e-6 && col.parent()?.isDynamic()) col.setRestitution(on ? 0 : 0.05);
-  });
-  try { localStorage.setItem(HARD_KEY, on ? '1' : '0'); } catch (e) { /* 存不了就算了 */ }
-  const b = document.querySelector('[data-cheat="hard"]');
-  if (b) b.textContent = `測試：難推（${on ? '開' : '關'}）`;
-  if (!quiet) toast(on ? '難推：開（摩擦力 0.5）' : '難推：關（摩擦力 0.3）');
-}
 const world = new RAPIER.World({ x: 0, y: -19.6, z: 0 });
 world.timestep = 1 / 60;
-const TABLE_FRICTION = 0.3;
-const COIN_FRICTION = 0.3;
-// 測試版參數「難推」（2026-10-05 納可：推幣要難推一點才有刺激感；先放在設定「其他」的作弊裡試，不改主遊戲）：
-// 硬幣、檯面的摩擦力 0.3 → 0.5，硬幣彈跳 0.05 → 0。開關記在這台瀏覽器，不進存檔
-const HARD_FRICTION = 0.5;
-const HARD_KEY = 'pretty_drop_hard';
-let hardPush = false;
-try { hardPush = localStorage.getItem(HARD_KEY) === '1'; } catch (e) { /* 存不了就不開 */ }
-const coinFriction = () => (hardPush ? HARD_FRICTION : COIN_FRICTION);
+// 摩擦力 0.5、硬幣不彈（2026-10-05 納可：推幣要難推一點才有刺激感；作弊裡試過「難推」覺得 0.5 很好，改成正式的。原本 0.3）
+const TABLE_FRICTION = 0.5;
+const COIN_FRICTION = 0.5;
 
 function addBox(hx, hy, hz, x, y, z, color, opts = {}) {
   const desc = opts.kinematic ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.fixed();
@@ -559,8 +539,8 @@ function spawnCoin(x, y, z, tilt = 0, big = false) {
       .setDensity(1)
       .setContactSkin(0.01) // 留一層很薄的皮，疊在一起時比較不會抖
       .setCollisionGroups(big ? OTHER_GROUPS : COIN_GROUPS)
-      .setFriction(coinFriction())
-      .setRestitution(hardPush ? 0 : 0.05),
+      .setFriction(COIN_FRICTION)
+      .setRestitution(0),
     body,
   );
   const mesh = big ? new THREE.Mesh(bigGeo, bigMeshMat) : new THREE.Mesh(coinGeo, coinMeshMat);
@@ -1793,7 +1773,6 @@ for (const b of document.querySelectorAll('#settings button[data-cheat]')) {
     } else if (c === 'ach') achPoints += 10;
     else if (c === 'ticket') dropProp('ticket');
     else if (c === 'item') dropProp('item');
-    else if (c === 'hard') setHardPush(!hardPush);
     bump(walletEl);
     toast(`作弊：${b.textContent}`);
     saveGame();
@@ -3495,9 +3474,6 @@ const saved = loadSave();
 if (saved) applySave(saved);
 else prefill();
 if (rebirth.shopping) showRebirthShop(); // 上次在輪迴點商店裡關掉的，回到那裡
-// 上次開著「難推」：檯面也換成難推的摩擦力（幣在投的時候就照新的了）
-if (hardPush) { hardPush = false; setHardPush(true, true); }
-else setHardPush(false, true);
 buildGuards();
 updateLotteryBadge();
 updateHud();
@@ -3505,7 +3481,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, setHardPush, get hardPush() { return hardPush; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, tutorSeen, get tutorNow() { return tutorNow && tutorNow.id; }, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
