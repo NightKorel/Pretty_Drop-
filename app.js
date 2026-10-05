@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.45';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.45';
+import { makeCoinMaterials } from './coin.js?v=0.0.46';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.46';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.45';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.45';
+} from './slime.js?v=0.0.46';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.46';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -141,18 +141,22 @@ const UPGRADE_KEYS = Object.keys(UPGRADES);
 // 玩家自己選什麼時候輪迴：清空錢、商店升級、檯面；保留圖鑑、成就、裝飾品和輪迴點買的東西。
 // 輪迴點照「這一輪累計賺的錢」換，像經驗值表：第 n 點要累計賺到 REBIRTH_BASE × n^1.5 枚（越後面越難）。
 // 數值是 Claude 先隨意設定的（2026-10-05），之後看手感調。
-const REBIRTH_BASE = 2000;
+const REBIRTH_BASE = 1000;  // 第 1 點 1000 枚（2026-10-05 納可：不要放太高）
 function rebirthNeed(n) {
   const x = REBIRTH_BASE * Math.pow(n, 1.5);
   return x < 10000 ? Math.round(x / 100) * 100 : Math.round(x / 1000) * 1000;
 }
-// 輪迴點商店：costs 是每一級要幾點
+// 輪迴點商店：costs 是每一級要幾點。每一級都一樣 1 點，不會越來越貴（納可：輪迴點每一點都很珍貴）
+// 以後要卡進度，用「這一層全部升到多少級才開第二層」來卡（納可定）
+const PERK_MULT = 0.05;      // 收入加成每級 +5%
+const PERK_MONEY = 100;      // 初始資金每級 +100 枚
+const PERK_OFF = 0.1;        // 商店打折每級 -10%
 const PERKS = {
-  mult: { name: '收入加成', desc: '推下來的幣、娃娃、轉盤都多拿 10%（每一級）', costs: [1, 2, 3, 5, 8] },
-  startMoney: { name: '初始資金', desc: '輪迴後一開始手上多 50 枚（每一級）', costs: [1, 1, 2, 3, 4] },
-  headStart: { name: '起跑', desc: '輪迴後「媽媽十元」「投幣速度」「推板加速」直接從這一級開始', costs: [2, 3, 5] },
-  discount: { name: '商店打折', desc: '商店升級便宜 8%（每一級）', costs: [1, 2, 4, 6] },
-  dollCap: { name: '娃娃上限', desc: '檯面上同時可以多放 1 隻娃娃（每一級）', costs: [3, 6] },
+  mult: { name: '收入加成', desc: '推下來的幣、娃娃、轉盤都多拿 5%（每一級）', costs: [1, 1, 1, 1, 1] },
+  startMoney: { name: '初始資金', desc: '輪迴後一開始手上多 100 枚（每一級）', costs: [1, 1, 1, 1, 1] },
+  headStart: { name: '起跑', desc: '輪迴後「媽媽十元」「投幣速度」「推板加速」直接從這一級開始', costs: [1, 1, 1] },
+  discount: { name: '商店打折', desc: '商店升級便宜 10%（每一級）', costs: [1, 1, 1, 1] },
+  dollCap: { name: '娃娃上限', desc: '檯面上同時可以多放 1 隻娃娃（每一級）', costs: [1, 1] },
 };
 const PERK_KEYS = Object.keys(PERKS);
 const rebirth = { points: 0, count: 0, perks: Object.fromEntries(PERK_KEYS.map((k) => [k, 0])) };
@@ -160,7 +164,7 @@ const perkLv = (k) => rebirth.perks[k];
 // 商店升級的價錢（打折後一樣取乾脆的數字）
 function upPrice(key, lv = upgrades[key]) {
   const p = UPGRADES[key].prices[lv];
-  const off = 1 - perkLv('discount') * 0.08;
+  const off = 1 - perkLv('discount') * PERK_OFF;
   return off < 1 ? niceMoney(p * off) : p;
 }
 const BIG_VALUE = 10;         // 大金幣推下去值幾枚
@@ -545,7 +549,7 @@ function prefill() {
 // 賺錢都走這裡：算上輪迴的收入加成（小數存起來，湊滿 1 枚再給）
 let earnCarry = 0;
 function earn(v) {
-  const x = v * (1 + perkLv('mult') * 0.1) + earnCarry;
+  const x = v * (1 + perkLv('mult') * PERK_MULT) + earnCarry;
   const n = Math.floor(x);
   earnCarry = x - n;
   wallet += n;
@@ -1922,7 +1926,7 @@ function doRebirth() {
   while (props.length) removeProp(props.length - 1);
   for (const k of UPGRADE_KEYS) upgrades[k] = 0;
   for (const k of ['refill', 'dropRate', 'speed']) upgrades[k] = Math.min(perkLv('headStart'), UPGRADES[k].prices.length);
-  wallet = START_WALLET + perkLv('startMoney') * 50;
+  wallet = START_WALLET + perkLv('startMoney') * PERK_MONEY;
   won = 0;
   lost = 0;
   earnCarry = 0;
