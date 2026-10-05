@@ -2,7 +2,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NPMG + '/playwright');
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
-for (const set of (process.argv[2] ? [process.argv[2]] : ['jelly', 'sweets', 'metal', 'animal'])) {
+for (const set of (process.argv[2] ? [process.argv[2]] : ['jelly', 'sweets', 'metal', 'animal', 'gem'])) {
   const page = await (await browser.newContext({ viewport: { width: 1000, height: 560 } })).newPage();
   const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('console', m => { if (m.type()==='error') errs.push(m.text()); });
   await page.goto('http://localhost:8765/');

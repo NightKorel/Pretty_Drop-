@@ -137,6 +137,12 @@ export function slimeInfo(id) {
 }
 
 // 深色的史萊姆用白眼睛，其他用黑眼睛
+// 亮度 0.33 以上算淺色（白眼睛在上面對比不夠）。果凍、寶石是透明的，透出後面的檯面，看起來比原本的顏色深，門檻放到 0.5
+function isLight(hex, look) {
+  const c = new THREE.Color(hex);
+  const see = look === 'jelly' || look === 'gem';
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b >= (see ? 0.5 : 0.33);
+}
 function isDark(hex) {
   const c = new THREE.Color(hex);
   return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b < 0.18;
@@ -573,8 +579,9 @@ export function makeSlimeMesh(id, scale, fancy = true) {
     body.receiveShadow = true;
   }
   g.add(body);
-  // 豆豆眼：深色史萊姆用白的。眼睛是貼在表面的扁片，不會凸出來
-  const eyeMat = isDark(skin.color) ? eyeWhite : eyeBlack;
+  // 豆豆眼：大多用白的，淺色史萊姆（牛奶、淺色寶石這類）白眼睛看不到才用黑的（2026-10-05 納可定）。
+  // 眼睛是貼在表面的扁片，不會凸出來
+  const eyeMat = isLight(skin.color, skin.look) ? eyeBlack : eyeWhite;
   const dia = faceted(skin);
   const [lo, hi] = dia ? [DIAMOND[DIA_EYE[0]], DIAMOND[DIA_EYE[1]]] : [];
   const ey = dia ? (lo[1] + hi[1]) / 2 : 0.5;      // 眼睛在身體的哪個高度（0 到 1）
@@ -748,7 +755,7 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
       ctx.ellipse(cx + s * rw * 0.3, by - rh * 0.45, w * 0.06, h * 0.085, s * 0.5, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = panda || isDark(skin.color) ? '#ffffff' : '#1e1724';
+    ctx.fillStyle = panda || !isLight(skin.color, skin.look) ? '#ffffff' : '#1e1724';
     ctx.beginPath();
     ctx.ellipse(cx + s * rw * 0.3, by - rh * 0.45, w * 0.032 * (panda ? 0.7 : 1), h * 0.055 * (panda ? 0.7 : 1), 0, 0, Math.PI * 2);
     ctx.fill();
