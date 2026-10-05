@@ -480,31 +480,6 @@ function drinkTexture(skin) {
         ctx.fill();
       }
     }
-    if (skin.pearls) {
-      // 珍珠畫在身體下半部一圈（2026-10-05 納可：凸出來很怪，畫成貼圖在下方）。
-      // 圖的高度不是平均對到身體的高度：大約 y 75 到 100 是側面靠下、看得到的那一段
-      let seed = 7;
-      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      for (let row = 0; row < 3; row++) {
-        const y = 97 - row * 9;
-        const n = 22 - row * 3;
-        for (let k = 0; k < n; k++) {
-          if (row === 2 && rnd() < 0.45) continue; // 最上面一排稀稀落落的
-          const x = ((k + (row % 2) * 0.5 + (rnd() - 0.5) * 0.3) / n) * 256;
-          const yy = y + (rnd() - 0.5) * 3;
-          for (const dx of [0, -256, 256]) { // 接縫兩邊都畫，才不會切一半
-            const g = ctx.createRadialGradient(x + dx - 1.5, yy - 2, 0.5, x + dx, yy, 5.5);
-            g.addColorStop(0, '#8a5a3a');
-            g.addColorStop(0.35, '#3a1d0e');
-            g.addColorStop(1, '#1c0d05');
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.ellipse(x + dx, yy, 5.2, 5.6, 0, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-    }
   });
 }
 
@@ -656,7 +631,7 @@ function realJelly(skin) {
   }
   if (skin.look === 'drink') {
     // 飲料：像裝在透明杯子裡，表面亮亮的；奶茶、果汁不透明一點
-    const tex = skin.grad || skin.tiger || skin.pearls ? drinkTexture(skin) : null;
+    const tex = skin.grad || skin.tiger ? drinkTexture(skin) : null;
     return new THREE.MeshPhysicalMaterial({
       color: tex ? 0xffffff : color, map: tex, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05,
       transmission: skin.milky ? 0.5 : 0.85, thickness: 0.7, ior: 1.33,
@@ -708,7 +683,7 @@ function jellyLayers(skin) {
     ];
   }
   if (skin.look === 'drink') {
-    const tex = skin.grad || skin.tiger || skin.pearls ? drinkTexture(skin) : null;
+    const tex = skin.grad || skin.tiger ? drinkTexture(skin) : null;
     const c = tex ? new THREE.Color(1, 1, 1) : color;
     return [
       fakeJelly(c.clone().multiplyScalar(0.75), { center: skin.milky ? 0.8 : 0.35, edge: 0.7, glow: 0.08, rough: 0.2, back: true, map: tex }),
@@ -899,6 +874,7 @@ const cubeGeo = (() => {
   g.setIndex(idx);
   return g;
 })();
+const pearlGeo = new THREE.SphereGeometry(0.05, 12, 8);
 const lemonGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.025, 20);
 const strawGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.62, 12);
 const bobaStrawGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.62, 14);
@@ -912,6 +888,7 @@ const iceFaceMats = {};
 function iceFaceMat(color) {
   return (iceFaceMats[color] ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(1, 1, 1), 0.55) }));
 }
+const pearlMat = new THREE.MeshStandardMaterial({ color: 0x2c160b, roughness: 0.25 });
 const lemonMat = new THREE.MeshStandardMaterial({ color: 0xffe25c, roughness: 0.5, emissive: 0x3a2a00 });
 function addDrinkParts(g, skin, fancy) {
   if (!cubeMat) {
@@ -935,7 +912,20 @@ function addDrinkParts(g, skin, fancy) {
     c.userData.bob = { y, phase: rnd() * Math.PI * 2, spin: 0.15 + rnd() * 0.25 };
     g.add(c);
   }
-  // 珍珠：畫在身體的貼圖上（drinkTexture），不放立體的珠子（2026-10-05 納可：凸出來很怪）
+  // 珍珠：立體的珠子浮在飲料裡面，透過飲料看得到；每一顆都離身體表面留一段距離，不會凸出來。
+  // 2026-10-05 納可：凸出來很怪；畫成密密麻麻的貼圖更醜；浮在中間最好
+  if (skin.pearls) {
+    for (let i = 0; i < 18; i++) {
+      const y = 0.07 + rnd() * 0.07;       // 沉在最底下，跟外面畫的那一圈疊在一起
+      const room = inside(y, 0.1);
+      if (room <= 0) continue;
+      const a = rnd() * Math.PI * 2;
+      const r = Math.sqrt(rnd()) * room;
+      const p = new THREE.Mesh(pearlGeo, pearlMat);
+      p.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      g.add(p);
+    }
+  }
   // 檸檬片：斜斜地泡在裡面
   if (skin.lemon) {
     const l = new THREE.Mesh(lemonGeo, lemonMat);
