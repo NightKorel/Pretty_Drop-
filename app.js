@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.89';
-import { drawDigits } from './digits.js?v=0.0.89';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.89';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.89';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.90';
+import { drawDigits } from './digits.js?v=0.0.90';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.90';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.90';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.89';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.89';
+} from './slime.js?v=0.0.90';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.90';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -995,7 +995,6 @@ function buyRowHtml({ name, lv = '', desc = '', price = '', canPay = true, btn, 
 
 const walletEl = document.getElementById('wallet');
 const refillEl = document.getElementById('refill');
-const hintEl = document.getElementById('hint');
 const autoBtn = document.getElementById('autoBtn');
 const shopBtn = document.getElementById('shopBtn');
 // 手機沒有右鍵，用按鈕切換
@@ -1198,7 +1197,6 @@ function dropCoin() {
   stats.coinsDropped += dropped;
   bump(walletEl);
   beep(900, 0.06, 0.05, 'triangle', 'drop');
-  hintEl.style.opacity = 0;
   updateHud();
 }
 
@@ -1262,7 +1260,7 @@ try {
   const q = localStorage.getItem(QUALITY_KEY);
   if (q) { quality = q; qualityChosen = true; }
 } catch (e) { /* 存不了就用預設 */ }
-// 第一次打開時建議的畫質：手機大多建議低；記憶體和處理器都夠的手機建議中；電腦建議高
+// 依裝置猜的畫質：現在只給自動測試用（2026-10-05 納可：畫面上一律標「預設是高」，手機不好才自己選中或低）
 function suggestQuality() {
   const touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
   const small = Math.min(screen.width, screen.height) < 900;
@@ -1274,8 +1272,6 @@ function suggestQuality() {
 // 第一次打開：讓玩家自己選畫質（2026-10-05 納可：朋友手機第一次開不起來）。選好才開始畫 3D
 function askQuality() {
   const el = document.getElementById('qualityPick');
-  const rec = suggestQuality();
-  el.querySelector(`[data-pick="${rec}"]`).classList.add('rec');
   el.classList.add('show');
   window.__picking = true;
   return new Promise((done) => {
@@ -3046,6 +3042,7 @@ function saveData() {
     activeSets,
     unlockedSets: [...unlockedSets],
     stats: { ...stats },
+    tutor: [...tutorSeen],
     achieved: { ...achieved },
     achPoints,
     rebirth: { points: rebirth.points, count: rebirth.count, shopping: rebirth.shopping, gained: rebirth.gained, perks: { ...rebirth.perks } },
@@ -3143,6 +3140,9 @@ function applySave(d) {
   const sets = (Array.isArray(d.activeSets) ? d.activeSets : [d.activeSet]).filter((id) => SET_BY_ID[id] && setUnlocked(SET_BY_ID[id]));
   if (sets.length) activeSets = [...new Set(sets)];
   for (const k of Object.keys(stats)) stats[k] = Math.max(0, Number(d.stats?.[k]) || 0);
+  // 新手提示看過哪些；更新前就在玩的存檔（沒有這一項、已經投過幣）當作全部看過
+  if (Array.isArray(d.tutor)) for (const id of d.tutor) tutorSeen.add(id);
+  else if (stats.coinsDropped > 0) for (const t of TUTOR) tutorSeen.add(t.id);
   for (const a of ACHIEVEMENTS) if (d.achieved?.[a.id]) achieved[a.id] = true;
   achPoints = Math.max(0, Math.floor(Number(d.achPoints) || 0));
   for (const x of DECORATIONS) if (d.ownedDecor?.[x.id]) ownedDecor[x.id] = true;
@@ -3174,7 +3174,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(saveData())], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = '推幣機存檔.json';
+  a.download = 'PrettyDrop存檔.json';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
@@ -3193,7 +3193,7 @@ importFile.addEventListener('change', async () => {
     if (d.settings?.sound) localStorage.setItem(SOUND_KEY, JSON.stringify(d.settings.sound));
     location.reload();
   } catch (e) {
-    alert('這個檔案讀不出來，可能不是推幣機的存檔。');
+    alert('這個檔案讀不出來，可能不是 Pretty Drop! 的存檔。');
   }
 });
 document.getElementById('resetBtn').addEventListener('click', () => {
@@ -3329,6 +3329,8 @@ function updateTimers(frame) {
   // 按住連投，或自動投幣
   if (pointerDown || autoDrop) tryDrop();
 
+  tutorTick(frame);
+
   // 每一秒檢查一次成就
   achTimer += frame;
   if (achTimer >= 1) {
@@ -3451,6 +3453,67 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+// ===== 新手提示 =====
+// 2026-10-05 納可：缺新手教學。做法（Claude 定）：不打斷遊戲，下面中間一次跳一個小提示，
+// 玩到那一步才出現；做了該做的事或時間到就收起來，看過的不再出現（存在存檔裡）。設定「其他」可以重看
+const TUTOR = [
+  { id: 'drop', when: () => true, text: '點檯面投幣，按住可以一直投', done: () => stats.coinsDropped >= 3 },
+  { id: 'push', when: () => stats.coinsDropped >= 3, text: '推板會把幣往前推，從前緣掉下去的就是你的', dur: 8 },
+  { id: 'doll', when: () => stats.coinsDropped >= 8 && dolls.length > 0, text: '史萊姆娃娃推下前緣，會收進「圖鑑」還會噴幣', dur: 9 },
+  { id: 'auto', when: () => stats.coinsDropped >= 20 && !autoDrop, text: '懶得一直點？右鍵或按「自動」會自己連續投', done: () => autoDrop, dur: 12 },
+  { id: 'mom', when: () => wallet < 5, text: '沒錢不用怕，每隔一段時間會補 10 枚，看右上角的倒數', dur: 9 },
+  { id: 'shop', when: () => stats.coinsDropped >= 10 && upgrades[UPGRADE_KEYS[0]] === 0 && wallet >= upPrice(UPGRADE_KEYS[0]), text: '錢夠了！打開「商店」買升級', done: () => shopEl.classList.contains('show') || upgrades[UPGRADE_KEYS[0]] > 0, dur: 20 },
+  { id: 'ticket', when: () => freeSpins > 0, text: '拿到免費彩券了，按「彩券」轉一次', done: () => freeSpins === 0, dur: 12 },
+  { id: 'item', when: () => props.some((p) => p.type !== 'ticket'), text: '道具推下前緣會馬上發動', dur: 8 },
+  { id: 'prize', when: () => prizeState === 'on', text: '入賞口出來了！把幣投進洞裡有小獎', done: () => prizeState !== 'on' },
+  { id: 'fever', when: () => feverGauge >= 300, text: '推下東西會累積狂熱值（錢下面那一條），滿了就是狂熱時間', dur: 9 },
+  { id: 'rebirth', when: () => rebirthPending() >= 1, text: '可以輪迴了！看看「商店」的「輪迴」分頁', dur: 12 },
+];
+const tutorSeen = new Set();
+const tutorEl = document.getElementById('tutor');
+let tutorNow = null;
+let tutorT = 0;
+let tutorGap = 1.5;          // 一個收起來之後，隔一下下才跳下一個
+let tutorCheck = 0;
+function tutorShow(t) {
+  tutorNow = t;
+  tutorT = 0;
+  document.getElementById('tutorText').textContent = t.text; // 句子會換行，不用 hangHtml（它不換行）
+  tutorEl.classList.add('show');
+}
+function tutorHide() {
+  if (tutorNow) tutorSeen.add(tutorNow.id);
+  tutorNow = null;
+  tutorGap = 1.5;
+  tutorEl.classList.remove('show');
+}
+function tutorTick(frame) {
+  if (rebornBusy || rebirth.shopping) return;
+  if (tutorNow) {
+    tutorT += frame;
+    if ((tutorNow.done && tutorNow.done()) || (tutorNow.dur && tutorT >= tutorNow.dur)) tutorHide();
+    return;
+  }
+  if (tutorGap > 0) { tutorGap -= frame; return; }
+  tutorCheck += frame;
+  if (tutorCheck < 0.5) return;
+  tutorCheck = 0;
+  // 條件已經達成的直接跳過（例如早就開過自動），不用再講
+  const t = TUTOR.find((x) => !tutorSeen.has(x.id) && x.when());
+  if (!t) return;
+  if (t.done && t.done() && t.id !== 'drop') { tutorSeen.add(t.id); return; }
+  tutorShow(t);
+}
+document.getElementById('tutorClose').addEventListener('click', tutorHide);
+document.getElementById('tutorReset').addEventListener('click', () => {
+  tutorSeen.clear();
+  tutorEl.classList.remove('show');
+  tutorNow = null;
+  tutorGap = 0.5;
+  saveGame();
+  toast('新手提示會從頭再出現一次');
+});
+
 // 沒選過畫質就先問（自動測試時跳過，用建議的；網址加 ?pick=1 可以強制問）
 if (!qualityChosen) {
   const testing = navigator.webdriver && !/[?&]pick=1/.test(location.search);
@@ -3471,5 +3534,5 @@ setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開�
 window.__game = { get prize() { return { x: prizeX, cd: prizeCd, state: prizeState, v: prizeState === 'on' ? Math.sign(prizeV) * prizeSpeed : 0 }; }, showPrize, coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
-  setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
+  setAim(x) { aimX = x; }, upValue, tutorSeen, get tutorNow() { return tutorNow && tutorNow.id; }, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
