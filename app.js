@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.63';
-import { drawDigits } from './digits.js?v=0.0.63';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.63';
+import { makeCoinMaterials } from './coin.js?v=0.0.64';
+import { drawDigits } from './digits.js?v=0.0.64';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.64';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.63';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.63';
+} from './slime.js?v=0.0.64';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.64';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -63,18 +63,19 @@ const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得
 // ===== 商店升級 =====
 // 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項。
 // 順序照常識：越無感的越前面、越便宜；越有感的越後面、越貴（2026-10-05 納可定）。
+// 例外：媽媽十元永遠排第一個（納可：比較好笑）。
 // 每升一級價錢乘上 growth。levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
-  guard: {
-    name: '側溝擋板',
-    desc: '從前緣往後裝矮矮的擋板，幣比較不會掉進兩側溝',
-    levels: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2],   // 擋板長度
-    base: 10, growth: 1.45,
-  },
   refill: {
     name: '媽媽十元',
     desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
     levels: [30, 26, 22, 19, 16, 14, 12, 10],          // 媽媽幾秒給一次
+    base: 10, growth: 1.45,
+  },
+  guard: {
+    name: '側溝擋板',
+    desc: '從前緣往後裝矮矮的擋板，幣比較不會掉進兩側溝',
+    levels: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2],   // 擋板長度
     base: 10, growth: 1.45,
   },
   speed: {
@@ -2443,7 +2444,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.63 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.64 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2455,7 +2456,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.63 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.64 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
