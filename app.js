@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.38';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.38';
+import { makeCoinMaterials } from './coin.js?v=0.0.39';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.39';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.38';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.38';
+} from './slime.js?v=0.0.39';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.39';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -153,8 +153,6 @@ let achTimer = 0;
 const dolls = [];            // 檯面上的史萊姆娃娃
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
 const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 35 秒一隻）
-const RARE_CHANCE = 0.2;     // 放出來的是稀有（第 7 到 9 隻）的機率
-const LEGEND_CHANCE = 0.03;  // 放出來的是傳說（第 10 隻）的機率
 let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
 const MAX_DOLLS = 4;         // 檯面上最多同時幾隻
 let dollTimer = 0;
@@ -401,20 +399,39 @@ function removeDoll(i) {
   dolls.splice(i, 1);
 }
 
-// 機台放一隻新的娃娃到推板上方，稀有度也用保底式假隨機
+// 娃娃保底（納可定）：把「選擇的全部史萊姆」每一種放 DOLL_ROUNDS 份進袋子，洗亂之後一隻一隻拿，
+// 拿完再補一袋。這樣最多抽完一袋就一定看得到每一種，不會一直抽不到某一種。
+const DOLL_ROUNDS = 2;
+let dollBag = [];
+function refillDollBag() {
+  const ids = activeSets.flatMap((set) => SLOTS.map((_, i) => `${set}.${i}`));
+  dollBag = [];
+  for (let r = 0; r < DOLL_ROUNDS; r++) dollBag.push(...ids);
+  for (let i = dollBag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [dollBag[i], dollBag[j]] = [dollBag[j], dollBag[i]];
+  }
+}
+
+// 機台放一隻新的娃娃到推板上方
 function dropNewDoll(forceRarity) {
-  let rarity = 'common';
-  if (forceRarity) rarity = forceRarity;
-  else if (legendChance.roll()) rarity = 'legend';
-  else if (rareChance.roll()) rarity = 'rare';
-  // 檯面上不會同時有兩隻一樣造型的史萊姆：從還沒在檯面上的造型裡挑
+  // 檯面上不會同時有兩隻一樣造型的史萊姆
   const onTable = new Set(dolls.map((d) => d.id));
-  const pickFrom = (r) => activeSets.flatMap((set) => SLOTS.map((sl, i) => (sl.rarity === r ? `${set}.${i}` : null)))
-    .filter((x) => x && !onTable.has(x));
-  let choices = pickFrom(rarity);
-  if (!choices.length) choices = ['common', 'rare', 'legend'].flatMap(pickFrom);
-  if (!choices.length) return;
-  const id = choices[Math.floor(Math.random() * choices.length)];
+  let id = null;
+  if (forceRarity) {
+    // 作弊用：指定稀有度，不從袋子拿
+    const choices = activeSets.flatMap((set) => SLOTS.map((sl, i) => (sl.rarity === forceRarity ? `${set}.${i}` : null)))
+      .filter((x) => x && !onTable.has(x));
+    if (!choices.length) return;
+    id = choices[Math.floor(Math.random() * choices.length)];
+  } else {
+    // 袋子裡有已經沒在用的套，先丟掉
+    dollBag = dollBag.filter((x) => activeSets.includes(x.split('.')[0]));
+    if (!dollBag.length) refillDollBag();
+    const k = dollBag.findIndex((x) => !onTable.has(x));
+    if (k < 0) return; // 袋子裡剩下的都正好在檯面上，等下一次
+    id = dollBag.splice(k, 1)[0];
+  }
   const scale = 0.85 + Math.random() * 0.35; // 大小略有不同
   const yaw = (Math.random() - 0.5) * 0.8;   // 大致面向玩家
   spawnDoll(id, scale, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
@@ -603,8 +620,7 @@ function aimFromEvent(e) {
 const bigChance = new PseudoRandom(UPGRADES.lucky.levels[0]);
 const rainChance = new PseudoRandom(UPGRADES.rain.levels[0]);
 const dollChance = new PseudoRandom(DOLL_CHANCE);
-const rareChance = new PseudoRandom(RARE_CHANCE);
-const legendChance = new PseudoRandom(LEGEND_CHANCE);
+
 
 function setAuto(on) {
   autoDrop = on;
@@ -1523,11 +1539,9 @@ function dropProp(type) {
 }
 
 // 道具推下前緣：馬上發動
-// 道具發動後 4 秒內推下多少，結束時告訴玩家
-let itemReport = null;
 function triggerItem(kind) {
   stats.itemsUsed++;
-  itemReport = { kind, start: won, time: 4 };
+
   if (kind === 'wind') {
     windTime = 1.2;
     toast('一陣風！');
@@ -1582,15 +1596,6 @@ function glueCoins() {
 
 // 每一步：一陣風往前推、地震亂抖
 function applyEffects() {
-  if (itemReport) {
-    itemReport.time -= STEP;
-    if (itemReport.time <= 0) {
-      const n = won - itemReport.start;
-      const verb = { wind: '吹下', glue: '黏下', quake: '震下' }[itemReport.kind];
-      toast(`${ITEMS[itemReport.kind].name}${verb}了 ${n} 枚！`);
-      itemReport = null;
-    }
-  }
   if (windTime > 0) {
     windTime -= STEP;
     for (const c of coins) {
@@ -1851,8 +1856,7 @@ function saveData() {
       const r = pr.body.rotation();
       return { type: pr.type, kind: pr.kind, p: [t.x, t.y, t.z], r: [r.x, r.y, r.z, r.w] };
     }),
-    rareCount: rareChance.count,
-    legendCount: legendChance.count,
+    dollBag: [...dollBag],
     collection: { ...collection },
     activeSets,
     stats: { ...stats },
@@ -1912,8 +1916,7 @@ function applySave(d) {
       spawnProp(pr.type === 'ticket' ? 'ticket' : 'item', pr.kind, { x: pr.p[0], y: pr.p[1], z: pr.p[2] }, { x: pr.r[0], y: pr.r[1], z: pr.r[2], w: pr.r[3] });
     }
   }
-  rareChance.count = Math.max(0, Math.floor(Number(d.rareCount) || 0));
-  legendChance.count = Math.max(0, Math.floor(Number(d.legendCount) || 0));
+  if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
   for (const [k, n] of Object.entries(d.collection || {})) {
     if (slimeInfo(k)) collection[k] = Math.max(0, Math.floor(Number(n) || 0));

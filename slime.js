@@ -32,14 +32,14 @@ export const SLIME_SETS = [
     name: '果凍',
     unlock: null,
     skins: [
-      { name: '蘇打果凍', look: 'jelly', color: '#8fd3ff' },
-      { name: '檸檬果凍', look: 'jelly', color: '#ffe27a' },
-      { name: '青蘋果果凍', look: 'jelly', color: '#b4ee86' },
-      { name: '蜜桃果凍', look: 'jelly', color: '#ffb59c' },
-      { name: '葡萄果凍', look: 'jelly', color: '#b99cff' },
-      { name: '草莓果凍', look: 'jelly', color: '#ff8fa8' },
-      { name: '海鹽果凍', look: 'jelly', color: '#c4f5ef' },
-      { name: '薰衣草果凍', look: 'jelly', color: '#dcc8ff' },
+      { name: '蘇打果凍', look: 'jelly', color: '#6ec8ff' },
+      { name: '檸檬果凍', look: 'jelly', color: '#ffe066' },
+      { name: '青蘋果果凍', look: 'jelly', color: '#8fe36a' },
+      { name: '柳橙果凍', look: 'jelly', color: '#ff9440' },
+      { name: '葡萄果凍', look: 'jelly', color: '#8a63ff' },
+      { name: '草莓果凍', look: 'jelly', color: '#ff6f91' },
+      { name: '薄荷果凍', look: 'jelly', color: '#3fd6c0' },
+      { name: '可樂果凍', look: 'jelly', color: '#8a3a12' },
       { name: '夜空果凍', look: 'night', color: '#2c3a8c' },
       { name: '鑽石史萊姆', look: 'diamond', color: '#ffffff', sparkle: true },
     ],
@@ -50,13 +50,13 @@ export const SLIME_SETS = [
     unlock: { set: 'jelly', kinds: 6 },
     skins: [
       { name: '牛奶史萊姆', look: 'cream', color: '#fbf5ea' },
-      { name: '香蕉史萊姆', look: 'cream', color: '#ffe59c' },
-      { name: '抹茶史萊姆', look: 'cream', color: '#a9c982' },
-      { name: '草莓牛奶史萊姆', look: 'cream', color: '#ffc4d0' },
-      { name: '芋頭史萊姆', look: 'cream', color: '#c9b4e2' },
-      { name: '芒果史萊姆', look: 'cream', color: '#ffc25a' },
+      { name: '香蕉史萊姆', look: 'cream', color: '#ffd23a' },
+      { name: '抹茶史萊姆', look: 'cream', color: '#6fa83c' },
+      { name: '草莓牛奶史萊姆', look: 'cream', color: '#ff8fae' },
+      { name: '芋頭史萊姆', look: 'cream', color: '#9466cc' },
+      { name: '芒果史萊姆', look: 'cream', color: '#ff9a1f' },
       { name: '焦糖布丁史萊姆', look: 'twotone', color: '#ffe29a', color2: '#a65a1e' },
-      { name: '薄荷巧克力史萊姆', look: 'twotone', color: '#b3efd6', color2: '#5a3a28' },
+      { name: '薄荷巧克力史萊姆', look: 'twotone', color: '#7fe0b8', color2: '#5a3a28' },
       { name: '黑芝麻史萊姆', look: 'cream', color: '#3a3532' },
       { name: '金箔巧克力史萊姆', look: 'flake', color: '#4a2b1d', sparkle: true },
     ],
@@ -68,13 +68,13 @@ export const SLIME_SETS = [
     skins: [
       { name: '銅史萊姆', look: 'metal', color: '#c97d4c' },
       { name: '鐵史萊姆', look: 'metal', color: '#8d9299' },
-      { name: '青銅史萊姆', look: 'metal', color: '#9c8648' },
+      { name: '青銅史萊姆', look: 'metal', color: '#7f9a5c' },
       { name: '銀史萊姆', look: 'metal', color: '#dfe3e8' },
       { name: '鈦藍史萊姆', look: 'metal', color: '#82a0cf' },
       { name: '玫瑰金史萊姆', look: 'metal', color: '#eaa898' },
       { name: '黑鐵史萊姆', look: 'metal', color: '#3c3e43' },
-      { name: '白金史萊姆', look: 'metal', color: '#f1f2f4' },
-      { name: '珍珠史萊姆', look: 'pearl', color: '#f6f1ea' },
+      { name: '紫鈦史萊姆', look: 'metal', color: '#8a6fd1' },
+      { name: '黑珍珠史萊姆', look: 'pearl', color: '#2e2a3a' },
       { name: '黃金史萊姆', look: 'metal', color: '#f4c95d', sparkle: true },
     ],
   },
@@ -253,11 +253,11 @@ function bodyMaterial(skin, fancy) {
   const color = new THREE.Color(skin.color);
   switch (skin.look) {
     case 'cream':
-      // 深色的不加白色絨光，不然會變灰灰的
+      // 深色的不加絨光，不然會變灰灰的；淺色的絨光用自己的顏色，不然整隻會被洗白
       if (isDark(skin.color)) return new THREE.MeshPhysicalMaterial({ color, roughness: 0.65 });
-      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.7, sheen: 0.5, sheenColor: 0xffffff });
+      return new THREE.MeshPhysicalMaterial({ color, roughness: 0.7, sheen: 0.3, sheenColor: color.clone().lerp(new THREE.Color(1, 1, 1), 0.4) });
     case 'twotone':
-      return new THREE.MeshPhysicalMaterial({ map: twotoneTexture(skin), roughness: 0.62, sheen: 0.4 });
+      return new THREE.MeshPhysicalMaterial({ map: twotoneTexture(skin), roughness: 0.62, sheen: 0.2 });
     case 'flake':
       return new THREE.MeshPhysicalMaterial({ map: flakeTexture(skin), roughness: 0.6, clearcoat: 0.15 });
     case 'pearl':
