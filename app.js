@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.37';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.37';
+import { makeCoinMaterials } from './coin.js?v=0.0.38';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.38';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.37';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.37';
+} from './slime.js?v=0.0.38';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.38';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -271,9 +271,20 @@ const outerW = halfW + GUTTER; // 玻璃牆的位置
 const tableLen = FRONT_Z - BACK_Z;
 // 檯面
 const table = addBox(halfW, 0.5, tableLen / 2, 0, -0.5, (FRONT_Z + BACK_Z) / 2, 0x1f5b57);
+// 碰撞分組：兩側的牆只擋一般硬幣，其他東西（大金幣、史萊姆、彩券、道具）會直接穿過去，
+// 自然地掉進側溝，不會卡在檯面邊緣和牆中間（納可定）
+const GROUP_WALL = 0x0002;
+const GROUP_COIN = 0x0004;
+const GROUP_OTHER = 0x0008;
+const groups = (member, filter) => (member << 16) | filter;
+const WALL_GROUPS = groups(GROUP_WALL, GROUP_COIN);
+const COIN_GROUPS = groups(GROUP_COIN, 0xffff);
+const OTHER_GROUPS = groups(GROUP_OTHER, 0xffff & ~GROUP_WALL);
 // 左右的牆：只有物理、不畫出來，畫面可以把檯面拉得更近更大
-addBox(0.15, 3, tableLen / 2, -outerW - 0.15, 3, (FRONT_Z + BACK_Z) / 2, null);
-addBox(0.15, 3, tableLen / 2, outerW + 0.15, 3, (FRONT_Z + BACK_Z) / 2, null);
+for (const side of [-1, 1]) {
+  const wall = addBox(0.15, 3, tableLen / 2, side * (outerW + 0.15), 3, (FRONT_Z + BACK_Z) / 2, null);
+  wall.body.collider(0).setCollisionGroups(WALL_GROUPS);
+}
 // 推板上方的擋牆（推板往回縮時，把推板上的幣刮下來）
 addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
 // 推板
@@ -335,6 +346,7 @@ function spawnCoin(x, y, z, tilt = 0, big = false) {
     )
       .setDensity(1)
       .setContactSkin(0.01) // 留一層很薄的皮，疊在一起時比較不會抖
+      .setCollisionGroups(big ? OTHER_GROUPS : COIN_GROUPS)
       .setFriction(COIN_FRICTION)
       .setRestitution(0.05),
     body,
@@ -371,7 +383,8 @@ function spawnDoll(id, scale, pos, rot) {
       .setDensity(0.35)
       .setFriction(0.5)
       .setRestitution(0.1)
-      .setContactSkin(0.01),
+      .setContactSkin(0.01)
+      .setCollisionGroups(OTHER_GROUPS),
     body,
   );
   const mesh = makeSlimeMesh(id, scale, quality !== 'low');
@@ -1478,7 +1491,8 @@ function spawnProp(type, kind, pos, rot) {
     shape
       .setDensity(type === 'ticket' ? 0.8 : 0.4)
       .setFriction(0.4)
-      .setContactSkin(0.01),
+      .setContactSkin(0.01)
+      .setCollisionGroups(OTHER_GROUPS),
     body,
   );
   const mesh = new THREE.Mesh(type === 'ticket' ? ticketGeo : itemGeo(kind), propMaterial(type, kind));
@@ -1964,14 +1978,6 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 let acc = 0;
 let lastT = performance.now();
 
-// 比硬幣大的東西（史萊姆、彩券、道具）只要碰到兩側的牆，就當作掉進側溝了（納可定）
-// r 是這個東西大約的半徑
-function stuckInGutter(t, r = 0.5) {
-  return Math.abs(t.x) + r >= outerW - 0.05 && t.y < 2;
-}
-
-const SLIME_R_WORLD = 0.68; // 史萊姆標準大小的半徑（跟 slime.js 的 SLIME_R 一樣）
-
 // 物理走一步，並處理掉下去的幣
 function stepSim() {
   simTime += STEP;
@@ -2004,7 +2010,7 @@ function stepSim() {
   }
   for (let i = props.length - 1; i >= 0; i--) {
     const t = props[i].body.translation();
-    if (t.y >= -1.2 && !stuckInGutter(t, props[i].type === 'ticket' ? 0.4 : 0.35)) continue;
+    if (t.y >= -1.2) continue;
     const pr = props[i];
     const front = t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2;
     removeProp(i);
@@ -2026,7 +2032,7 @@ function stepSim() {
   }
   for (let i = dolls.length - 1; i >= 0; i--) {
     const t = dolls[i].body.translation();
-    if (t.y >= -1.2 && !stuckInGutter(t, SLIME_R_WORLD * dolls[i].scale)) continue;
+    if (t.y >= -1.2) continue;
     const d = dolls[i];
     const info = slimeInfo(d.id);
     if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
