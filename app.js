@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.93';
-import { drawDigits } from './digits.js?v=0.0.93';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.93';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.93';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.94';
+import { drawDigits } from './digits.js?v=0.0.94';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.94';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.94';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.93';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.93';
+} from './slime.js?v=0.0.94';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.94';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -2482,47 +2482,39 @@ let wheelAngle = 0;
 let wheelSpinning = false;
 
 // 配色收斂（納可：不要那麼花，高級一點）：黑底、金色、一點深紅；數字用金幣上的花體數字
-function drawWheel(now = performance.now()) {
-  const ctx = wheelCanvas.getContext('2d');
-  const W = wheelCanvas.width;
-  const cx = W / 2;
-  const cy = W / 2 + 10;
-  const R = W / 2 - 36;          // 格子的半徑
-  const rim = 20;                // 外圈的厚度
-  ctx.clearRect(0, 0, W, W);
-  const goldGrad = (r0, r1) => {
-    const g = ctx.createLinearGradient(cx - r1, cy - r1, cx + r1, cy + r1);
-    g.addColorStop(0, '#f7e3a1');
-    g.addColorStop(0.45, '#d9a842');
-    g.addColorStop(1, '#a87522');
-    return g;
-  };
-  // 外圈：黑色加金邊，一圈小燈（暖白，轉的時候一閃一閃）
-  ctx.beginPath();
-  ctx.arc(cx, cy, R + rim, 0, Math.PI * 2);
-  ctx.fillStyle = '#141218';
-  ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = goldGrad(R, R + rim);
-  ctx.stroke();
-  const bulbs = 24;
-  const blink = wheelSpinning ? Math.floor(now / 120) % 2 : -1;
-  for (let i = 0; i < bulbs; i++) {
-    const a = (i / bulbs) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(cx + Math.cos(a) * (R + rim / 2), cy + Math.sin(a) * (R + rim / 2), 4, 0, Math.PI * 2);
-    const on = blink < 0 || i % 2 === blink;
-    ctx.fillStyle = on ? '#f6dc9a' : '#5a4a2a';
-    ctx.shadowColor = on ? 'rgba(246, 220, 154, 0.8)' : 'transparent';
-    ctx.shadowBlur = on ? 8 : 0;
-    ctx.fill();
-  }
-  ctx.shadowBlur = 0;
-  // 格子
+// 2026-10-05 納可：轉起來很假很卡。改法：
+// 1. 盤面、外圈只畫一次存起來，轉的時候只把存好的圖轉個角度貼上去（原本每一格、每個數字、每顆燈每一幀重畫，很吃力）。
+// 2. 轉法照真的輪盤：先往回拉一下再甩出去，一開始最快每秒大約 2 圈半（太快會像在跳格），然後被摩擦慢慢磨停。
+// 3. 指針會被格子邊的釘子撥動、彈回來；轉得快的時候盤面有一點殘影。
+const WHEEL_W = 600;
+const WHEEL_CX = WHEEL_W / 2;
+const WHEEL_CY = WHEEL_W / 2 + 10;
+const WHEEL_R = WHEEL_W / 2 - 36; // 格子的半徑
+const WHEEL_RIM = 20;             // 外圈的厚度
+const WHEEL_EDGES = WHEEL.map((w) => w.mid - w.half); // 每一格的邊（釘子的位置）
+let wheelDisk = null;             // 存好的盤面
+const wheelRims = {};             // 存好的外圈（燈全亮、單數亮、雙數亮）
+let wheelSpeed = 0;               // 現在每秒轉幾弧度（殘影用）
+let pointerKick = 0;              // 指針被撥開的角度
+function wheelGold(ctx, cx, cy, r1) {
+  const g = ctx.createLinearGradient(cx - r1, cy - r1, cx + r1, cy + r1);
+  g.addColorStop(0, '#f7e3a1');
+  g.addColorStop(0.45, '#d9a842');
+  g.addColorStop(1, '#a87522');
+  return g;
+}
+function makeWheelDisk() {
+  const R = WHEEL_R;
+  const S = Math.ceil(R * 2 + 6);
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const cx = S / 2;
+  const cy = S / 2;
   let k = 0;
   for (const w of WHEEL) {
-    const a0 = wheelAngle + w.mid - w.half - Math.PI / 2;
-    const a1 = wheelAngle + w.mid + w.half - Math.PI / 2;
+    const a0 = w.mid - w.half - Math.PI / 2;
+    const a1 = w.mid + w.half - Math.PI / 2;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.arc(cx, cy, R, a0, a1);
@@ -2533,7 +2525,7 @@ function drawWheel(now = performance.now()) {
       g.addColorStop(1, '#7a1426');
       ctx.fillStyle = g;
     } else if (w.big) {
-      ctx.fillStyle = goldGrad(0, R);
+      ctx.fillStyle = wheelGold(ctx, cx, cy, R);
     } else {
       ctx.fillStyle = k++ % 2 ? '#1d1a22' : '#26222c'; // 黑色兩種深淺交錯，看得出分格
     }
@@ -2542,14 +2534,80 @@ function drawWheel(now = performance.now()) {
     ctx.lineWidth = 2;
     ctx.stroke();
     // 數字黏在盤子上跟著轉（納可定），字的上方朝外
-    const am = wheelAngle + w.mid - Math.PI / 2;
+    const am = w.mid - Math.PI / 2;
     const tr = w.big ? R * 0.64 : R * 0.73;
     const x = cx + Math.cos(am) * tr;
     const y = cy + Math.sin(am) * tr;
     const rot = am + Math.PI / 2;
-    if (w.jackpot) drawDigits(ctx, String(w.coins), x, y, W * 0.085, '#f7e3a1', rot);
-    else if (w.big) drawDigits(ctx, String(w.coins), x, y, W * 0.08, '#3a2608', rot);
-    else drawDigits(ctx, String(w.coins), x, y, W * 0.05, '#d9a842', rot);
+    if (w.jackpot) drawDigits(ctx, String(w.coins), x, y, WHEEL_W * 0.085, '#f7e3a1', rot);
+    else if (w.big) drawDigits(ctx, String(w.coins), x, y, WHEEL_W * 0.08, '#3a2608', rot);
+    else drawDigits(ctx, String(w.coins), x, y, WHEEL_W * 0.05, '#d9a842', rot);
+  }
+  // 格子邊上的小金釘（撥指針的就是它）
+  for (const e of WHEEL_EDGES) {
+    const a = e - Math.PI / 2;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a) * (R - 7), cy + Math.sin(a) * (R - 7), 4, 0, Math.PI * 2);
+    ctx.fillStyle = wheelGold(ctx, cx, cy, R);
+    ctx.fill();
+  }
+  return c;
+}
+// 外圈：黑色加金邊，一圈小燈（暖白，轉的時候一閃一閃）
+function makeWheelRim(blink) {
+  const c = document.createElement('canvas');
+  c.width = c.height = WHEEL_W;
+  const ctx = c.getContext('2d');
+  const cx = WHEEL_CX;
+  const cy = WHEEL_CY;
+  const R = WHEEL_R;
+  const rim = WHEEL_RIM;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + rim, 0, Math.PI * 2);
+  ctx.fillStyle = '#141218';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = wheelGold(ctx, cx, cy, R + rim);
+  ctx.stroke();
+  const bulbs = 24;
+  for (let i = 0; i < bulbs; i++) {
+    const a = (i / bulbs) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a) * (R + rim / 2), cy + Math.sin(a) * (R + rim / 2), 4, 0, Math.PI * 2);
+    const on = blink < 0 || i % 2 === blink;
+    ctx.fillStyle = on ? '#f6dc9a' : '#5a4a2a';
+    ctx.shadowColor = on ? 'rgba(246, 220, 154, 0.8)' : 'transparent';
+    ctx.shadowBlur = on ? 8 : 0;
+    ctx.fill();
+  }
+  return c;
+}
+function drawWheel(now = performance.now()) {
+  const ctx = wheelCanvas.getContext('2d');
+  const W = WHEEL_W;
+  const cx = WHEEL_CX;
+  const cy = WHEEL_CY;
+  const R = WHEEL_R;
+  const rim = WHEEL_RIM;
+  if (!wheelDisk) wheelDisk = makeWheelDisk();
+  const blink = wheelSpinning ? Math.floor(now / 120) % 2 : -1;
+  ctx.clearRect(0, 0, W, W);
+  ctx.drawImage(wheelRims[blink] ||= makeWheelRim(blink), 0, 0);
+  // 盤面：轉個角度貼上去；轉得快的時候往後疊兩層淡淡的殘影
+  const half = wheelDisk.width / 2;
+  const drawDisk = (a, alpha) => {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, cy);
+    ctx.rotate(a);
+    ctx.drawImage(wheelDisk, -half, -half);
+    ctx.restore();
+  };
+  drawDisk(wheelAngle, 1);
+  const smear = Math.min(0.2, wheelSpeed / 60);
+  if (smear > 0.02) {
+    drawDisk(wheelAngle - smear, 0.35);
+    drawDisk(wheelAngle - smear * 2, 0.18);
   }
   // 中間的圓心：金色細圈加黑底
   ctx.beginPath();
@@ -2557,23 +2615,28 @@ function drawWheel(now = performance.now()) {
   ctx.fillStyle = '#141218';
   ctx.fill();
   ctx.lineWidth = 4;
-  ctx.strokeStyle = goldGrad(0, R * 0.15);
+  ctx.strokeStyle = wheelGold(ctx, cx, cy, R * 0.15);
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(cx, cy, R * 0.06, 0, Math.PI * 2);
-  ctx.fillStyle = goldGrad(0, R * 0.06);
+  ctx.fillStyle = wheelGold(ctx, cx, cy, R * 0.06);
   ctx.fill();
-  // 上方的指針：金色，尖端指進格子裡
+  // 上方的指針：金色，尖端指進格子裡；被釘子撥到會往旁邊歪一下再彈回來
+  const top = cy - R - rim - 6;
+  ctx.save();
+  ctx.translate(cx, top);
+  ctx.rotate(pointerKick);
   ctx.beginPath();
-  ctx.moveTo(cx - 18, cy - R - rim - 6);
-  ctx.lineTo(cx + 18, cy - R - rim - 6);
-  ctx.lineTo(cx, cy - R + 24);
+  ctx.moveTo(-18, 0);
+  ctx.lineTo(18, 0);
+  ctx.lineTo(0, rim + 30);
   ctx.closePath();
-  ctx.fillStyle = goldGrad(R - 30, R + rim);
+  ctx.fillStyle = wheelGold(ctx, 0, rim, rim + 30);
   ctx.fill();
   ctx.lineWidth = 2;
   ctx.strokeStyle = '#141218';
   ctx.stroke();
+  ctx.restore();
 }
 
 function renderWheelInfo() {
@@ -2622,27 +2685,51 @@ function spinWheel(free) {
   renderWheelInfo();
   const idx = pickWheel();
   // 指針在上方：讓第 idx 格轉到上方（停在格子裡隨機一點，不貼邊），多轉幾圈
-  const slice = WHEEL_UNIT;
   const w = WHEEL[idx];
   const target = -(w.mid + (Math.random() - 0.5) * 2 * w.half * 0.6);
   const start = wheelAngle;
   const base = start - (start % (Math.PI * 2));
-  // 每次轉的圈數、時間、減速方式都不太一樣，才有隨機的感覺（納可定）：
-  // 4 到 7 圈、3 到 5 秒；power 越大，一開始越猛、後面慢慢磨到停
-  const turns = 4 + Math.floor(Math.random() * 4);
+  // 每次轉的圈數、力道、減速方式都不太一樣，才有隨機的感覺（納可定）
+  // 甩出去的速度 12 到 16（每秒弧度，大約 2 到 2 圈半），power 越大越早慢下來、尾巴磨得越久
+  const turns = 3 + Math.floor(Math.random() * 3);
   const end = base + Math.PI * 2 * turns + target;
+  const dist = end - start;
+  const power = 2.2 + Math.random() * 1.2;
+  const v0 = 12 + Math.random() * 4;
+  const dur = Math.min(5500, Math.max(3200, (power * dist) / v0 * 1000)); // 起始速度 = power × 距離 ÷ 時間；整趟 3.2 到 5.5 秒
+  const pull = 0.12 + Math.random() * 0.08; // 先往回拉一下
+  const pullT = 220;
   const t0 = performance.now();
-  const dur = 3000 + Math.random() * 2000;
-  const power = 2.5 + Math.random() * 2;
-  let lastTickSlice = -1;
+  let lastT = t0;
+  let prev = start;
   const anim = (now) => {
-    const k = Math.min(1, (now - t0) / dur);
-    const e = 1 - Math.pow(1 - k, power);
-    wheelAngle = start + (end - start) * e;
-    const cur = Math.floor(wheelAngle / slice);
-    if (cur !== lastTickSlice) { lastTickSlice = cur; beep(1400, 0.03, 0.03, 'square', 'wheel'); }
+    const t = now - t0;
+    let done = false;
+    if (t < pullT) {
+      const k = t / pullT;
+      wheelAngle = start - pull * Math.sin(k * Math.PI / 2);
+    } else {
+      // 從拉回的位置甩出去：一開始最快，摩擦讓它越來越慢
+      const k = Math.min(1, (t - pullT) / dur);
+      const e = 1 - Math.pow(1 - k, power);
+      wheelAngle = start - pull + (end - start + pull) * e;
+      done = k >= 1;
+    }
+    const dt = Math.max(1, now - lastT) / 1000;
+    lastT = now;
+    wheelSpeed = Math.abs(wheelAngle - prev) / dt;
+    // 經過一根釘子：指針被撥一下、喀一聲
+    let hits = 0;
+    for (const b of WHEEL_EDGES) hits += Math.floor((wheelAngle + b) / (Math.PI * 2)) - Math.floor((prev + b) / (Math.PI * 2));
+    if (hits > 0) {
+      pointerKick = -Math.min(0.32, 0.1 + wheelSpeed * 0.015);
+      beep(1400, 0.03, 0.03, 'square', 'wheel');
+    }
+    prev = wheelAngle;
+    pointerKick *= Math.pow(0.0008, dt); // 很快彈回來
+    if (done) { wheelSpeed = 0; pointerKick = 0; }
     drawWheel(now);
-    if (k < 1) requestAnimationFrame(anim);
+    if (!done) requestAnimationFrame(anim);
     else finishSpin(idx);
   };
   requestAnimationFrame(anim);
@@ -3396,6 +3483,7 @@ function updateTimers(frame) {
   }
 }
 
+let renderSkip = false;
 function tick(now) {
   const frame = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
@@ -3449,7 +3537,9 @@ function tick(now) {
   // 甩的時候畫面跟著晃
   const sway = shakeTime > 0 ? Math.sin(simTime * 60) * 0.08 * (shakeTime / SHAKE_TIME) : 0;
   camera.position.x += sway;
-  renderer.render(scene, camera);
+  // 轉盤在轉的時候，後面的 3D 隔一幀才畫一次，把力氣讓給轉盤（後面被蓋住，看不出差別）
+  renderSkip = wheelSpinning ? !renderSkip : false;
+  if (!renderSkip) renderer.render(scene, camera);
   camera.position.x -= sway;
   requestAnimationFrame(tick);
 }
