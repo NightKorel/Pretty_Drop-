@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.52';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.52';
+import { makeCoinMaterials } from './coin.js?v=0.0.53';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.53';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.52';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.52';
+} from './slime.js?v=0.0.53';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.53';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -42,9 +42,11 @@ const TABLE_W = 9.4 - GUTTER * 2; // 檯面寬（推板也是這麼寬）；外�
 const FRONT_Z = 3;           // 檯面前緣（幣掉過這裡就算贏）
 const BACK_Z = -10;          // 檯面最後面
 const WALL_Z = -6.3;         // 推板上方擋牆的位置
-const PUSHER_DEPTH = 5;      // 推板前後長度
+// 推板前緣來回的中點在 -3.5（前後 ±1.2）。推板做得很長、尾巴藏在擋牆後面：
+// 長推板多伸 3 格的時候，尾巴也還在擋牆後面，後面不會空出一段地面讓幣掉進去卡住
+const PUSHER_DEPTH = 7.5;    // 推板前後長度
 const PUSHER_H = 0.6;        // 推板高度
-const PUSHER_MID = -6;       // 推板中心來回的中點
+const PUSHER_MID = -3.5 - PUSHER_DEPTH / 2; // 推板中心來回的中點
 const PUSHER_AMP = 1.2;      // 推板來回的幅度
 const COIN_R = 0.5;          // 硬幣做大顆、厚一點，每一枚看起來比較值錢
 const COIN_H = 0.14;
@@ -840,6 +842,7 @@ try { quality = localStorage.getItem(QUALITY_KEY) || 'high'; } catch (e) { /* �
 
 function applyQuality(q) {
   quality = q;
+  if (gameReady) setTimeout(prewarmSlimes, 300); // 換畫質，材質也換了，重新熱身
   try { localStorage.setItem(QUALITY_KEY, q); } catch (e) { /* 存不了也沒關係 */ }
   const dpr = window.devicePixelRatio || 1;
   renderer.setPixelRatio(q === 'high' ? Math.min(dpr, 2) : q === 'mid' ? Math.min(dpr, 1.25) : 1);
@@ -982,6 +985,7 @@ bookListEl.addEventListener('click', (e) => {
       activeSets.push(id);
     }
     refillDollBag(); // 換組就整袋重裝
+    prewarmSlimes();
     renderBook();
     saveGame();
   }
@@ -1035,6 +1039,41 @@ function miniSetSlime(view, id) {
   if (view.mesh) view.sc.remove(view.mesh);
   view.mesh = makeSlimeMesh(id, 1, quality !== 'low');
   view.sc.add(view.mesh);
+}
+// 史萊姆熱身：第一次出現某種史萊姆時，顯示卡要現場準備那種材質的畫法，畫面會頓一下；
+// 慶祝小卡第一次出現還要開一個新的 3D 畫面。所以趁空檔先把「選的那幾組」都準備好（主畫面和慶祝小卡都要）。
+// 同樣的材質只要準備一次，所以每種外觀挑一隻代表就好
+let warmKey = '';
+async function prewarmSlimes() {
+  const key = `${quality}|${activeSets.join(',')}`;
+  if (key === warmKey) return;
+  warmKey = key;
+  const fancy = quality !== 'low';
+  const group = new THREE.Group();
+  const seen = new Set();
+  for (const set of activeSets) {
+    SET_BY_ID[set].skins.forEach((sk, i) => {
+      const k = `${sk.look}|${sk.animal || ''}|${sk.sparkle ? 1 : 0}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      group.add(makeSlimeMesh(`${set}.${i}`, 1, fancy));
+    });
+  }
+  if (!celebView) celebView = makeMiniView(document.getElementById('celebIcon'), false);
+  const warm = (r, cam, sc) => (r.compileAsync ? r.compileAsync(group, cam, sc) : Promise.resolve(r.compile(group, cam, sc)));
+  try {
+    await warm(renderer, camera, scene);
+    await warm(celebView.r, celebView.cam, celebView.sc);
+  } catch (e) { /* 熱身失敗也沒關係，只是第一次會頓一下 */ }
+  // 慶祝小卡在看不見的狀態下先秀一次：粗體字、排版、小卡的 3D 畫面大小都先準備好
+  if (!celebEl.classList.contains('show')) {
+    celebEl.classList.add('show', 'warm');
+    document.getElementById('celebName').textContent = '史萊姆';
+    document.getElementById('celebValue').textContent = '+150 枚';
+    miniSetSlime(celebView, `${activeSets[0]}.0`);
+    miniRender(celebView, SPIN_START, performance.now());
+    requestAnimationFrame(() => requestAnimationFrame(() => celebEl.classList.remove('show', 'warm')));
+  }
 }
 function miniRender(view, yaw, t) {
   const c = view.r.domElement;
@@ -2190,7 +2229,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.52 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.53 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2479,8 +2518,9 @@ updateLotteryBadge();
 updateHud();
 gameReady = true;
 document.getElementById('loading').classList.add('hide');
+setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); }, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };

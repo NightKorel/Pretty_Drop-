@@ -472,6 +472,8 @@ html, body {
   pointer-events: none;
 }
 #celebrate.show { display: flex; }
+#celebrate.warm { opacity: 0; }
+#celebrate.warm .celebCard, #celebrate.warm #celebIcon { animation: none; }
 .celebCard {
   position: relative;
   text-align: center;
