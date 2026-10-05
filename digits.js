@@ -157,13 +157,14 @@ export function drawGlyph(ctx, d) {
 }
 
 // 把一串數字畫在 (cx, cy)，高度大約 height，往右斜
-export function drawDigits(ctx, text, cx, cy, height, color = '#fff') {
+export function drawDigits(ctx, text, cx, cy, height, color = '#fff', rot = 0) {
   const digits = String(text).split('').filter((d) => GLYPHS[d]);
   const scale = height / 148;
   const total = ADVANCE * digits.length;
   ctx.save();
   ctx.fillStyle = color;
   ctx.translate(cx, cy);
+  if (rot) ctx.rotate(rot);
   ctx.scale(scale, scale);
   ctx.transform(1, 0, -SLANT, 1, 0, 0);
   digits.forEach((d, i) => {

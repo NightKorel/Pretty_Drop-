@@ -355,6 +355,40 @@ addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 })
 const pusher = addBox(halfW - 0.02, PUSHER_H / 2, PUSHER_DEPTH / 2, 0, PUSHER_H / 2, PUSHER_MID, 0x8d92a3, { kinematic: true, metal: 0.7, rough: 0.3 });
 // 推板表面比較澀，推板變快時上面的幣才會跟著走，不會一直滑來滑去
 pusher.body.collider(0).setFriction(0.9);
+// 推板花紋（成就商店的裝飾品）：薄薄一層貼在推板上面和正面，只有樣子
+const DECO_TILE = 1.1;       // 花紋一小塊的大小（格）
+const decoCanvas = document.createElement('canvas');
+decoCanvas.width = decoCanvas.height = 128;
+const decoTex = new THREE.CanvasTexture(decoCanvas);
+decoTex.colorSpace = THREE.SRGBColorSpace;
+decoTex.wrapS = decoTex.wrapT = THREE.RepeatWrapping;
+decoTex.anisotropy = 4;
+const decoMeshes = [];
+{
+  const w = (halfW - 0.02) * 2;
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(w, PUSHER_DEPTH), new THREE.MeshStandardMaterial({ map: decoTex.clone(), transparent: true, roughness: 0.5, metalness: 0.1, polygonOffset: true, polygonOffsetFactor: -2 }));
+  top.material.map.repeat.set(w / DECO_TILE, PUSHER_DEPTH / DECO_TILE);
+  top.rotation.x = -Math.PI / 2;
+  top.position.y = PUSHER_H / 2 + 0.003;
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(w, PUSHER_H), new THREE.MeshStandardMaterial({ map: decoTex.clone(), transparent: true, roughness: 0.5, metalness: 0.1, polygonOffset: true, polygonOffsetFactor: -2 }));
+  front.material.map.repeat.set(w / DECO_TILE, PUSHER_H / DECO_TILE);
+  front.position.z = PUSHER_DEPTH / 2 + 0.003;
+  for (const m of [top, front]) {
+    m.receiveShadow = true;
+    m.visible = false;
+    pusher.mesh.add(m);
+    decoMeshes.push(m);
+  }
+}
+function setPusherDeco(draw) {
+  const ctx = decoCanvas.getContext('2d');
+  ctx.clearRect(0, 0, 128, 128);
+  if (draw) draw(ctx);
+  for (const m of decoMeshes) {
+    m.visible = !!draw;
+    m.material.map.needsUpdate = true;
+  }
+}
 // 前緣金邊（只有樣子）
 const lip = new THREE.Mesh(
   new THREE.BoxGeometry(TABLE_W, 0.08, 0.12),
@@ -1383,7 +1417,7 @@ const achEl = document.getElementById('ach');
 const achListEl = document.getElementById('achList');
 let achTab = 'list';
 // 裝飾品換外觀時可以動到的東西
-const decorView = { THREE, scene, table: table.mesh, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
+const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
 
 function checkAchievements() {
   const kinds = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);
@@ -2086,14 +2120,15 @@ function drawWheel(now = performance.now()) {
     ctx.strokeStyle = 'rgba(217, 168, 66, 0.85)';
     ctx.lineWidth = 2;
     ctx.stroke();
-    // 數字一直是正的（像摩天輪的車廂），不會轉到倒過來
+    // 數字黏在盤子上跟著轉（納可定），字的上方朝外
     const am = wheelAngle + w.mid - Math.PI / 2;
     const tr = w.big ? R * 0.64 : R * 0.73;
     const x = cx + Math.cos(am) * tr;
     const y = cy + Math.sin(am) * tr;
-    if (w.jackpot) drawDigits(ctx, String(w.coins), x, y, W * 0.085, '#f7e3a1');
-    else if (w.big) drawDigits(ctx, String(w.coins), x, y, W * 0.08, '#3a2608');
-    else drawDigits(ctx, String(w.coins), x, y, W * 0.05, '#d9a842');
+    const rot = am + Math.PI / 2;
+    if (w.jackpot) drawDigits(ctx, String(w.coins), x, y, W * 0.085, '#f7e3a1', rot);
+    else if (w.big) drawDigits(ctx, String(w.coins), x, y, W * 0.08, '#3a2608', rot);
+    else drawDigits(ctx, String(w.coins), x, y, W * 0.05, '#d9a842', rot);
   }
   // 中間的圓心：金色細圈加黑底
   ctx.beginPath();
