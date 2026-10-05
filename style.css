@@ -366,9 +366,12 @@ html, body {
 .volRow input[type=range] { flex: 1; accent-color: var(--gold); }
 .volRow b { min-width: 2ch; text-align: right; color: var(--gold); font-variant-numeric: tabular-nums; }
 
-.achItem { opacity: 0.6; }
-.achItem.done { opacity: 1; }
+.achItem .name, .achItem .desc { color: var(--dim); }
 .achItem.done .name { color: var(--gold); }
+.achItem.done .desc { color: var(--text); opacity: 0.75; }
+/* 成就圖標：沒達成是灰色（形狀看得到，當提示），達成是金色 */
+.achIcon { width: 36px; height: 36px; flex: none; color: #6d6680; }
+.achItem.done .achIcon { color: var(--gold); }
 .achPts { font-size: 13px; color: var(--dim); white-space: nowrap; }
 
 /* 手機上按鈕多，縮小一點才排得下 */
@@ -593,7 +596,6 @@ html, body {
   border-left: 6px solid var(--gold);
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
-  transition: transform 0.15s;
 }
 .grp[open] > summary::before { transform: rotate(90deg); }
 .grpTitle { flex: 1; }

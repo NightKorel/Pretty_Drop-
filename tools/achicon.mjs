@@ -1,0 +1,20 @@
+// 成就圖標：打開所有成就分類截圖（一半達成、一半沒達成），看圖標和「？？？」
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.NPMG + '/playwright');
+const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const page = await (await browser.newContext({ viewport: { width: 390, height: 1500 }, isMobile: true })).newPage();
+const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+await page.goto('http://localhost:8765/');
+await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
+await page.evaluate(() => { const g = __game; g.applyQuality('low'); ['firstDrop', 'won500', 'big1', 'firstDoll', 'legend', 'rain1', 'firstUpgrade', 'spin10', 'setAll'].forEach((k) => { g.achieved[k] = true; }); });
+await page.click('#achBtn');
+await page.waitForTimeout(300);
+await page.evaluate(() => document.querySelectorAll('#ach details.grp').forEach((d) => { d.open = true; }));
+await page.waitForTimeout(300);
+const n = await page.evaluate(() => ({ 圖標: document.querySelectorAll('#ach .achIcon').length, 問號: [...document.querySelectorAll('#ach .achItem .name')].filter((e) => e.textContent === '？？？').length }));
+const tf = await page.evaluate(() => [...document.querySelectorAll('#ach details.grp')].map((d) => d.open + ':' + d.hasAttribute('open') + ':' + d.matches('.grp[open]') + ':' + getComputedStyle(d.querySelector('summary'), '::before').transform + ':' + getComputedStyle(d.querySelector('summary'), '::before').transitionDuration));
+console.log(tf);
+await page.screenshot({ path: '/tmp/pd-shots/achicon.png', fullPage: true });
+console.log(JSON.stringify({ n, errs }));
+await browser.close();

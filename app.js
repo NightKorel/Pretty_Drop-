@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.54';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.54';
+import { makeCoinMaterials } from './coin.js?v=0.0.55';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.55';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.54';
-import { ACHIEVEMENTS, ACH_CATS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.54';
+} from './slime.js?v=0.0.55';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.55';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1369,7 +1369,8 @@ function renderAch() {
       const n = list.filter((a) => achieved[a.id]).length;
       const inner = list.map((a) => {
         const ok = achieved[a.id];
-        return `<div class="item achItem${ok ? ' done' : ''}"><div class="info"><div class="name">${ok ? '✓ ' : ''}${a.name}</div><div class="desc">${a.desc}</div></div><div class="achPts">${a.points} 點</div></div>`;
+        // 沒達成：名字和說明都是「？？？」，圖標照樣看得到，當作提示
+        return `<div class="item achItem${ok ? ' done' : ''}">${achIconSvg(a.icon)}<div class="info"><div class="name">${ok ? a.name : '？？？'}</div><div class="desc">${ok ? a.desc : '？？？'}</div></div><div class="achPts">${a.points} 點</div></div>`;
       }).join('');
       html += groupHtml(`ach.${cat}`, title, `${n} / ${list.length}`, inner);
     }
@@ -2324,7 +2325,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.54 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.55 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
