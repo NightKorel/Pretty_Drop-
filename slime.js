@@ -245,6 +245,49 @@ function getStudioEnv() {
   return studioTex;
 }
 
+// 動物組的毛茸茸（2026-10-05 納可：毛茸茸或霧面，用貼圖、不要吃資源）：
+// 一張 128×128 的小圖，畫滿短短的細毛，當成凹凸貼圖重複貼滿全身；再加一層柔柔的絨光
+let furTex = null;
+function getFurTex() {
+  if (furTex) return furTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, 128, 128);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 1400; i++) {
+    const x = rnd() * 128;
+    const y = rnd() * 128;
+    const a = Math.PI / 2 + (rnd() - 0.5) * 0.9; // 大致往下順
+    const len = 3 + rnd() * 5;
+    const v = Math.floor(rnd() * 255);
+    ctx.strokeStyle = `rgb(${v},${v},${v})`;
+    ctx.lineWidth = 0.6 + rnd() * 0.8;
+    // 畫三次（左右、上下錯開一張），接縫才不會斷
+    for (const [ox, oy] of [[0, 0], [-128, 0], [0, -128], [-128, -128]]) {
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y + oy);
+      ctx.lineTo(x + ox + Math.cos(a) * len, y + oy + Math.sin(a) * len);
+      ctx.stroke();
+    }
+  }
+  furTex = new THREE.CanvasTexture(c);
+  furTex.wrapS = furTex.wrapT = THREE.RepeatWrapping;
+  furTex.repeat.set(8, 4);
+  return furTex;
+}
+function furMaterial(color, dark) {
+  return new THREE.MeshPhysicalMaterial({
+    color, roughness: 0.92,
+    bumpMap: getFurTex(), bumpScale: 1.1,
+    sheen: dark ? 0.35 : 0.7, sheenRoughness: 0.75,
+    sheenColor: dark ? color.clone().lerp(new THREE.Color(1, 1, 1), 0.25) : color.clone().lerp(new THREE.Color(1, 1, 1), 0.55),
+  });
+}
+
 // 貼圖的上方對應史萊姆的頭頂
 function twotoneTexture(skin) {
   return canvasTexture((ctx) => {
@@ -427,6 +470,7 @@ function bodyMaterial(skin, fancy) {
   const color = new THREE.Color(skin.color);
   switch (skin.look) {
     case 'cream':
+      if (skin.animal) return furMaterial(color, isDark(skin.color));
       // 深色的不加絨光，不然會變灰灰的；淺色的絨光用自己的顏色，不然整隻會被洗白
       if (isDark(skin.color)) return new THREE.MeshPhysicalMaterial({ color, roughness: 0.65 });
       return new THREE.MeshPhysicalMaterial({ color, roughness: 0.7, sheen: 0.3, sheenColor: color.clone().lerp(new THREE.Color(1, 1, 1), 0.4) });
@@ -499,7 +543,7 @@ function wingGeo(kind) {
   wingGeos[kind] = g;
   return g;
 }
-const partMat = (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.7, sheen: 0.25, sheenColor: new THREE.Color(color) });
+const partMat = (color) => furMaterial(new THREE.Color(color), isDark(color));
 
 function addAnimalParts(g, skin, bodyMat) {
   const H = SLIME_H;
