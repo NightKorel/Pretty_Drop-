@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.98';
-import { drawDigits } from './digits.js?v=0.0.98';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.98';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.98';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.99';
+import { drawDigits } from './digits.js?v=0.0.99';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.99';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.99';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.98';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.98';
+} from './slime.js?v=0.0.99';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.99';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -336,38 +336,6 @@ function setLight(m) {
     for (const n of neonLights) scene.add(n);
   }
   if (neonLights) for (const n of neonLights) n.visible = !!L.neon;
-}
-
-// 機台主題（成就商店）：換後牆的花樣、前緣金邊的顏色。draw 畫後牆的圖（512×384），lip 是前緣的顏色；null 換回原本的
-const themeCanvas = document.createElement('canvas');
-themeCanvas.width = 512;
-themeCanvas.height = 384;
-const themeTex = new THREE.CanvasTexture(themeCanvas);
-themeTex.colorSpace = THREE.SRGBColorSpace;
-// 後牆從鏡頭只看得到下面一段，整張圖縮到那一段（上面延伸最上面那一排的顏色）
-themeTex.repeat.set(1, 2.4);
-themeTex.wrapT = THREE.ClampToEdgeWrapping;
-let themeBase = null;
-function setTheme(t) {
-  const wm = backWall.material;
-  const lm = lip.material;
-  if (!themeBase) themeBase = { wall: wm.color.getHex(), lip: lm.color.getHex(), lipMetal: lm.metalness };
-  if (!t) {
-    wm.map = null;
-    wm.color.set(themeBase.wall);
-    lm.color.set(themeBase.lip);
-    lm.metalness = themeBase.lipMetal;
-  } else {
-    const ctx = themeCanvas.getContext('2d');
-    ctx.clearRect(0, 0, 512, 384);
-    t.draw(ctx, 512, 384);
-    themeTex.needsUpdate = true;
-    wm.map = themeTex;
-    wm.color.set(0xffffff);
-    lm.color.set(t.lip);
-    lm.metalness = t.lipMetal ?? 0.8;
-  }
-  wm.needsUpdate = true;
 }
 
 // ===== 物理 =====
@@ -1621,7 +1589,7 @@ const achEl = document.getElementById('ach');
 const achListEl = document.getElementById('achList');
 let achTab = 'list';
 // 裝飾品換外觀時可以動到的東西
-const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, setTheme, setCoinFace, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
+const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, setCoinFace, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
 
 function checkAchievements() {
   const kinds = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);
@@ -3096,6 +3064,8 @@ function applySave(d) {
   for (const a of ACHIEVEMENTS) if (d.achieved?.[a.id]) achieved[a.id] = true;
   achPoints = Math.max(0, Math.floor(Number(d.achPoints) || 0));
   for (const x of DECORATIONS) if (d.ownedDecor?.[x.id]) ownedDecor[x.id] = true;
+  // 拿掉的裝飾品（2026-10-05 機台主題）：買過的把點數退回來（只退一次，因為存檔不會再記著它）
+  for (const [id, pts] of Object.entries(REMOVED_DECOR)) if (d.ownedDecor?.[id]) achPoints += pts;
   for (const [slot, id] of Object.entries(d.equipped || {})) {
     if (DECORATION_SLOTS[slot] && ownedDecor[id]) equipDecor(id);
   }
