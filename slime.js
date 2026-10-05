@@ -1039,8 +1039,7 @@ export function slimePartBoxes(mesh) {
 
 // 做一隻史萊姆娃娃（模型的原點在底部中心，臉朝 +z）
 // id 可以是「套.第幾隻」，也可以直接給一個造型（例如轉生動畫的天使）
-// half：融合史萊姆用。-1 只留左半邊（臉朝前時的左邊）、1 只留右半邊
-export function makeSlimeMesh(id, scale, fancy = true, half = 0) {
+export function makeSlimeMesh(id, scale, fancy = true) {
   const skin = typeof id === 'string' ? slimeInfo(id).skin : id;
   const g = new THREE.Group();
   let body;
@@ -1051,7 +1050,6 @@ export function makeSlimeMesh(id, scale, fancy = true, half = 0) {
   } else if (isJelly(skin)) {
     const [backMat, frontMat] = jellyLayers(skin);
     const inner = new THREE.Mesh(geo, backMat);
-    inner.userData.isBody = true;
     inner.renderOrder = 1;
     g.add(inner);
     body = new THREE.Mesh(geo, frontMat);
@@ -1122,62 +1120,12 @@ export function makeSlimeMesh(id, scale, fancy = true, half = 0) {
     pts.userData.sparkle = true;
     g.add(pts);
   }
-  if (half) cutHalf(g, half, body);
   g.scale.setScalar(scale);
   g.userData.skin = skin;
   g.userData.body = body;
   return g;
 }
 
-// ===== 融合（2026-10-04 納可定：兩隻碰在一起融合，外觀左半 A、右半 B）=====
-// 身體只留一半的三角形（每個三角形照中心在哪一邊分），眼睛、耳朵這些零件照位置留在自己那一邊；
-// 正中間的東西（帽子、吸管、閃光）只留 A 的
-const halfGeos = new Map();
-function halfGeo(geo, side) {
-  const key = geo.uuid + side;
-  if (halfGeos.has(key)) return halfGeos.get(key);
-  const src = geo.index ? geo.toNonIndexed() : geo;
-  const names = Object.keys(src.attributes);
-  const keep = [];
-  const pos = src.attributes.position;
-  for (let t = 0; t < pos.count; t += 3) {
-    const cx = pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2);
-    if (cx * side >= 0) keep.push(t);
-  }
-  const out = new THREE.BufferGeometry();
-  for (const n of names) {
-    const a = src.attributes[n];
-    const arr = new Float32Array(keep.length * 3 * a.itemSize);
-    let o = 0;
-    for (const t of keep) for (let v = 0; v < 3; v++) for (let c = 0; c < a.itemSize; c++) arr[o++] = a.array[(t + v) * a.itemSize + c];
-    out.setAttribute(n, new THREE.BufferAttribute(arr, a.itemSize));
-  }
-  halfGeos.set(key, out);
-  return out;
-}
-function cutHalf(g, side, body) {
-  for (const ch of [...g.children]) {
-    if (ch === body || ch.userData.isBody) {
-      ch.geometry = halfGeo(ch.geometry, side);
-      continue;
-    }
-    const x = ch.position.x;
-    const mine = Math.abs(x) < 0.04 ? side < 0 : x * side > 0;
-    if (!mine) g.remove(ch);
-  }
-}
-export function makeFusedMesh(idA, idB, scale, fancy = true) {
-  const a = makeSlimeMesh(idA, 1, fancy, -1);
-  const b = makeSlimeMesh(idB, 1, fancy, 1);
-  const g = new THREE.Group();
-  // 零件攤平放在同一層，眨眼、閃光、碰撞盒都照舊找得到
-  for (const ch of [...a.children, ...b.children]) g.add(ch);
-  g.scale.setScalar(scale);
-  g.userData.skin = a.userData.skin;
-  g.userData.body = a.userData.body;
-  g.userData.fused = true;
-  return g;
-}
 
 
 // 眨眼：每隻各自隨機，很偶爾才眨一次（納可：真的很偶爾就好）
