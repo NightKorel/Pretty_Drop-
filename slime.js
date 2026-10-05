@@ -880,6 +880,14 @@ const strawGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.62, 12);
 const bobaStrawGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.62, 14);
 let cubeMat = null;
 let cubeMatLow = null;
+// 冰塊的面：低畫質用真的半透明；高、中畫質的飲料本身會透光，裡面的東西要不透明才看得到，
+// 所以用「飲料顏色加很多白」的淡色，透過飲料看起來就是被染色的半透明冰塊
+const cubeFaceGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
+const cubeFaceLow = new THREE.MeshBasicMaterial({ color: 0xeaf8ff, transparent: true, opacity: 0.3, depthWrite: false });
+const iceFaceMats = {};
+function iceFaceMat(color) {
+  return (iceFaceMats[color] ||= new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(1, 1, 1), 0.55) }));
+}
 const pearlMat = new THREE.MeshStandardMaterial({ color: 0x2c160b, roughness: 0.25 });
 const lemonMat = new THREE.MeshStandardMaterial({ color: 0xffe25c, roughness: 0.5, emissive: 0x3a2a00 });
 function addDrinkParts(g, skin, fancy) {
@@ -896,9 +904,12 @@ function addDrinkParts(g, skin, fancy) {
     const y = H * (0.5 + rnd() * 0.18);
     const a = (i / 3) * Math.PI * 2 + rnd();
     const r = rnd() * Math.max(0, inside(y, 0.2));
-    const c = new THREE.Mesh(cubeGeo, fancy ? cubeMat : cubeMatLow);
+    // 一顆冰塊＝半透明的方塊＋亮亮的邊框，兩個一起放在一個小群組裡，慢慢上下浮、輕輕轉
+    const c = new THREE.Group();
+    c.add(new THREE.Mesh(cubeFaceGeo, fancy ? iceFaceMat(skin.color) : cubeFaceLow), new THREE.Mesh(cubeGeo, cubeMat));
     c.position.set(Math.cos(a) * r, y, Math.sin(a) * r * 0.7 - 0.05);
     c.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    c.userData.bob = { y, phase: rnd() * Math.PI * 2, spin: 0.15 + rnd() * 0.25 };
     g.add(c);
   }
   // 珍珠：沉在底部，一圈貼著杯壁（像真的珍奶杯子外面看得到的那樣），中間再塞幾顆
@@ -1148,6 +1159,12 @@ export function updateSlimeEffects(g, time) {
   const shut = blinkAmount(g, time);
   for (const ch of g.children) {
     if (ch.userData.eyeY) ch.scale.y = ch.userData.eyeY * (1 - shut * 0.88);
+    // 飲料裡的冰塊：慢慢上下浮、輕輕轉（只是動畫，不算物理）
+    const b = ch.userData.bob;
+    if (b) {
+      ch.position.y = b.y + Math.sin(time * 1.3 + b.phase) * 0.03;
+      ch.rotation.y += b.spin * 0.016;
+    }
     if (ch.userData.sparkle) {
       ch.rotation.y = time * 0.6;
       ch.material.opacity = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(time * 4));
