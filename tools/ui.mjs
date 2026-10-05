@@ -1,0 +1,34 @@
+// 介面：商店（升級、輪迴）、成就、成就商店、彩券、設定「其他」的截圖；手機尺寸。檢查分類收合、按鈕一樣大
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.NPMG + '/playwright');
+const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const vp = process.argv[2] === 'pc' ? { width: 1000, height: 700 } : { width: 390, height: 780 };
+const tag = process.argv[2] === 'pc' ? 'pc' : 'phone';
+const page = await (await browser.newContext({ viewport: vp, isMobile: tag === 'phone', hasTouch: tag === 'phone' })).newPage();
+const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+await page.goto('http://localhost:8765/');
+await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
+await page.evaluate(() => { const g = __game; g.applyQuality('low'); g.setWallet(3000); for (const k of ['refill', 'dropRate', 'speed', 'guard', 'lucky', 'rain']) g.buy(k); g.setWallet(150); g.earned = g.rebirthNeed(3); });
+await page.click('#shopBtn');
+await page.waitForTimeout(300);
+await page.screenshot({ path: `/tmp/pd-shots/ui-${tag}-shop.png` });
+// 打開「推板」分類，重畫後要還是開著
+await page.click('details[data-grp="shop.push"] > summary');
+await page.evaluate(() => __game.setWallet(160));
+await page.waitForTimeout(400);
+const stillOpen = await page.evaluate(() => document.querySelector('details[data-grp="shop.push"]').open);
+const widths = await page.evaluate(() => [...new Set([...document.querySelectorAll('#shopList .item button')].map((b) => Math.round(b.getBoundingClientRect().width)))]);
+await page.screenshot({ path: `/tmp/pd-shots/ui-${tag}-shop2.png` });
+await page.click('button[data-shoptab="rebirth"]');
+await page.waitForTimeout(300);
+await page.screenshot({ path: `/tmp/pd-shots/ui-${tag}-rebirth.png` });
+await page.click('#shopClose');
+await page.click('#achBtn');
+await page.waitForTimeout(300);
+await page.screenshot({ path: `/tmp/pd-shots/ui-${tag}-ach.png` });
+await page.click('button[data-achtab="shop"]');
+await page.waitForTimeout(300);
+await page.screenshot({ path: `/tmp/pd-shots/ui-${tag}-decor.png` });
+console.log(JSON.stringify({ stillOpen, 按鈕寬度種類: widths, errs }));
+await browser.close();

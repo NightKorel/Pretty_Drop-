@@ -230,7 +230,8 @@ html, body {
 .item .lv { color: var(--gold); font-size: 12px; margin-left: 8px; font-weight: 400; }
 .item .desc { color: var(--dim); font-size: 12px; margin-top: 4px; line-height: 1.5; }
 .item button {
-  min-width: 76px;
+  width: 72px;
+  flex: none;
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--gold);
@@ -493,21 +494,7 @@ html, body {
 #celebName { font-size: 22px; font-weight: 800; margin-top: 4px; }
 #celebValue { font-size: 40px; font-weight: 900; color: var(--gold); margin-top: 6px; font-variant-numeric: tabular-nums; }
 #celebExtra { font-size: 13px; color: #8fd3ff; margin-top: 6px; min-height: 1em; }
-#confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-#confetti i {
-  position: absolute;
-  top: -20px;
-  width: 8px;
-  height: 14px;
-  border-radius: 2px;
-  animation-name: confettiFall;
-  animation-timing-function: ease-in;
-  animation-fill-mode: forwards;
-}
-@keyframes confettiFall {
-  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
-  100% { transform: translate(var(--drift), 105vh) rotate(720deg); opacity: 0.8; }
-}
+#confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 .hudBtn .badge {
   display: inline-block;
@@ -555,7 +542,8 @@ html, body {
 }
 .rebirthBox b, .rebirthHead b { color: var(--gold); }
 .rebirthBox .bookNote { margin: 6px 0 10px; }
-#rebirthGo { width: 100%; padding: 10px 0; font-size: 15px; font-weight: 700; }
+#rebirthGo { width: 100%; padding: 10px 0; font-size: 15px; font-weight: 700; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); background: var(--gold); color: #1a1408; cursor: pointer; }
+#rebirthGo:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
 .rebirthHead { margin: 4px 0 8px; font-weight: 700; }
 
 /* 轉生動畫：整個畫面蓋上一層，中間天使史萊姆跳來跳去 */
@@ -584,3 +572,35 @@ html, body {
   animation: rebornGlow 1.2s ease-in-out infinite;
 }
 @keyframes rebornGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+/* 可以收合的分類（納可定：東西多的時候分類收合） */
+.grp { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.grp > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 2px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  font-size: 15px;
+}
+.grp > summary::-webkit-details-marker { display: none; }
+.grp > summary::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 6px solid var(--gold);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  transition: transform 0.15s;
+}
+.grp[open] > summary::before { transform: rotate(90deg); }
+.grpTitle { flex: 1; }
+.grpSum { font-size: 12px; font-weight: 400; color: var(--dim); }
+.grp > .item { padding-left: 14px; }
+.grp > .item:first-of-type { border-top: none; }
+/* 價錢寫在那一行裡；買不起是灰的 */
+.item .price { font-size: 13px; color: var(--gold); margin-top: 4px; font-weight: 700; }
+.item .price.short { color: var(--dim); font-weight: 400; }
+#settings .grp > .cheats { padding-bottom: 8px; }

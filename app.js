@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.53';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.53';
+import { makeCoinMaterials } from './coin.js?v=0.0.54';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.54';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.53';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.53';
+} from './slime.js?v=0.0.54';
+import { ACHIEVEMENTS, ACH_CATS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.54';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -138,6 +138,13 @@ for (const u of Object.values(UPGRADES)) {
   });
 }
 const UPGRADE_KEYS = Object.keys(UPGRADES);
+// 商店分類（畫面上一類一類收合）
+const SHOP_CATS = [
+  ['coin', '投幣', ['refill', 'dropRate', 'multi']],
+  ['push', '推板', ['speed', 'guard']],
+  ['luck', '好運', ['lucky', 'rain', 'rainSize']],
+  ['skill', '技能', ['shake']],
+];
 
 // ===== 輪迴 =====
 // 玩家自己選什麼時候輪迴：清空錢、商店升級、檯面；保留圖鑑、成就、裝飾品和輪迴點買的東西。
@@ -600,6 +607,29 @@ function earn(v) {
 }
 
 // ===== 介面 =====
+// 畫面規則（納可定）：東西多的時候分類、可以收合，不要一次排一大串；
+// 價錢寫在那一行裡，按鈕只寫「升級」「購買」，每個按鈕一樣大
+const GROUP_KEY = 'pretty_drop_groups';
+let groupOpen = {};
+try { groupOpen = JSON.parse(localStorage.getItem(GROUP_KEY) || '{}'); } catch (e) { /* 用預設 */ }
+// 一個可以收合的分類。summary 是收起來時也看得到的小統計
+function groupHtml(key, title, summary, inner, defOpen = false) {
+  const open = groupOpen[key] ?? defOpen;
+  return `<details class="grp" data-grp="${key}"${open ? ' open' : ''}><summary><span class="grpTitle">${title}</span><span class="grpSum">${summary}</span></summary>${inner}</details>`;
+}
+// 打開或收起來就記住（重畫畫面也不會跑掉）
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!d.matches || !d.matches('details[data-grp]')) return;
+  groupOpen[d.dataset.grp] = d.open;
+  try { localStorage.setItem(GROUP_KEY, JSON.stringify(groupOpen)); } catch (err) { /* 存不了也沒關係 */ }
+}, true);
+// 一行可以買的東西：名字、等級、說明、價錢（買得起是金色），右邊一個一樣大的按鈕
+function buyRowHtml({ name, lv = '', desc = '', price = '', canPay = true, btn }) {
+  const priceHtml = price ? `<div class="price${canPay ? '' : ' short'}">${price}</div>` : '';
+  return `<div class="item"><div class="info"><div class="name">${name}${lv ? `<span class="lv">${lv}</span>` : ''}</div>${desc ? `<div class="desc">${desc}</div>` : ''}${priceHtml}</div>${btn}</div>`;
+}
+
 const walletEl = document.getElementById('wallet');
 const refillEl = document.getElementById('refill');
 const hintEl = document.getElementById('hint');
@@ -1201,20 +1231,8 @@ function celebrate(id, isNew, unlockedSet) {
   celebEl.classList.add('show');
   celebEl.dataset.rarity = info.rarity;
   requestAnimationFrame(count);
-  // 彩紙
-  const conf = document.getElementById('confetti');
-  conf.innerHTML = '';
-  const n = info.rarity === 'legend' ? 70 : info.rarity === 'rare' ? 45 : 28;
-  const colors = ['#f4c95d', '#ff8fa8', '#8fd3ff', '#b4ee86', '#dcc8ff', '#ffffff'];
-  for (let i = 0; i < n; i++) {
-    const p = document.createElement('i');
-    p.style.left = `${Math.random() * 100}%`;
-    p.style.background = colors[i % colors.length];
-    p.style.animationDelay = `${Math.random() * 0.5}s`;
-    p.style.animationDuration = `${1.6 + Math.random() * 1.4}s`;
-    p.style.setProperty('--drift', `${(Math.random() - 0.5) * 160}px`);
-    conf.appendChild(p);
-  }
+  // 彩紙：全部畫在同一張畫布上（以前每一片都是一個網頁元素，片數多的時候手機會頓）
+  startConfetti(info.rarity === 'legend' ? 70 : info.rarity === 'rare' ? 45 : 28);
   flash(info.rarity === 'legend' ? 'rgba(244, 201, 93, 0.35)' : 'rgba(255, 255, 255, 0.18)');
   // 音樂：稀有度越高越長
   const tune = info.rarity === 'legend'
@@ -1223,6 +1241,52 @@ function celebrate(id, isNew, unlockedSet) {
   tune.forEach((f, k) => setTimeout(() => beep(f, 0.26, 0.07, 'triangle', 'doll'), k * 120));
   clearTimeout(celebTimer);
   celebTimer = setTimeout(closeCelebrate, info.rarity === 'legend' ? 4500 : 3200);
+}
+const confCanvas = document.getElementById('confetti');
+let confPieces = [];
+let confRunning = false;
+function startConfetti(n) {
+  const colors = ['#f4c95d', '#ff8fa8', '#8fd3ff', '#b4ee86', '#dcc8ff', '#ffffff'];
+  const W = window.innerWidth;
+  const t0 = performance.now();
+  confPieces = [];
+  for (let i = 0; i < n; i++) {
+    confPieces.push({
+      x: Math.random() * W, drift: (Math.random() - 0.5) * 160, color: colors[i % colors.length],
+      start: t0 + Math.random() * 500, dur: 1600 + Math.random() * 1400, spin: (Math.random() - 0.5) * 4 * Math.PI * 2,
+    });
+  }
+  if (!confRunning) { confRunning = true; requestAnimationFrame(drawConfetti); }
+}
+function drawConfetti(now) {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (confCanvas.width !== Math.round(W * dpr) || confCanvas.height !== Math.round(H * dpr)) {
+    confCanvas.width = Math.round(W * dpr);
+    confCanvas.height = Math.round(H * dpr);
+  }
+  const ctx = confCanvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  let alive = 0;
+  for (const p of confPieces) {
+    const k = (now - p.start) / p.dur;
+    if (k < 0) { alive++; continue; }
+    if (k >= 1) continue;
+    alive++;
+    const e = k * k; // 越掉越快
+    ctx.save();
+    ctx.translate(p.x + p.drift * e, -20 + e * H * 1.05);
+    ctx.rotate(p.spin * e);
+    ctx.globalAlpha = 1 - 0.2 * k;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-4, -7, 8, 14);
+    ctx.restore();
+  }
+  if (alive) { requestAnimationFrame(drawConfetti); return; }
+  ctx.clearRect(0, 0, W, H);
+  confRunning = false;
 }
 let celebView = null;
 let celebYaw = 0;
@@ -1299,9 +1363,15 @@ function renderAch() {
   if (achTab === 'list') {
     const done = ACHIEVEMENTS.filter((a) => achieved[a.id]).length;
     html += `<div class="bookUse">已達成 ${done} / ${ACHIEVEMENTS.length}</div>`;
-    for (const a of ACHIEVEMENTS) {
-      const ok = achieved[a.id];
-      html += `<div class="item achItem${ok ? ' done' : ''}"><div class="info"><div class="name">${ok ? '✓ ' : ''}${a.name}</div><div class="desc">${a.desc}</div></div><div class="achPts">${a.points} 點</div></div>`;
+    for (const [cat, title] of Object.entries(ACH_CATS)) {
+      const list = ACHIEVEMENTS.filter((a) => a.cat === cat);
+      if (!list.length) continue;
+      const n = list.filter((a) => achieved[a.id]).length;
+      const inner = list.map((a) => {
+        const ok = achieved[a.id];
+        return `<div class="item achItem${ok ? ' done' : ''}"><div class="info"><div class="name">${ok ? '✓ ' : ''}${a.name}</div><div class="desc">${a.desc}</div></div><div class="achPts">${a.points} 點</div></div>`;
+      }).join('');
+      html += groupHtml(`ach.${cat}`, title, `${n} / ${list.length}`, inner);
     }
   } else {
     html += '<div class="bookTip">用成就點數買裝飾品，只改外觀，不影響遊戲。</div>';
@@ -1311,13 +1381,19 @@ function renderAch() {
     for (const [slot, slotName] of Object.entries(DECORATION_SLOTS)) {
       const items = DECORATIONS.filter((d) => d.slot === slot);
       if (!items.length) continue;
-      html += `<div class="bookUse">${slotName}</div>`;
+      let inner = '';
       for (const d of items) {
-        let btn;
-        if (!ownedDecor[d.id]) btn = `<button type="button" data-decorbuy="${d.id}" ${achPoints < d.price ? 'disabled' : ''}>${d.price} 點</button>`;
-        else btn = `<button type="button" data-decoruse="${d.id}">${equipped[slot] === d.id ? '拿下來' : '裝上'}</button>`;
-        html += `<div class="item"><div class="info"><div class="name">${d.name}</div></div>${btn}</div>`;
+        const owned = ownedDecor[d.id];
+        inner += buyRowHtml({
+          name: d.name,
+          price: owned ? (equipped[slot] === d.id ? '裝著' : '已擁有') : `${d.price} 點`,
+          canPay: owned || achPoints >= d.price,
+          btn: owned ? `<button type="button" data-decoruse="${d.id}">${equipped[slot] === d.id ? '拿下' : '裝上'}</button>`
+            : `<button type="button" data-decorbuy="${d.id}" ${achPoints < d.price ? 'disabled' : ''}>購買</button>`,
+        });
       }
+      const own = items.filter((d) => ownedDecor[d.id]).length;
+      html += groupHtml(`decor.${slot}`, slotName, `已擁有 ${own} / ${items.length}`, inner);
     }
   }
   achListEl.innerHTML = html;
@@ -1823,12 +1899,13 @@ function drawWheel() {
 
 function renderWheelInfo() {
   const freeBtn = document.getElementById('freeSpinBtn');
-  freeBtn.textContent = `免費抽一次（還有 ${freeSpins} 次）`;
+  freeBtn.textContent = '免費抽一次';
   freeBtn.disabled = freeSpins <= 0 || wheelSpinning;
   freeBtn.style.display = freeSpins > 0 ? '' : 'none';
   const payBtn = document.getElementById('paySpinBtn');
-  payBtn.textContent = `花 ${WHEEL_PRICE} 枚轉一次`;
+  payBtn.textContent = '花錢抽一次';
   payBtn.disabled = wallet < WHEEL_PRICE || wheelSpinning;
+  document.getElementById('wheelCost').textContent = `${freeSpins > 0 ? `免費還有 ${freeSpins} 次　` : ''}花錢抽一次 ${WHEEL_PRICE} 枚`;
 }
 
 function openWheel() {
@@ -1939,17 +2016,28 @@ function renderShop() {
     shopListEl.innerHTML = html + rebirthHtml();
     return;
   }
-  UPGRADE_KEYS.forEach((key, i) => {
-    if (!shopVisible(i)) return;
-    const u = UPGRADES[key];
-    const lv = upgrades[key];
-    const max = u.prices.length;
-    const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
-    const price = lv < max ? upPrice(key) : 0;
-    const btn = lv >= max
-      ? '<button type="button" disabled>已滿級</button>'
-      : `<button type="button" data-buy="${key}" ${wallet < price ? 'disabled' : ''}>${price} 枚</button>`;
-    html += `<div class="item"><div class="info"><div class="name">${u.name}<span class="lv">${lvText}</span></div><div class="desc">${u.desc}</div></div>${btn}</div>`;
+  SHOP_CATS.forEach(([cat, title, keys], ci) => {
+    let inner = '';
+    let shown = 0;
+    let can = 0;
+    for (const key of keys) {
+      const i = UPGRADE_KEYS.indexOf(key);
+      if (!shopVisible(i)) continue;
+      shown++;
+      const u = UPGRADES[key];
+      const lv = upgrades[key];
+      const max = u.prices.length;
+      const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
+      const price = lv < max ? upPrice(key) : 0;
+      if (lv < max && wallet >= price) can++;
+      inner += buyRowHtml({
+        name: u.name, lv: lvText, desc: u.desc,
+        price: lv < max ? `${price} 枚` : '', canPay: wallet >= price,
+        btn: lv >= max ? '<button type="button" disabled>滿級</button>'
+          : `<button type="button" data-buy="${key}" ${wallet < price ? 'disabled' : ''}>升級</button>`,
+      });
+    }
+    if (shown) html += groupHtml(`shop.${cat}`, title, can ? `${can} 項買得起` : `${shown} 項`, inner, ci === 0);
   });
   const next = UPGRADE_KEYS.findIndex((_, i) => !shopVisible(i));
   if (next > 0) html += '<div class="item locked"><div class="info"><div class="desc">買下上面最後一項，就會出現新的升級</div></div></div>';
@@ -1972,17 +2060,24 @@ function rebirthHtml() {
     <button type="button" id="rebirthGo" ${n ? '' : 'disabled'}>${rebirthArmed ? `確定？再按一次就輪迴（+${n} 點）` : n ? `輪迴（+${n} 點）` : `累計賺到 ${rebirthNeed(1)} 枚才能輪迴`}</button>
   </div>
   <div class="rebirthHead">輪迴點：<b>${rebirth.points}</b> 點${rebirth.count ? `　已經輪迴 ${rebirth.count} 次` : ''}</div>`;
+  let inner = '';
+  let can = 0;
   for (const k of PERK_KEYS) {
     const p = PERKS[k];
     const lv = perkLv(k);
     const max = p.costs.length;
     const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
-    const btn = lv >= max
-      ? '<button type="button" disabled>已滿級</button>'
-      : `<button type="button" data-perk="${k}" ${rebirth.points < p.costs[lv] ? 'disabled' : ''}>${p.costs[lv]} 點</button>`;
-    const eff = lv >= max ? `已滿級：${p.eff(lv)}` : `升級後：${p.eff(lv + 1)}`;
-    html += `<div class="item"><div class="info"><div class="name">${p.name}<span class="lv">${lvText}</span></div><div class="desc">${eff}</div></div>${btn}</div>`;
+    const cost = p.costs[lv];
+    if (lv < max && rebirth.points >= cost) can++;
+    inner += buyRowHtml({
+      name: p.name, lv: lvText,
+      desc: lv >= max ? `已滿級：${p.eff(lv)}` : `升級後：${p.eff(lv + 1)}`,
+      price: lv < max ? `${cost} 點` : '', canPay: rebirth.points >= cost,
+      btn: lv >= max ? '<button type="button" disabled>滿級</button>'
+        : `<button type="button" data-perk="${k}" ${rebirth.points < cost ? 'disabled' : ''}>升級</button>`,
+    });
   }
+  html += groupHtml('rebirth.perks', '輪迴點商店', can ? `${can} 項買得起` : `${PERK_KEYS.length} 項`, inner, true);
   return html;
 }
 function buyPerk(k) {
@@ -2229,7 +2324,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.53 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.54 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
