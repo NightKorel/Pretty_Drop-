@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.70';
-import { drawDigits } from './digits.js?v=0.0.70';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.70';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.70';
+import { makeCoinMaterials } from './coin.js?v=0.0.73';
+import { drawDigits } from './digits.js?v=0.0.73';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.73';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.73';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
-  updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.70';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.70';
+  updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
+} from './slime.js?v=0.0.73';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.73';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -204,6 +204,7 @@ const ownedDecor = {};
 const equipped = {};
 let achTimer = 0;
 const dolls = [];            // 檯面上的史萊姆娃娃
+const dollQueue = [];        // 等著放上推板的史萊姆（推板縮在後面放不下時）
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
 const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 35 秒一隻）
 let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
@@ -538,7 +539,7 @@ function refillDollBag() {
 // 機台放一隻新的娃娃到推板上方
 function dropNewDoll(forceRarity) {
   // 檯面上不會同時有兩隻一樣造型的史萊姆
-  const onTable = new Set(dolls.map((d) => d.id));
+  const onTable = new Set([...dolls.map((d) => d.id), ...dollQueue.map((q) => q.id)]);
   let id = null;
   if (forceRarity) {
     // 作弊用：指定稀有度，不從袋子拿
@@ -568,9 +569,52 @@ function dropNewDoll(forceRarity) {
   }
   const scale = 0.85 + Math.random() * 0.35; // 大小略有不同
   const yaw = (Math.random() - 0.5) * 0.8;   // 大致面向玩家
-  spawnDoll(id, scale, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
-  beep(700, 0.12, 0.05, 'triangle', 'doll');
-  setTimeout(() => beep(1050, 0.16, 0.05, 'triangle', 'doll'), 110);
+  dollQueue.push({ id, scale, rot: { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) } });
+  placeQueuedDolls();
+}
+
+// 史萊姆直接放在推板上（2026-10-05 納可：從高處掉下來很容易一路滾下去）。
+// 推板縮在後面、上面放不下的時候先排隊，等推板推出來再放；擋到的幣、寶物、道具往旁邊頂開
+function placeQueuedDolls() {
+  while (dollQueue.length) {
+    const q = dollQueue[0];
+    const r = SLIME_R * q.scale;
+    const front = pusher.body.translation().z + PUSHER_DEPTH / 2;
+    const zMin = WALL_Z + 0.2 + r;
+    const zMax = front - 0.2 - r;
+    if (zMax < zMin) return;
+    const z = zMin + Math.random() * Math.min(0.4, zMax - zMin);
+    // 挑擋到最少東西的位置
+    const others = [
+      ...coins.map((c) => ({ body: c.body, r: c.value > 1 ? BIG_R : COIN_R })),
+      ...treasures.map((t) => ({ body: t.body, r: 0.45 })),
+      ...props.map((p) => ({ body: p.body, r: 0.6 })),
+      ...dolls.map((d) => ({ body: d.body, r: SLIME_R * (d.scale || 1) })),
+    ].filter((o) => o.body.translation().y > PUSHER_H - 0.3);
+    const lim = Math.min(2.4, halfW - r - 0.1);
+    let best = 0;
+    let bestN = Infinity;
+    for (let k = 0; k < 9; k++) {
+      const x = (k / 8 * 2 - 1) * lim + (Math.random() - 0.5) * 0.2;
+      const n = others.filter((o) => { const t = o.body.translation(); return Math.hypot(t.x - x, t.z - z) < r + o.r; }).length;
+      if (n < bestN || (n === bestN && Math.random() < 0.4)) { bestN = n; best = x; }
+    }
+    for (const o of others) {
+      const t = o.body.translation();
+      let dx = t.x - best;
+      let dz = t.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d >= r + o.r) continue;
+      if (d < 0.01) { dx = Math.random() - 0.5; dz = 0.3; }
+      const k = (r + o.r + 0.05) / Math.hypot(dx, dz);
+      o.body.setTranslation({ x: best + dx * k, y: t.y + 0.05, z: z + dz * k }, true);
+      o.body.setLinvel({ x: dx * k * 0.5, y: 0, z: dz * k * 0.5 }, true);
+    }
+    spawnDoll(q.id, q.scale, { x: best, y: PUSHER_H + 0.2, z }, q.rot);
+    dollQueue.shift();
+    beep(700, 0.12, 0.05, 'triangle', 'doll');
+    setTimeout(() => beep(1050, 0.16, 0.05, 'triangle', 'doll'), 110);
+  }
 }
 
 // ===== 推板移動 =====
@@ -2423,6 +2467,7 @@ function doRebirth() {
   // 清空檯面、錢、升級，照開新遊戲的樣子重新鋪幣
   while (coins.length) removeCoin(coins.length - 1);
   while (dolls.length) removeDoll(dolls.length - 1);
+  dollQueue.length = 0;
   while (props.length) removeProp(props.length - 1);
   while (treasures.length) removeTreasure(treasures.length - 1);
   for (const k of UPGRADE_KEYS) upgrades[k] = 0;
@@ -2794,6 +2839,7 @@ function rescueBehind(body) {
 function stepSim() {
   simTime += STEP;
   movePusher();
+  if (dollQueue.length) placeQueuedDolls();
   applyEffects();
   world.step();
   if (reachExtra > 0 || simTime % 1 < STEP) {
@@ -2910,7 +2956,7 @@ function updateTimers(frame) {
   dollTimer += frame;
   if (dollTimer >= 1) {
     dollTimer -= 1;
-    if (dolls.length < maxDolls() && dollChance.roll()) dropNewDoll();
+    if (dolls.length + dollQueue.length < maxDolls() && dollChance.roll()) dropNewDoll();
   }
 
   // 每一秒擲一次要不要放道具、彩券（保底式假隨機）
