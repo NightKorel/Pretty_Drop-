@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.65';
-import { drawDigits } from './digits.js?v=0.0.65';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.65';
+import { makeCoinMaterials } from './coin.js?v=0.0.66';
+import { drawDigits } from './digits.js?v=0.0.66';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.66';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.65';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.65';
+} from './slime.js?v=0.0.66';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.66';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -97,9 +97,9 @@ const UPGRADES = {
     base: 60, growth: 1.55,
   },
   rain: {
-    name: '金幣雨機率',
-    desc: '解鎖金幣雨：每一秒都有小小的機會下一場，升級讓機會變大',
-    levels: [0, 0.003, 0.0045, 0.006, 0.0075, 0.009, 0.011, 0.013, 0.016], // 每秒下金幣雨的機率（沒買就不會下）
+    name: '金幣雨',
+    desc: '解鎖技能「金幣雨」：按一下，天上掉下一場金幣雨。升級讓冷卻變短',
+    levels: [0, 240, 210, 180, 160, 140, 120, 105, 90], // 冷卻幾秒（沒買就不能用）。2026-10-05 納可：改成主動技能，不再隨機
     base: 120, growth: 1.5,
   },
   rainSize: {
@@ -189,7 +189,6 @@ let refillTimer = 0;
 let simTime = 0;
 let pusherPhase = 0;         // 推板走到來回的哪裡（0 到 1）
 const upgrades = Object.fromEntries(UPGRADE_KEYS.map((k) => [k, 0]));
-let rainTimer = 0;           // 每滿一秒擲一次金幣雨
 let rainQueue = 0;           // 金幣雨還有幾枚要下
 const coins = [];
 // 成就：累計數字、達成了哪些、成就點數、買了哪些裝飾品、各位置裝了哪個
@@ -289,6 +288,11 @@ scene.environmentIntensity = 0.6;
 const hemi = new THREE.HemisphereLight(0xfff4e0, 0x302840, 0.6);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+const HEMI_COLOR = hemi.color.clone();
+const SUN_COLOR = sun.color.clone();
+const FEVER_HEMI = new THREE.Color(0xffb8d6); // 狂熱時的燈光顏色
+const FEVER_SUN = new THREE.Color(0xffd9a0);
+let feverBlend = 0;
 sun.position.set(4, 14, 8);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
@@ -545,7 +549,7 @@ function movePusher() {
   pusher.body.setNextKinematicTranslation({ x: 0, y: PUSHER_H / 2, z });
 }
 function pusherPeriod() {
-  return upValue('speed') * (PUSHER_AMP + reachExtra / 2) / PUSHER_AMP;
+  return upValue('speed') * (PUSHER_AMP + reachExtra / 2) / PUSHER_AMP / (feverTime > 0 ? FEVER_SPEED : 1);
 }
 function pusherSpeedZ() {
   const w = (Math.PI * 2) / pusherPeriod();
@@ -642,22 +646,34 @@ function bump(el) {
   el.classList.add('pop');
 }
 let shopShownWallet = -1;
-const skillBtn = document.getElementById('skillBtn');
-skillBtn.addEventListener('click', startShake);
-let skillShown = '';
+// 主動技能的圓鈕（右下角，一顆一顆往上疊）：解鎖了才出現，冷卻時顯示倒數
+const SKILLS = [
+  { el: document.getElementById('skillBtn'), key: 'shake', name: '甩一甩', cd: () => shakeCd, use: () => startShake() },
+  { el: document.getElementById('rainBtn'), key: 'rain', name: '金幣雨', cd: () => rainCd, use: () => startRainSkill() },
+];
+for (const sk of SKILLS) { sk.el.addEventListener('click', sk.use); sk.shown = null; }
 function updateSkillBtn() {
-  const unlocked = upValue('shake') > 0;
-  const left = Math.ceil(shakeCd);
-  const text = !unlocked ? '' : left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : '甩一甩';
-  if (text === skillShown) return;
-  skillShown = text;
-  skillBtn.hidden = !unlocked;
-  skillBtn.textContent = text;
-  skillBtn.disabled = left > 0;
+  for (const sk of SKILLS) {
+    const unlocked = upValue(sk.key) > 0;
+    const left = Math.ceil(sk.cd());
+    const text = !unlocked ? '' : left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : sk.name;
+    if (text === sk.shown) continue;
+    sk.shown = text;
+    sk.el.hidden = !unlocked;
+    sk.el.textContent = text;
+    sk.el.disabled = left > 0;
+  }
+}
+// 狂熱條：平常顯示累積多少；狂熱時顯示剩幾秒（慢慢變短）
+const feverFill = document.getElementById('feverFill');
+function updateFeverBar() {
+  const k = feverTime > 0 ? feverTime / FEVER_TIME : feverGauge / FEVER_MAX;
+  feverFill.style.width = `${Math.min(100, k * 100).toFixed(1)}%`;
 }
 function updateHud() {
   walletEl.textContent = wallet;
   updateSkillBtn();
+  updateFeverBar();
   shopBtn.classList.toggle('ready', canAffordSomething());
   // 商店開著時，錢變了就更新按鈕能不能按
   if (shopEl.classList.contains('show') && shopShownWallet !== wallet) {
@@ -767,7 +783,6 @@ function aimFromEvent(e) {
 }
 
 const bigChance = new PseudoRandom(UPGRADES.lucky.levels[0]);
-const rainChance = new PseudoRandom(UPGRADES.rain.levels[0]);
 const dollChance = new PseudoRandom(DOLL_CHANCE);
 
 
@@ -1545,6 +1560,58 @@ let shakeCd = 0;             // 冷卻還剩幾秒
 let reachExtra = 0;          // 長推板：這一趟推板多伸出去多少
 const REACH_EXTRA = 3.0;     // 多伸 3 格。推板尾巴會離開擋牆，掉到推板後面的東西由 rescueBehind() 放回來
 
+// 從畫面上方翻轉著掉下一枚幣（金幣雨、狂熱時間共用）
+function dropRainCoin() {
+  const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.2);
+  const c = spawnCoin(x, 9 + Math.random() * 3, -5.5 + Math.random() * 6, Math.PI);
+  if (!c) return false;
+  c.body.setLinvel({ x: 0, y: -2 - Math.random() * 2, z: 0 }, true);
+  c.body.setAngvel({ x: (Math.random() - 0.5) * 16, y: 0, z: (Math.random() - 0.5) * 16 }, true);
+  if (Math.random() < 0.3) clink(0.6);
+  return true;
+}
+
+// 金幣雨（主動技能，2026-10-05 納可定）：冷卻好了按一下就下一場
+let rainCd = 0;
+function startRainSkill() {
+  if (upValue('rain') <= 0 || rainCd > 0 || rainQueue > 0) return;
+  rainCd = upValue('rain');
+  startRain();
+}
+
+// ===== 狂熱時間（2026-10-05 納可定）=====
+// 推下一枚幣 +1，推下娃娃 普通 +10、稀有 +30、傳說 +50；滿 1000 進入狂熱 20 秒：推板變快、一直下金幣雨。
+// 狂熱的時候推下的不算（免得一次接一次停不下來）
+const FEVER_MAX = 1000;
+const FEVER_TIME = 20;
+const FEVER_SPEED = 1.6;     // 狂熱時推板快幾倍
+const FEVER_RAIN = 6;        // 狂熱時每秒掉幾枚金幣
+const FEVER_DOLL = { common: 10, rare: 30, legend: 50 };
+let feverGauge = 0;
+let feverTime = 0;
+let feverSpawn = 0;
+const feverBanner = document.getElementById('feverBanner');
+function addFever(n) {
+  if (feverTime > 0) return;
+  feverGauge += n;
+  if (feverGauge >= FEVER_MAX) startFever();
+}
+function startFever() {
+  feverGauge = 0;
+  feverTime = FEVER_TIME;
+  feverSpawn = 0;
+  stats.fevers++;
+  feverBanner.classList.remove('show');
+  void feverBanner.offsetWidth;
+  feverBanner.classList.add('show');
+  document.body.classList.add('fever');
+  [523, 659, 784, 1047, 1319, 1568].forEach((f, k) => setTimeout(() => beep(f, 0.16, 0.06, 'square', 'rain'), k * 80));
+}
+function endFever() {
+  document.body.classList.remove('fever');
+  toast('狂熱時間結束');
+}
+
 function startRain() {
   stats.rains++;
   rainQueue = upValue('rainSize');
@@ -2202,6 +2269,9 @@ function doRebirth() {
   windTime = quakeTime = reachExtra = 0;
   reachQueued = false;
   shakeTime = shakeCd = 0;
+  rainCd = 0;
+  feverGauge = 0;
+  if (feverTime > 0) { feverTime = 0; endFever(); }
   prefill();
   buildGuards();
   setAuto(false);
@@ -2357,8 +2427,9 @@ function saveData() {
     upgrades: { ...upgrades },
     pusherPhase,
     shakeCd: Math.ceil(shakeCd),
+    rainCd: Math.ceil(rainCd),
+    feverGauge,
     bigCount: bigChance.count,
-    rainCount: rainChance.count,
     dollCount: dollChance.count,
     jackpotCount: jackpotChance.count,
     freeSpins,
@@ -2427,8 +2498,9 @@ function applySave(d) {
   }
   pusherPhase = Number(d.pusherPhase) || 0;
   shakeCd = Math.min(UPGRADES.shake.levels[1], Math.max(0, Number(d.shakeCd) || 0));
+  rainCd = Math.min(UPGRADES.rain.levels[1], Math.max(0, Number(d.rainCd) || 0));
+  feverGauge = Math.min(FEVER_MAX - 1, Math.max(0, Math.floor(Number(d.feverGauge) || 0)));
   bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
-  rainChance.count = Math.max(0, Math.floor(Number(d.rainCount) || 0));
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
   jackpotChance.count = Math.max(0, Math.floor(Number(d.jackpotCount) || 0));
   // 舊版的轉盤券換成免費抽獎次數
@@ -2444,7 +2516,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.65 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.66 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2456,7 +2528,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.65 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.66 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
@@ -2553,6 +2625,7 @@ function stepSim() {
       if (b.z > FRONT_Z - 0.5 && Math.abs(b.x) < halfW + 0.1) {
         const got = earn(value);
         stats.coinsWon += got;
+        addFever(1);
         if (value > 1) stats.bigWon++;
         floatText(`+${got}`, new THREE.Vector3(b.x, 0, FRONT_Z), value > 1 ? 'big' : '');
         bump(walletEl);
@@ -2598,6 +2671,7 @@ function stepSim() {
     const info = slimeInfo(d.id);
     if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
       const r = RARITY[info.rarity];
+      addFever(FEVER_DOLL[info.rarity] || 10);
       const isNew = !collection[d.id];
       const lockedBefore = SLIME_SETS.filter((st) => !setUnlocked(st)).map((st) => st.id);
       collection[d.id] = (collection[d.id] || 0) + 1;
@@ -2645,30 +2719,26 @@ function updateTimers(frame) {
     if (props.length < MAX_PROPS && !props.some((p) => p.type === 'ticket') && ticketChance.roll()) dropProp('ticket');
   }
 
-  // 每一秒擲一次金幣雨（保底式假隨機）
-  rainTimer += frame;
-  if (rainTimer >= 1) {
-    rainTimer -= 1;
-    if (rainChance.p !== upValue('rain')) rainChance.setChance(upValue('rain'));
-    if (upValue('rain') > 0 && rainQueue <= 0 && rainChance.roll()) startRain();
-  }
-
   // 金幣雨：大約 2.5 秒內，一枚一枚從畫面上方翻轉著掉下來
   if (rainQueue > 0) {
     rainSpawn += frame * rainRate;
     while (rainSpawn >= 1 && rainQueue > 0) {
       rainSpawn -= 1;
-      const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.2);
-      const c = spawnCoin(x, 9 + Math.random() * 3, -5.5 + Math.random() * 6, Math.PI);
-      if (!c) { rainQueue = 0; break; }
-      c.body.setLinvel({ x: 0, y: -2 - Math.random() * 2, z: 0 }, true);
-      c.body.setAngvel({ x: (Math.random() - 0.5) * 16, y: 0, z: (Math.random() - 0.5) * 16 }, true);
+      if (!dropRainCoin()) { rainQueue = 0; break; }
       rainQueue--;
-      if (Math.random() < 0.3) clink(0.6);
     }
   }
 
+  // 狂熱時間：一直下金幣雨（每秒 FEVER_RAIN 枚）
+  if (feverTime > 0) {
+    feverTime = Math.max(0, feverTime - frame);
+    feverSpawn += frame * FEVER_RAIN;
+    while (feverSpawn >= 1) { feverSpawn -= 1; dropRainCoin(); }
+    if (feverTime <= 0) endFever();
+  }
+
   if (shakeCd > 0) shakeCd = Math.max(0, shakeCd - frame);
+  if (rainCd > 0) rainCd = Math.max(0, rainCd - frame);
 
   // 媽媽十元：固定時間給 10 枚，手上滿 100 枚就先不給（給了也不超過 100）
   if (wallet < MOM_CAP) {
@@ -2719,6 +2789,10 @@ function tick(now) {
 
   updateCoinSound();
   updateHud();
+  // 狂熱時間：燈光慢慢變成暖粉金色，結束再慢慢變回來
+  feverBlend += ((feverTime > 0 ? 1 : 0) - feverBlend) * Math.min(1, frame * 3);
+  hemi.color.copy(HEMI_COLOR).lerp(FEVER_HEMI, feverBlend);
+  sun.color.copy(SUN_COLOR).lerp(FEVER_SUN, feverBlend);
   // 甩的時候畫面跟著晃
   const sway = shakeTime > 0 ? Math.sin(simTime * 60) * 0.08 * (shakeTime / SHAKE_TIME) : 0;
   camera.position.x += sway;
@@ -2743,7 +2817,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };

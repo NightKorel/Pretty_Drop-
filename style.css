@@ -96,12 +96,9 @@ html, body {
   transition: opacity 1s;
 }
 
-/* 主動技能按鈕：右下角的圓鈕，冷卻時顯示倒數 */
-#skillBtn {
-  position: fixed;
-  right: 16px;
-  bottom: 44px;
-  z-index: 3;
+/* 主動技能按鈕：右下角的圓鈕，一顆一顆往上疊，冷卻時顯示倒數 */
+#skills { position: fixed; right: 16px; bottom: 44px; z-index: 3; display: flex; flex-direction: column; gap: 10px; }
+.skillBtn {
   width: 72px;
   height: 72px;
   border-radius: 50%;
@@ -114,9 +111,9 @@ html, body {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-#skillBtn[hidden] { display: none; }
-#skillBtn:disabled { border-color: #4a4458; color: var(--dim); cursor: default; }
-#skillBtn:not(:disabled):active { transform: scale(0.94); }
+.skillBtn[hidden] { display: none; }
+.skillBtn:disabled { border-color: #4a4458; color: var(--dim); cursor: default; }
+.skillBtn:not(:disabled):active { transform: scale(0.94); }
 
 #loading {
   position: fixed;
@@ -628,3 +625,19 @@ html, body {
 #qualityPick button span { font-size: 12px; color: var(--dim); }
 #qualityPick button.rec { border-color: var(--gold); background: rgba(244, 201, 93, 0.12); }
 #qualityPick button.rec b::after { content: '　建議'; font-size: 12px; color: var(--gold); font-weight: 700; }
+
+/* 狂熱條：錢的框框下面一條細細的條 */
+.money { flex-direction: column; align-items: stretch; gap: 4px; }
+#feverBar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); padding: 0 2px; }
+#feverBar i { flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+#feverBar b { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--gold), #ff8fab); transition: width 0.3s; }
+body.fever #feverBar span { color: #ff8fab; font-weight: 700; }
+body.fever #feverBar b { box-shadow: 0 0 8px #ff8fab; }
+/* 狂熱時間的大字 */
+#feverBanner {
+  position: fixed; left: 0; right: 0; top: 17%; text-align: center;
+  font-size: 44px; font-weight: 900; letter-spacing: 6px; color: #ffb8d6;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 0 28px rgba(255, 143, 171, 0.8);
+  pointer-events: none; z-index: 4; opacity: 0;
+}
+#feverBanner.show { animation: rainIn 2.4s ease-out forwards; }

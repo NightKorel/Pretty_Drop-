@@ -13,6 +13,7 @@ export const STAT_NAMES = {
   spins: '轉過的轉盤',
   itemsUsed: '用過的道具',
   shakes: '甩過幾次',
+  fevers: '狂熱時間幾次',
 };
 
 // 成就：check(遊戲狀態) 回傳 true 就達成；points 是給多少成就點數
