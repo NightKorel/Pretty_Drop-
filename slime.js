@@ -116,6 +116,11 @@ export const SLIME_SETS = [
     ],
   },
 ];
+// 不在任何一套裡的史萊姆（從組裡拿出來存著的，見 設計文件/史萊姆備用.txt）。天使用在轉生動畫
+export const SPARE_SKINS = {
+  angel: { name: '天使史萊姆', look: 'cream', animal: 'angel', color: '#fff1c9', ear: '#ffffff', sparkle: true },
+  blackPearl: { name: '黑珍珠史萊姆', look: 'pearl', color: '#2e2a3a' },
+};
 // 切面身體（鑽石、寶石）
 const faceted = (skin) => skin.look === 'diamond' || skin.look === 'gem';
 
@@ -544,8 +549,9 @@ export function slimePartBoxes(mesh) {
 }
 
 // 做一隻史萊姆娃娃（模型的原點在底部中心，臉朝 +z）
+// id 可以是「套.第幾隻」，也可以直接給一個造型（例如轉生動畫的天使）
 export function makeSlimeMesh(id, scale, fancy = true) {
-  const { skin } = slimeInfo(id);
+  const skin = typeof id === 'string' ? slimeInfo(id).skin : id;
   const g = new THREE.Group();
   let body;
   const geo = faceted(skin) ? getDiamondGeo() : getBodyGeo();

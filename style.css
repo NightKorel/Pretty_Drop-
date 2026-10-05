@@ -555,3 +555,30 @@ html, body {
 .rebirthBox .bookNote { margin: 6px 0 10px; }
 #rebirthGo { width: 100%; padding: 10px 0; font-size: 15px; font-weight: 700; }
 .rebirthHead { margin: 4px 0 8px; font-weight: 700; }
+
+/* 轉生動畫：整個畫面蓋上一層，中間天使史萊姆跳來跳去 */
+#reborn {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 45%, #fff6dc 0%, #e9dcff 38%, #2a2140 100%);
+  animation: rebornIn 0.5s ease-out;
+}
+#reborn.show { display: flex; }
+#reborn.out { opacity: 0; transition: opacity 0.6s ease-in; }
+@keyframes rebornIn { from { opacity: 0; } to { opacity: 1; } }
+#rebornCanvas { width: min(300px, 70vw); height: min(300px, 70vw); }
+.rebornText {
+  margin-top: 6px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #3a2c58;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
+  animation: rebornGlow 1.2s ease-in-out infinite;
+}
+@keyframes rebornGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
