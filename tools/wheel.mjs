@@ -13,11 +13,13 @@ const res = [];
 for (let i = 0; i < 6; i++) {
   const w0 = await page.evaluate(() => __game.wallet);
   await page.click('#paySpinBtn');
+  const ts = Date.now();
   await page.waitForFunction(() => !document.getElementById('paySpinBtn').disabled, null, { timeout: 20000 });
+  const secs = (Date.now() - ts) / 1000;
   const r = await page.evaluate((w0) => ({ got: __game.wallet - w0 + 100, top: __game.WHEEL[__game.wheelTop]?.coins, text: document.getElementById('wheelResult').textContent }), w0);
-  res.push(r);
+  res.push({ ...r, secs });
 }
 await page.screenshot({ path: '/tmp/pd-shots/wheel-after.png' });
 const ok = res.every((r) => Math.abs(r.got - r.top) <= r.top * 0.06 + 1); // 收入加成 0 級時應該一樣
-console.log(JSON.stringify({ 每次: res.map((r) => `${r.text}（指針指 ${r.top}）`), 對得上: ok, errs }));
+console.log(JSON.stringify({ 每次: res.map((r) => `${r.text}（指針指 ${r.top}，轉了 ${r.secs.toFixed(1)} 秒）`), 對得上: ok, errs }));
 await browser.close();

@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.59';
-import { drawDigits } from './digits.js?v=0.0.59';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.59';
+import { makeCoinMaterials } from './coin.js?v=0.0.60';
+import { drawDigits } from './digits.js?v=0.0.60';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.60';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.59';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.59';
+} from './slime.js?v=0.0.60';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.60';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -2018,13 +2018,17 @@ function spinWheel(free) {
   const target = -(w.mid + (Math.random() - 0.5) * 2 * w.half * 0.6);
   const start = wheelAngle;
   const base = start - (start % (Math.PI * 2));
-  const end = base + Math.PI * 2 * 5 + target;
+  // 每次轉的圈數、時間、減速方式都不太一樣，才有隨機的感覺（納可定）：
+  // 4 到 7 圈、3 到 5 秒；power 越大，一開始越猛、後面慢慢磨到停
+  const turns = 4 + Math.floor(Math.random() * 4);
+  const end = base + Math.PI * 2 * turns + target;
   const t0 = performance.now();
-  const dur = 3200;
+  const dur = 3000 + Math.random() * 2000;
+  const power = 2.5 + Math.random() * 2;
   let lastTickSlice = -1;
   const anim = (now) => {
     const k = Math.min(1, (now - t0) / dur);
-    const e = 1 - Math.pow(1 - k, 3);
+    const e = 1 - Math.pow(1 - k, power);
     wheelAngle = start + (end - start) * e;
     const cur = Math.floor(wheelAngle / slice);
     if (cur !== lastTickSlice) { lastTickSlice = cur; beep(1400, 0.03, 0.03, 'square', 'wheel'); }
@@ -2396,7 +2400,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.59 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.60 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2408,7 +2412,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.59 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.60 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
