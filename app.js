@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.61';
-import { drawDigits } from './digits.js?v=0.0.61';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.61';
+import { makeCoinMaterials } from './coin.js?v=0.0.62';
+import { drawDigits } from './digits.js?v=0.0.62';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.62';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.61';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.61';
+} from './slime.js?v=0.0.62';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.62';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -265,7 +265,11 @@ try {
   throw e;
 }
 // 手機記憶體不夠時，系統會把 3D 畫面關掉，跳提示告訴玩家
-canvas.addEventListener('webglcontextlost', () => window.__warn?.('E09'));
+canvas.addEventListener('webglcontextlost', () => {
+  // 3D 畫面被系統關掉（多半是記憶體不夠）：下次打開直接用低畫質
+  try { localStorage.setItem('pretty_drop_quality', 'low'); } catch (e) { /* 沒關係 */ }
+  window.__warn?.('E09');
+});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -858,7 +862,37 @@ resize();
 // 高：全部效果；中：關陰影、解析度降一點；低：再關反射和幣面圖案，解析度最低
 const QUALITY_KEY = 'pretty_drop_quality';
 let quality = 'high';
-try { quality = localStorage.getItem(QUALITY_KEY) || 'high'; } catch (e) { /* 存不了就用預設 */ }
+let qualityChosen = false;   // 這台裝置選過畫質沒（沒選過，第一次打開會先問）
+try {
+  const q = localStorage.getItem(QUALITY_KEY);
+  if (q) { quality = q; qualityChosen = true; }
+} catch (e) { /* 存不了就用預設 */ }
+// 第一次打開時建議的畫質：手機大多建議低；記憶體和處理器都夠的手機建議中；電腦建議高
+function suggestQuality() {
+  const touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  const small = Math.min(screen.width, screen.height) < 900;
+  if (!(touch && small)) return 'high';
+  const mem = navigator.deviceMemory || 4;
+  const cores = navigator.hardwareConcurrency || 4;
+  return mem >= 6 && cores >= 6 ? 'mid' : 'low';
+}
+// 第一次打開：讓玩家自己選畫質（2026-10-05 納可：朋友手機第一次開不起來）。選好才開始畫 3D
+function askQuality() {
+  const el = document.getElementById('qualityPick');
+  const rec = suggestQuality();
+  el.querySelector(`[data-pick="${rec}"]`).classList.add('rec');
+  el.classList.add('show');
+  window.__picking = true;
+  return new Promise((done) => {
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pick]');
+      if (!b) return;
+      el.classList.remove('show');
+      window.__picking = false;
+      done(b.dataset.pick);
+    });
+  });
+}
 
 function applyQuality(q) {
   quality = q;
@@ -2419,7 +2453,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.61 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.62 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2431,7 +2465,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.61 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.62 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
@@ -2706,6 +2740,11 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+// 沒選過畫質就先問（自動測試時跳過，用建議的；網址加 ?pick=1 可以強制問）
+if (!qualityChosen) {
+  const testing = navigator.webdriver && !/[?&]pick=1/.test(location.search);
+  quality = testing ? quality : await askQuality();
+}
 applyQuality(quality);
 const saved = loadSave();
 if (saved) applySave(saved);
