@@ -130,6 +130,7 @@ html, body {
 
 .float {
   position: fixed;
+  translate: -50% 0; /* 以字的中間對準位置 */
   color: var(--gold);
   font-weight: 700;
   font-size: 20px;
@@ -641,3 +642,11 @@ body.fever #feverBar b { box-shadow: 0 0 8px #ff8fab; }
   pointer-events: none; z-index: 4; opacity: 0;
 }
 #feverBanner.show { animation: rainIn 2.4s ease-out forwards; }
+
+/* 置中時首尾符號不算寬度：掛在字的外面（hangHtml 產生） */
+.hc { position: relative; display: inline-block; white-space: nowrap; }
+.hc .hl { position: absolute; right: 100%; top: 0; }
+.hc .hr { position: absolute; left: 100%; top: 0; }
+/* 有字距的大字：最後一個字後面也會多一段字距，左邊補一樣的寬度才會真的置中 */
+#rainBanner .hc, #feverBanner .hc { padding-left: 6px; }
+.rebornText .hc { padding-left: 4px; }

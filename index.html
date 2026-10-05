@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>推幣機</title>
-  <link rel="stylesheet" href="style.css?v=0.0.66">
+  <link rel="stylesheet" href="style.css?v=0.0.67">
   <!-- 先把要用的檔案一起開始下載，不用等前一個下載完才發現下一個 -->
   <link rel="modulepreload" href="lib/three.core.js">
   <link rel="modulepreload" href="lib/three.module.js">
   <link rel="modulepreload" href="lib/rapier.mjs">
   <link rel="modulepreload" href="lib/RoomEnvironment.js">
-  <link rel="modulepreload" href="coin.js?v=0.0.66">
-  <link rel="modulepreload" href="digits.js?v=0.0.66">
-  <link rel="modulepreload" href="start-layout.js?v=0.0.66">
-  <link rel="modulepreload" href="slime.js?v=0.0.66">
-  <link rel="modulepreload" href="achievements.js?v=0.0.66">
+  <link rel="modulepreload" href="coin.js?v=0.0.67">
+  <link rel="modulepreload" href="digits.js?v=0.0.67">
+  <link rel="modulepreload" href="start-layout.js?v=0.0.67">
+  <link rel="modulepreload" href="slime.js?v=0.0.67">
+  <link rel="modulepreload" href="achievements.js?v=0.0.67">
   <link rel="preload" href="lib/rapier_wasm3d_bg.wasm.gz" as="fetch" crossorigin>
 </head>
 <body>
   <div id="hud">
-    <div class="title">推幣機 <span class="ver">v0.0.66</span></div>
+    <div class="title">推幣機 <span class="ver">v0.0.67</span></div>
     <div class="money">
       <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
       <div id="feverBar"><span>狂熱</span><i><b id="feverFill"></b></i></div>
@@ -143,15 +143,15 @@
   </div>
   <div id="reborn">
     <canvas id="rebornCanvas"></canvas>
-    <div class="rebornText">轉生中……</div>
+    <div class="rebornText"><span class="hc">轉生中<span class="hr">……</span></span></div>
   </div>
   <div id="toast"></div>
-  <div id="rainBanner">金幣雨！</div>
+  <div id="rainBanner"><span class="hc">金幣雨<span class="hr">！</span></span></div>
   <div id="skills">
     <button id="rainBtn" class="skillBtn" type="button" hidden>金幣雨</button>
     <button id="skillBtn" class="skillBtn" type="button" hidden>甩一甩</button>
   </div>
-  <div id="feverBanner">狂熱時間！</div>
+  <div id="feverBanner"><span class="hc">狂熱時間<span class="hr">！</span></span></div>
   <div id="hint">點檯面投幣，按住可以連投，右鍵（或「自動」）自動連續投</div>
   <div id="loading">機台準備中……</div>
   <div id="qualityPick">
@@ -300,6 +300,6 @@
   </script>
   <!-- 瀏覽器太舊、不認得新式程式檔時才會跑這段 -->
   <script nomodule>window.addEventListener('DOMContentLoaded', function () { window.__fail('E01'); });</script>
-  <script type="module" src="app.js?v=0.0.66"></script>
+  <script type="module" src="app.js?v=0.0.67"></script>
 </body>
 </html>

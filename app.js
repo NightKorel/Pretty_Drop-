@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.66';
-import { drawDigits } from './digits.js?v=0.0.66';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.66';
+import { makeCoinMaterials } from './coin.js?v=0.0.67';
+import { drawDigits } from './digits.js?v=0.0.67';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.67';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.66';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.66';
+} from './slime.js?v=0.0.67';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.67';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -687,12 +687,26 @@ function updateHud() {
     refillEl.textContent = `手上滿 ${MOM_CAP} 枚，先不會獲得`;
   }
 }
+// 置中的字，開頭和結尾的符號不算（2026-10-05 納可定）：例如「+1」是 1 在正中間、「金幣雨！」是幣在正中間。
+// 做法：符號用絕對定位掛在字的外面，不佔置中的寬度
+const HANG_L = /^[+＋\-－!！?？…。，、,.「『（(\s]+/;
+const HANG_R = /[!！?？…。，、,.」』）)~～\s]+$/;
+function hangHtml(text) {
+  const t = String(text);
+  const l = (t.match(HANG_L) || [''])[0];
+  const rest = t.slice(l.length);
+  const r = (rest.match(HANG_R) || [''])[0];
+  const core = rest.slice(0, rest.length - r.length);
+  if (!core) return t;
+  return `<span class="hc">${l ? `<span class="hl">${l}</span>` : ''}${core}${r ? `<span class="hr">${r}</span>` : ''}</span>`;
+}
+
 function floatText(text, worldPos, cls = '') {
   const p = worldPos.clone().project(camera);
   const el = document.createElement('div');
   el.className = cls ? `float ${cls}` : 'float';
-  el.textContent = text;
-  el.style.left = `${(p.x * 0.5 + 0.5) * window.innerWidth - 10}px`;
+  el.innerHTML = hangHtml(text);
+  el.style.left = `${(p.x * 0.5 + 0.5) * window.innerWidth}px`;
   el.style.top = `${(-p.y * 0.5 + 0.5) * window.innerHeight - 20}px`;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 900);
@@ -1219,7 +1233,7 @@ let comboTimer = 0;
 function addCombo(v) {
   comboCount += v;
   comboTimer = 1.6;
-  comboEl.textContent = `+${comboCount}`;
+  comboEl.innerHTML = hangHtml(`+${comboCount}`);
   comboEl.style.fontSize = `${Math.min(64, 26 + Math.sqrt(comboCount) * 5)}px`;
   comboEl.classList.add('show');
   comboEl.classList.remove('pop');
@@ -1270,7 +1284,7 @@ function celebrate(id, isNew, unlockedSet) {
   const dur = 900 + Math.min(1500, info.value * 4);
   const count = (now) => {
     const k = Math.min(1, (now - t0) / dur);
-    valEl.textContent = `+${Math.round(info.value * (1 - Math.pow(1 - k, 2)))} 枚`;
+    valEl.innerHTML = hangHtml(`+${Math.round(info.value * (1 - Math.pow(1 - k, 2)))} 枚`);
     if (k < 1 && celebEl.classList.contains('show')) requestAnimationFrame(count);
   };
   celebEl.classList.add('show');
@@ -1352,7 +1366,7 @@ function closeCelebrate() {
 const toastEl = document.getElementById('toast');
 let toastTimer = null;
 function toast(html) {
-  toastEl.innerHTML = html;
+  toastEl.innerHTML = /[<]/.test(html) ? html : hangHtml(html); // 純文字才把首尾符號掛出去
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
@@ -2125,7 +2139,7 @@ function finishSpin(idx) {
   const w = WHEEL[idx];
   earn(w.coins);
   bump(walletEl);
-  document.getElementById('wheelResult').textContent = w.jackpot ? `大獎！+${w.coins} 枚` : w.big ? `中了！+${w.coins} 枚` : `+${w.coins} 枚`;
+  document.getElementById('wheelResult').innerHTML = hangHtml(w.jackpot ? `大獎！+${w.coins} 枚` : w.big ? `中了！+${w.coins} 枚` : `+${w.coins} 枚`);
   const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : w.big ? [990, 1320, 1760] : [990, 1320];
   drawWheel();
   notes.forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'wheel'), k * 90));
@@ -2516,7 +2530,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.66 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.67 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2528,7 +2542,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.66 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.67 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
