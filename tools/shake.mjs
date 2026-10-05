@@ -1,4 +1,4 @@
-// 甩一甩：沒買不能用、買了出現按鈕、甩的時候掉下去的放回檯面、冷卻倒數、存檔；電腦和手機各一次
+// 甩一甩：沒買不能用、買了出現按鈕、甩下去的照樣算（贏或掉側溝）、冷卻倒數、存檔；電腦和手機各一次
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NPMG + '/playwright');
@@ -14,7 +14,7 @@ for (const [name, vp] of [['pc', { width: 1000, height: 650 }], ['phone', { widt
   const before = await page.evaluate(() => ({ hidden: document.getElementById('skillBtn').hidden }));
   const r = await page.evaluate(() => {
     const g = __game;
-    g.setWallet(2000); for (const k of ['refill', 'dropRate', 'speed', 'guard', 'lucky', 'shake']) g.buy(k);
+    g.setWallet(2000); for (const k of g.UPGRADE_KEYS) g.buy(k);
     const n0 = g.coins.length + g.dolls.length + g.props.length;
     const won0 = g.won, lost0 = g.lost;
     // 往前緣和側溝丟幾枚，讓甩的時候一定有東西掉下去

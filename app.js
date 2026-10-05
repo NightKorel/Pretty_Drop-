@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.62';
-import { drawDigits } from './digits.js?v=0.0.62';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.62';
+import { makeCoinMaterials } from './coin.js?v=0.0.63';
+import { drawDigits } from './digits.js?v=0.0.63';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.63';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.62';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.62';
+} from './slime.js?v=0.0.63';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.63';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -115,7 +115,7 @@ const UPGRADES = {
   },
   shake: {
     name: '甩一甩',
-    desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩鬆。甩的時候掉下去的都不算，會放回檯面上。升級讓冷卻變短',
+    desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩下去。升級讓冷卻變短',
     levels: [0, 300, 270, 240, 210, 180, 150],         // 冷卻幾秒（沒買就不能用）
     base: 300, growth: 1.6,
   },
@@ -1535,11 +1535,9 @@ let windTime = 0;
 let quakeTime = 0;
 let quakeTick = 0;
 let reachQueued = false;     // 長推板：等推板退到最後面，下一趟推長的
-// 甩一甩：甩的期間（加上甩完一下子）掉下去的東西都放回檯面上
+// 甩一甩：甩下去的東西照樣算（2026-10-05 納可：冷卻那麼長，讓玩家開心一點；原本甩下去的不算、放回檯面）
 const SHAKE_TIME = 1.2;      // 甩幾秒
-const SHAKE_GUARD = 3;       // 從開始甩算起幾秒內掉下去的都不算
 let shakeTime = 0;
-let shakeGuard = 0;
 let shakeTick = 0;
 let shakeDir = 1;
 let shakeCd = 0;             // 冷卻還剩幾秒
@@ -1828,33 +1826,25 @@ function triggerItem(kind) {
 function startShake() {
   if (upValue('shake') <= 0 || shakeCd > 0) return;
   shakeTime = SHAKE_TIME;
-  shakeGuard = SHAKE_GUARD;
   shakeCd = upValue('shake');
   stats.shakes++;
-  toast('甩一甩！掉下去的都不算喔');
+  toast('甩一甩！');
   for (let k = 0; k < 6; k++) setTimeout(() => beep(k % 2 ? 180 : 140, 0.09, 0.07, 'square', 'item'), k * 100);
 }
-// 甩的時候掉下去的東西放回檯面上（從上面輕輕放下來）
-function putBack(body) {
-  body.setTranslation({ x: (Math.random() * 2 - 1) * (halfW - 1), y: 2.5 + Math.random(), z: -1.5 + Math.random() * 2.5 }, true);
-  body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-}
-
 // 每一步：一陣風往前推、地震亂抖、長推板倒數、甩一甩
 function applyEffects() {
-  if (shakeGuard > 0) shakeGuard -= STEP;
   if (shakeTime > 0) {
     shakeTime -= STEP;
     shakeTick += STEP;
     if (shakeTick >= 0.1) {
       shakeTick = 0;
       shakeDir = -shakeDir;
-      // 整台左右甩：每樣東西往同一邊拋、往上彈一點
+      // 整台甩：每樣東西往上彈、往前送一點
       const kick = (b, side, up) => {
         if (b.translation().y < -0.5) return;
         const m = b.mass();
-        b.applyImpulse({ x: shakeDir * m * side * (0.7 + Math.random() * 0.6), y: m * up * (0.6 + Math.random() * 0.8), z: (Math.random() - 0.5) * m * 1.2 }, true);
+        // 兩側沒有牆了，左右只輕輕晃（不然都甩進側溝），主要往上彈、往前送
+        b.applyImpulse({ x: shakeDir * m * side * 0.2 * (0.7 + Math.random() * 0.6), y: m * up * (0.6 + Math.random() * 0.8), z: m * side * (0.05 + Math.random() * 0.07) }, true);
       };
       for (const c of coins) kick(c.body, 3, 1.8);
       for (const d of dolls) kick(d.body, 2.5, 1.5);
@@ -2210,7 +2200,7 @@ function doRebirth() {
   refillTimer = 0;
   windTime = quakeTime = reachExtra = 0;
   reachQueued = false;
-  shakeTime = shakeGuard = shakeCd = 0;
+  shakeTime = shakeCd = 0;
   prefill();
   buildGuards();
   setAuto(false);
@@ -2453,7 +2443,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.62 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.63 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2465,7 +2455,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.62 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.63 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
@@ -2558,9 +2548,7 @@ function stepSim() {
   for (let i = coins.length - 1; i >= 0; i--) {
     const b = coins[i].body.translation();
     const value = coins[i].value;
-    if (b.y < -1.2 && shakeGuard > 0) {
-      putBack(coins[i].body);
-    } else if (b.y < -1.2) {
+    if (b.y < -1.2) {
       if (b.z > FRONT_Z - 0.5 && Math.abs(b.x) < halfW + 0.1) {
         const got = earn(value);
         stats.coinsWon += got;
@@ -2583,7 +2571,6 @@ function stepSim() {
   for (let i = props.length - 1; i >= 0; i--) {
     const t = props[i].body.translation();
     if (t.y >= -1.2) continue;
-    if (shakeGuard > 0) { putBack(props[i].body); continue; }
     const pr = props[i];
     const front = t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2;
     removeProp(i);
@@ -2606,7 +2593,6 @@ function stepSim() {
   for (let i = dolls.length - 1; i >= 0; i--) {
     const t = dolls[i].body.translation();
     if (t.y >= -1.2) continue;
-    if (shakeGuard > 0) { putBack(dolls[i].body); continue; }
     const d = dolls[i];
     const info = slimeInfo(d.id);
     if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
