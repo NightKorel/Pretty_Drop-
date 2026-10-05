@@ -27,6 +27,7 @@ export const SLOTS = [
 // look：jelly 半透明果凍、night 夜空（半透明裡有小星星）、rainbow 彩虹果凍、diamond 鑽石、gem 彩色寶石（跟鑽石一樣的切面）、
 //       cream 甜點（霧面奶油感）、twotone 上下雙色甜點、flake 金箔巧克力、metal 金屬、pearl 珍珠、bismuth 鉍（彩虹光澤的金屬）、
 //       scoop 冰淇淋球（speck 顆粒顏色）、shaved 剉冰（color2 糖漿、topping 配料、cube 配料是方塊）、popsicle 冰棒、swirl 彩虹霜淇淋、ice 冰晶
+//       drink 飲料（裡面有冰塊、頭上插吸管；milky 不透明的奶茶果汁、pearls 珍珠、lemon 檸檬片、grad 上到下漸層、tiger 黑糖虎紋、fizz 氣泡）
 // hat：頭上的小東西。cone 甜筒餅乾帽、stick 冰棒棍
 // 拿出來存著的史萊姆（放錯組的）寫在 設計文件/史萊姆備用.txt，造型的程式留著，以後做新的一組可以直接用
 export const SLIME_SETS = [
@@ -136,6 +137,24 @@ export const SLIME_SETS = [
       { name: '冰晶史萊姆', look: 'ice', color: '#e6f6ff', sparkle: true },
     ],
   },
+  {
+    // 飲料（2026-10-05 納可的點子：都會有冰塊在裡面）：身體是一杯飲料，裡面浮著冰塊，頭上插吸管
+    id: 'drink',
+    name: '飲料',
+    unlock: { set: 'ice', kinds: 6 },
+    skins: [
+      { name: '紅茶史萊姆', look: 'drink', color: '#c8621c', straw: '#ffffff' },
+      { name: '綠茶史萊姆', look: 'drink', color: '#d9cc5c', straw: '#8fd6a0' },
+      { name: '烏龍茶史萊姆', look: 'drink', color: '#b97a2e', straw: '#ffffff' },
+      { name: '冬瓜茶史萊姆', look: 'drink', color: '#93541f', straw: '#ffe08a' },
+      { name: '蜂蜜檸檬史萊姆', look: 'drink', color: '#ffd84a', straw: '#fff4b0', lemon: true },
+      { name: '柳橙汁史萊姆', look: 'drink', color: '#ffa12e', straw: '#ff6a3d', milky: true },
+      { name: '珍珠奶茶史萊姆', look: 'drink', color: '#d8b08a', straw: '#f2a6c4', milky: true, pearls: true },
+      { name: '蝶豆花檸檬史萊姆', look: 'drink', color: '#8a7bff', grad: ['#5f8dff', '#8a6cf0', '#d77ad8'], straw: '#fff4b0', lemon: true },
+      { name: '黑糖珍珠鮮奶史萊姆', look: 'drink', color: '#f6efe4', straw: '#c98a45', milky: true, pearls: true, tiger: true },
+      { name: '彩虹氣泡飲史萊姆', look: 'drink', color: '#ffd1e6', grad: ['#ff9ec4', '#ffd27a', '#9fe6b8', '#8fd3ff'], straw: '#ffffff', fizz: true, sparkle: true },
+    ],
+  },
 ];
 // 不在任何一套裡的史萊姆（從組裡拿出來存著的，見 設計文件/史萊姆備用.txt）。天使用在轉生動畫
 export const SPARE_SKINS = {
@@ -160,7 +179,7 @@ export function slimeInfo(id) {
 // 亮度 0.33 以上算淺色（白眼睛在上面對比不夠）。果凍、寶石是透明的，透出後面的檯面，看起來比原本的顏色深，門檻放到 0.5
 function isLight(hex, look) {
   const c = new THREE.Color(hex);
-  const see = look === 'jelly' || look === 'gem' || look === 'ice';
+  const see = look === 'jelly' || look === 'gem' || look === 'ice' || look === 'drink';
   return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b >= (see ? 0.5 : 0.33);
 }
 function isDark(hex) {
@@ -434,6 +453,36 @@ function swirlTexture() {
     }
   });
 }
+// 飲料的貼圖：上到下的漸層（蝶豆花、彩虹氣泡飲）、黑糖鮮奶的虎紋
+function drinkTexture(skin) {
+  return canvasTexture((ctx) => {
+    if (skin.grad) {
+      const g = ctx.createLinearGradient(0, 0, 0, 128);
+      skin.grad.forEach((c, i) => g.addColorStop(i / (skin.grad.length - 1), c));
+      ctx.fillStyle = g;
+    } else {
+      ctx.fillStyle = skin.color;
+    }
+    ctx.fillRect(0, 0, 256, 128);
+    if (skin.tiger) {
+      // 黑糖沿著杯壁流下來的紋路，上面淡、下面濃
+      for (let k = 0; k < 14; k++) {
+        const x = k * 18.3 + 6;
+        const g = ctx.createLinearGradient(0, 30, 0, 128);
+        g.addColorStop(0, 'rgba(120, 60, 20, 0)');
+        g.addColorStop(1, 'rgba(110, 52, 16, 0.85)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(x, 128);
+        for (let y = 128; y >= 30; y -= 4) ctx.lineTo(x + Math.sin(y / 9 + k) * 4, y);
+        for (let y = 30; y <= 128; y += 4) ctx.lineTo(x + 7 + (y - 30) * 0.06 + Math.sin(y / 9 + k) * 4, y);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  });
+}
+
 // 甜筒的餅乾格紋
 let waffleTex = null;
 function getWaffleTex() {
@@ -580,6 +629,17 @@ function realJelly(skin) {
       emissive: color, emissiveIntensity: 0.12, // 一點點自己的顏色亮出來，深色寶石才不會黑掉
     });
   }
+  if (skin.look === 'drink') {
+    // 飲料：像裝在透明杯子裡，表面亮亮的；奶茶、果汁不透明一點
+    const tex = skin.grad || skin.tiger ? drinkTexture(skin) : null;
+    return new THREE.MeshPhysicalMaterial({
+      color: tex ? 0xffffff : color, map: tex, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05,
+      transmission: skin.milky ? 0.5 : 0.85, thickness: 0.7, ior: 1.33,
+      attenuationColor: color, attenuationDistance: skin.milky ? 1.0 : 1.4,
+      emissive: color, emissiveIntensity: skin.milky ? 0.06 : 0.14,
+      envMap: getStudioEnv(), envMapIntensity: 0.9,
+    });
+  }
   if (skin.look === 'ice') {
     // 冰晶：清清透透的冰，帶一點淡藍，表面有一層薄薄的七彩光
     return new THREE.MeshPhysicalMaterial({
@@ -622,6 +682,14 @@ function jellyLayers(skin) {
       fakeJelly(color.clone().lerp(new THREE.Color(1, 1, 1), 0.2), { center: 0.35, edge: 0.9, glow: 0.2, rough: 0.2 }),
     ];
   }
+  if (skin.look === 'drink') {
+    const tex = skin.grad || skin.tiger ? drinkTexture(skin) : null;
+    const c = tex ? new THREE.Color(1, 1, 1) : color;
+    return [
+      fakeJelly(c.clone().multiplyScalar(0.75), { center: skin.milky ? 0.8 : 0.35, edge: 0.7, glow: 0.08, rough: 0.2, back: true, map: tex }),
+      fakeJelly(c, { center: skin.milky ? 0.85 : 0.4, edge: 0.95, glow: 0.16, rough: 0.15, map: tex }),
+    ];
+  }
   if (skin.look === 'ice') {
     return [
       fakeJelly(new THREE.Color('#bfe4fb'), { center: 0.25, edge: 0.55, glow: 0.1, rough: 0.2, back: true }),
@@ -642,7 +710,7 @@ function jellyLayers(skin) {
   ];
 }
 
-const isJelly = (skin) => ['jelly', 'night', 'rainbow', 'diamond', 'gem', 'ice'].includes(skin.look);
+const isJelly = (skin) => ['jelly', 'night', 'rainbow', 'diamond', 'gem', 'ice', 'drink'].includes(skin.look);
 
 // 整體走微微霧面：粗糙度高一點、亮面塗層淡一點，反光不要太刺
 function bodyMaterial(skin, fancy) {
@@ -778,6 +846,72 @@ function addHat(g, skin) {
     st.userData.hit = true;
     g.add(st);
   }
+}
+
+// 飲料裡面的東西：冰塊、珍珠、檸檬片、氣泡，還有頭上的吸管。位置每一隻固定（照名字算），不會每次都不一樣
+const cubeGeo = new THREE.BoxGeometry(0.17, 0.17, 0.17);
+const pearlGeo = new THREE.SphereGeometry(0.055, 12, 8);
+const lemonGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.025, 20);
+const strawGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.62, 12);
+const bobaStrawGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.62, 14);
+let cubeMat = null;
+let cubeMatLow = null;
+const pearlMat = new THREE.MeshStandardMaterial({ color: 0x2c160b, roughness: 0.25 });
+const lemonMat = new THREE.MeshStandardMaterial({ color: 0xffe25c, roughness: 0.5, emissive: 0x3a2a00 });
+function addDrinkParts(g, skin, fancy) {
+  if (!cubeMat) {
+    cubeMat = new THREE.MeshPhysicalMaterial({ color: 0xf2fbff, roughness: 0.12, clearcoat: 1, emissive: 0xcfeeff, emissiveIntensity: 0.25 });
+    cubeMatLow = new THREE.MeshStandardMaterial({ color: 0xf2fbff, roughness: 0.2, emissive: 0xcfeeff, emissiveIntensity: 0.3 });
+  }
+  let seed = skin.name.length * 7919 + skin.color.charCodeAt(2);
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const H = SLIME_H;
+  const inside = (y, pad) => (radiusAt(y / H) * SLIME_R) - pad;
+  // 冰塊三顆，浮在上半部
+  for (let i = 0; i < 3; i++) {
+    const y = H * (0.5 + rnd() * 0.18);
+    const a = (i / 3) * Math.PI * 2 + rnd();
+    const r = rnd() * Math.max(0, inside(y, 0.2));
+    const c = new THREE.Mesh(cubeGeo, fancy ? cubeMat : cubeMatLow);
+    c.position.set(Math.cos(a) * r, y, Math.sin(a) * r * 0.7 - 0.05);
+    c.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    g.add(c);
+  }
+  // 珍珠：沉在底部，一圈貼著杯壁（像真的珍奶杯子外面看得到的那樣），中間再塞幾顆
+  if (skin.pearls) {
+    for (let i = 0; i < 14; i++) {
+      const y = 0.06 + rnd() * 0.12;
+      const wall = i < 9;
+      const a = wall ? Math.PI / 2 + (i / 8 - 0.5) * 2.6 + (rnd() - 0.5) * 0.2 : rnd() * Math.PI * 2;
+      const r = wall ? inside(y, 0.045) : Math.sqrt(rnd()) * inside(y, 0.1);
+      const p = new THREE.Mesh(pearlGeo, pearlMat);
+      p.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      g.add(p);
+    }
+  }
+  // 檸檬片：斜斜地泡在裡面
+  if (skin.lemon) {
+    const l = new THREE.Mesh(lemonGeo, lemonMat);
+    l.position.set(-0.2, H * 0.42, 0.05);
+    l.rotation.set(1.2, 0.3, 0.5);
+    g.add(l);
+  }
+  // 氣泡：小小的白點
+  if (skin.fizz) {
+    g.add(makePoints(16, 0.03, 0xffffff, () => {
+      const y = H * (0.12 + rnd() * 0.7);
+      const a = rnd() * Math.PI * 2;
+      const r = rnd() * inside(y, 0.08);
+      return [Math.cos(a) * r, y, Math.sin(a) * r];
+    }));
+  }
+  // 吸管：從頭頂斜斜地插進去，珍珠的吸管比較粗
+  const st = new THREE.Mesh(skin.pearls ? bobaStrawGeo : strawGeo, new THREE.MeshStandardMaterial({ color: skin.straw, roughness: 0.35 }));
+  st.position.set(-0.12, H + 0.14, -0.06);
+  st.rotation.set(-0.15, 0, 0.3);
+  st.castShadow = true;
+  st.userData.hit = true;
+  g.add(st);
 }
 
 function addAnimalParts(g, skin, bodyMat) {
@@ -943,6 +1077,7 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   }
   if (skin.animal) addAnimalParts(g, skin, body.material);
   if (skin.hat) addHat(g, skin);
+  if (skin.look === 'drink') addDrinkParts(g, skin, fancy);
   // 夜空：身體裡有幾顆小星星
   if (skin.look === 'night') {
     g.add(makePoints(10, 0.035, 0xfff6d0, () => {
@@ -1004,6 +1139,16 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
   const rw = w * 0.36;
   const rh = h * 0.66;
   if (owned && skin.animal) drawAnimalIcon(ctx, skin, cx, by, rw, rh, w, h); // 耳朵、翅膀先畫，壓在身體後面
+  if (owned && skin.look === 'drink') {
+    // 吸管：從頭頂斜斜地插出來（畫在身體後面）
+    ctx.strokeStyle = skin.straw;
+    ctx.lineWidth = w * (skin.pearls ? 0.08 : 0.05);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - rw * 0.1, by - rh * 0.8);
+    ctx.lineTo(cx - rw * 0.42, by - rh * 1.3);
+    ctx.stroke();
+  }
   if (owned && skin.hat === 'stick') {
     // 冰棒棍：從頭頂後面冒出來
     ctx.fillStyle = '#e3bb80';
@@ -1043,6 +1188,8 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
     g.addColorStop(0, '#ffffff');
     g.addColorStop(0.5, '#cfe9ff');
     g.addColorStop(1, '#f6d6ff');
+  } else if (skin.look === 'drink' && skin.grad) {
+    skin.grad.forEach((c, i) => g.addColorStop(i / (skin.grad.length - 1), c));
   } else if (skin.look === 'swirl') {
     ['#ffd1dc', '#ffe5c2', '#fff6c2', '#d8f5d0', '#cdeeff', '#e2d6ff'].forEach((c, i) => g.addColorStop(i / 5, c));
   } else if (skin.look === 'ice') {
@@ -1072,6 +1219,42 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
   if (skin.look === 'twotone') {
     ctx.fillStyle = skin.color2;
     ctx.fillRect(0, 0, w, by - rh * 0.6);
+  } else if (skin.look === 'drink') {
+    // 冰塊、珍珠、檸檬片、黑糖紋
+    if (skin.tiger) {
+      ctx.strokeStyle = 'rgba(110, 52, 16, 0.5)';
+      ctx.lineWidth = w * 0.035;
+      ctx.lineCap = 'round';
+      for (let k = 0; k < 5; k++) {
+        const x0 = cx - rw * 0.9 + k * rw * 0.45;
+        ctx.beginPath();
+        ctx.moveTo(x0, by - rh * 0.5);
+        ctx.quadraticCurveTo(x0 + rw * 0.12, by - rh * 0.25, x0 + rw * 0.05, by);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = 'rgba(245, 252, 255, 0.85)';
+    [[-0.35, 0.62, 0.3], [0.2, 0.7, -0.4], [0.45, 0.5, 0.2]].forEach(([dx, dy, rot]) => {
+      ctx.save();
+      ctx.translate(cx + dx * rw, by - dy * rh);
+      ctx.rotate(rot);
+      ctx.fillRect(-w * 0.045, -w * 0.045, w * 0.09, w * 0.09);
+      ctx.restore();
+    });
+    if (skin.lemon) {
+      ctx.fillStyle = '#ffe25c';
+      ctx.beginPath();
+      ctx.arc(cx - rw * 0.5, by - rh * 0.3, w * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (skin.pearls) {
+      ctx.fillStyle = '#2c160b';
+      for (let k = 0; k < 7; k++) {
+        ctx.beginPath();
+        ctx.arc(cx - rw * 0.75 + k * rw * 0.25, by - h * 0.04, w * 0.028, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   } else if (skin.look === 'shaved') {
     // 糖漿和配料
     ctx.fillStyle = skin.color2;
