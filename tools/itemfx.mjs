@@ -1,10 +1,10 @@
-// 道具效果量測：同一個開局，分別發動三種道具，看 4 秒內多推下幾枚（和什麼都不做比）
+// 道具效果量測：同一個開局，分別發動三種道具，看 6 秒內多推下幾枚（和什麼都不做比）
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NPMG + '/playwright');
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const out = {};
-for (const kind of ['none', 'wind', 'glue', 'quake']) {
+for (const kind of ['none', 'wind', 'reach', 'quake']) {
   const res = [];
   for (let t = 0; t < 3; t++) {
     const page = await (await browser.newContext({ viewport: { width: 300, height: 200 } })).newPage();
@@ -15,7 +15,7 @@ for (const kind of ['none', 'wind', 'glue', 'quake']) {
       for (let i = 0; i < 20; i++) { g.dropAt((Math.random() * 2 - 1) * 2); g.simulate(0.5); }
       const w0 = g.won;
       if (kind !== 'none') g.triggerItem(kind);
-      g.simulate(4);
+      g.simulate(6);
       return g.won - w0;
     }, kind));
     await page.close();

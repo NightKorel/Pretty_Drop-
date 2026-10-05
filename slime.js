@@ -192,15 +192,43 @@ function flakeTexture(skin) {
   });
 }
 
-// 鑽石：一樣的輪廓，但每一圈只有 10 個面、每一面都是平的，看起來像切割過的寶石。
-// 讓一個面正對前方（臉的位置），眼睛才能貼在平面上
-const FACETS = 10;
+// 鑽石：像寶石那樣切成幾個大面。頂端是一片平台，中間一圈直直的帶子放眼睛，
+// 上下兩段的點錯開半格，切出三角形的星形面。每一面都是平的。
+// 每一圈：[半徑, 高度, 錯開半格(0 或 0.5)]
+const FACETS = 8;
+const DIAMOND = [
+  [0, 0, 0], [0.55, 0, 0], [0.9, 0.14, 0.5], [1.0, 0.32, 0],
+  [0.97, 0.62, 0], [0.78, 0.82, 0.5], [0.5, 0.95, 0], [0, 0.95, 0],
+];
+const DIA_EYE = [3, 4]; // 眼睛放在這兩圈中間的帶子上
 let diamondGeo = null;
 function getDiamondGeo() {
   if (diamondGeo) return diamondGeo;
-  const pts = PROFILE.map(([r, y]) => new THREE.Vector2(r * SLIME_R, y * SLIME_H));
-  const g = new THREE.LatheGeometry(pts, FACETS, -Math.PI / FACETS).toNonIndexed();
-  g.computeVertexNormals(); // 拆開每個三角形各自算法線＝每一面都是平的
+  const ring = ([r, y, off], j) => {
+    const a = ((j + off) * 2 * Math.PI) / FACETS - Math.PI / FACETS; // 讓一個面正對前方
+    return new THREE.Vector3(Math.sin(a) * r * SLIME_R, y * SLIME_H, Math.cos(a) * r * SLIME_R);
+  };
+  const mid = new THREE.Vector3(0, 0.47 * SLIME_H, 0);
+  const pos = [];
+  const tri = (a, b, c) => {
+    const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+    if (n.lengthSq() < 1e-10) return; // 尖端那一圈縮成一點，跳過壓扁的三角形
+    const out = a.clone().add(b).add(c).divideScalar(3).sub(mid);
+    if (n.dot(out) < 0) [b, c] = [c, b]; // 讓每一面都朝外
+    for (const v of [a, b, c]) pos.push(v.x, v.y, v.z);
+  };
+  for (let i = 0; i < DIAMOND.length - 1; i++) {
+    const A = DIAMOND[i];
+    const B = DIAMOND[i + 1];
+    for (let j = 0; j < FACETS; j++) {
+      const a0 = ring(A, j), a1 = ring(A, j + 1), b0 = ring(B, j), b1 = ring(B, j + 1);
+      if (B[2] >= A[2]) { tri(a0, a1, b0); tri(b0, a1, b1); } // 同一格，或下一圈往前錯開半格
+      else { tri(b0, b1, a0); tri(a0, b1, a1); }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals(); // 每個三角形各自算法線＝每一面都是平的
   diamondGeo = g;
   return diamondGeo;
 }
@@ -320,17 +348,21 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   g.add(body);
   // 豆豆眼：深色史萊姆用白的。眼睛是貼在表面的扁片，不會凸出來
   const eyeMat = isDark(skin.color) ? eyeWhite : eyeBlack;
-  const ey = 0.5;                                  // 眼睛在身體的哪個高度（0 到 1）
-  let er = radiusAt(ey) * SLIME_R;
-  const slope = (radiusAt(ey + 0.02) - radiusAt(ey - 0.02)) / 0.04 * (SLIME_R / SLIME_H);
+  const dia = skin.look === 'diamond';
+  const [lo, hi] = dia ? [DIAMOND[DIA_EYE[0]], DIAMOND[DIA_EYE[1]]] : [];
+  const ey = dia ? (lo[1] + hi[1]) / 2 : 0.5;      // 眼睛在身體的哪個高度（0 到 1）
+  const er = (dia ? (lo[0] + hi[0]) / 2 : radiusAt(ey)) * SLIME_R;
+  const slope = dia
+    ? (hi[0] - lo[0]) / (hi[1] - lo[1]) * (SLIME_R / SLIME_H) * Math.cos(Math.PI / FACETS)
+    : (radiusAt(ey + 0.02) - radiusAt(ey - 0.02)) / 0.04 * (SLIME_R / SLIME_H);
   for (const side of [-1, 1]) {
     const th = side * 0.27;
     // 鑽石的前面是一片平面，眼睛要往內收到平面上
-    const r = skin.look === 'diamond' ? er * Math.cos(Math.PI / FACETS) / Math.cos(th) : er;
+    const r = dia ? er * Math.cos(Math.PI / FACETS) / Math.cos(th) : er;
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
     eye.renderOrder = 3; // 眼睛最後畫，不會被半透明的身體蓋得霧霧的
     eye.scale.set(0.045, 0.07, 0.004);
-    const n = skin.look === 'diamond'
+    const n = dia
       ? new THREE.Vector3(0, -slope, 1).normalize()
       : new THREE.Vector3(Math.sin(th), -slope, Math.cos(th)).normalize();
     eye.position.set(Math.sin(th) * r, ey * SLIME_H, Math.cos(th) * r).addScaledVector(n, 0.002);

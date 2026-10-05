@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.40';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.40';
+import { makeCoinMaterials } from './coin.js?v=0.0.41';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.41';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.40';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.40';
+} from './slime.js?v=0.0.41';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.41';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -454,14 +454,19 @@ function dropNewDoll(forceRarity) {
 
 // ===== 推板移動 =====
 // 用「走到哪裡」記推板位置，這樣升級加速時推板不會突然跳位置
+// 長推板：往後的位置不變，只有往前多伸出去 reachExtra
 function movePusher() {
-  pusherPhase = (pusherPhase + STEP / upValue('speed')) % 1;
-  const z = PUSHER_MID + PUSHER_AMP * Math.sin(pusherPhase * Math.PI * 2);
+  reachExtra += ((reachTime > 0 ? REACH_EXTRA : 0) - reachExtra) * Math.min(1, STEP * 3);
+  pusherPhase = (pusherPhase + STEP / pusherPeriod()) % 1;
+  const z = PUSHER_MID + reachExtra / 2 + (PUSHER_AMP + reachExtra / 2) * Math.sin(pusherPhase * Math.PI * 2);
   pusher.body.setNextKinematicTranslation({ x: 0, y: PUSHER_H / 2, z });
 }
+function pusherPeriod() {
+  return upValue('speed') / (1 + (REACH_SPEED - 1) * (reachExtra / REACH_EXTRA));
+}
 function pusherSpeedZ() {
-  const w = (Math.PI * 2) / upValue('speed');
-  return PUSHER_AMP * w * Math.cos(pusherPhase * Math.PI * 2);
+  const w = (Math.PI * 2) / pusherPeriod();
+  return (PUSHER_AMP + reachExtra / 2) * w * Math.cos(pusherPhase * Math.PI * 2);
 }
 
 // ===== 側溝擋板 =====
@@ -740,8 +745,7 @@ function applyQuality(q) {
   coinMeshMat = q === 'low' ? coinMatPlain : coinMatFancy;
   bigMeshMat = q === 'low' ? bigMatPlain : bigMatFancy;
   for (const c of coins) {
-    if (c.glued) c.mesh.material = q === 'low' ? glueMatPlain : glueMats;
-    else c.mesh.material = c.value > 1 ? bigMeshMat : coinMeshMat;
+    c.mesh.material = c.value > 1 ? bigMeshMat : coinMeshMat;
   }
   // 娃娃換畫質要整隻重做（高／中是真的透光，低是假的半透明）
   for (const d of dolls) {
@@ -1239,7 +1243,7 @@ let rainRate = 0;
 // 特殊道具：機台隨機（保底式）放上檯面，推下前緣馬上發動
 const ITEMS = {
   wind: { name: '一陣風', label: '風', color: '#9fd8ff', dark: '#2a6fb0', desc: '往前吹 2 秒，把檯面上的幣往前推' },
-  glue: { name: '黏黏球', label: '黏', color: '#6fd36a', dark: '#2d7a2a', desc: '把一小堆幣黏成一大塊' },
+  reach: { name: '長推板', label: '推', color: '#ffd166', dark: '#c0661c', desc: '推板伸長、變快，往前多推一大段' },
   quake: { name: '地震', label: '震', color: '#ff8a3d', dark: '#b3261e', desc: '檯面抖一抖，把卡住的幣抖鬆' },
 };
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
@@ -1264,6 +1268,10 @@ let propTimer = 0;
 let windTime = 0;
 let quakeTime = 0;
 let quakeTick = 0;
+let reachTime = 0;
+let reachExtra = 0;          // 長推板：推板現在多伸出去多少
+const REACH_EXTRA = 1.0;     // 最多多伸 1 格（再多，推板尾巴會離開擋牆，幣會掉到推板後面）
+const REACH_SPEED = 1.5;     // 長推板的期間推板快 1.5 倍
 
 function startRain() {
   stats.rains++;
@@ -1275,14 +1283,6 @@ function startRain() {
   rainBanner.classList.add('show');
   [880, 1100, 1320, 1760].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'rain'), k * 90));
 }
-
-// 道具效果：一陣風、地震在 stepSim 裡每一步施力；黏黏球馬上把一小堆幣黏起來
-const glueMats = coinMatFancy.map((m) => {
-  const c = m.clone();
-  c.color = c.color.clone().multiply(new THREE.Color(0xb8f0b0)); // 黏住的幣帶一點綠
-  return c;
-});
-const glueMatPlain = new THREE.MeshLambertMaterial({ color: 0x9ccf6a, emissive: 0x102000 });
 
 // ===== 檯面上的道具和彩券（實體） =====
 function labelTexture(bg, text, sub) {
@@ -1378,7 +1378,7 @@ function propMaterial(type, kind) {
 }
 const ticketGeo = new THREE.BoxGeometry(1.1, 0.07, 0.62);
 
-// 道具做成有厚度的立體圖示：風是一朵雲、黏黏球是一滴膠水、地震是一個爆炸星形
+// 道具做成有厚度的立體圖示：風是一朵雲、長推板是一個粗箭頭、地震是一個爆炸星形
 function outlineShape(pts) {
   const sh = new THREE.Shape();
   pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
@@ -1404,13 +1404,8 @@ function cloudPoints() {
   }
   return pts;
 }
-function dropPoints() {
-  const pts = [];
-  for (let i = 0; i < 48; i++) {
-    const t = (i / 48) * Math.PI * 2;
-    pts.push([0.36 * Math.sin(t) * Math.sin(t / 2), 0.42 * Math.cos(t) - 0.04]);
-  }
-  return pts;
+function arrowPoints() {
+  return [[0, 0.44], [0.4, 0.02], [0.2, 0.02], [0.2, -0.4], [-0.2, -0.4], [-0.2, 0.02], [-0.4, 0.02]];
 }
 function burstPoints() {
   const pts = [];
@@ -1449,30 +1444,17 @@ function itemFaceTexture(kind) {
       ctx.arc(x1, y1 - curl * S, curl * S, Math.PI / 2, -Math.PI * 0.9, true);
       ctx.stroke();
     }
-  } else if (kind === 'glue') {
-    // 頂端往下滴的深綠色膠，加兩點亮光
-    ctx.fillStyle = it.dark;
-    ctx.beginPath();
-    const [sx, sy] = P(-0.3, 0.12);
-    ctx.moveTo(sx, sy);
-    const drips = [[-0.2, -0.05], [-0.08, 0.04], [0.04, -0.12], [0.16, 0.02], [0.28, -0.02]];
-    for (const [x, y] of drips) {
-      const [px, py] = P(x, y);
-      ctx.quadraticCurveTo(px - 10, py, px, py);
-      ctx.arc(px, py, 9, Math.PI, 0, true);
+  } else if (kind === 'reach') {
+    // 兩個往前的箭頭
+    ctx.strokeStyle = it.dark;
+    ctx.lineWidth = 22;
+    for (const y of [0.12, -0.1]) {
+      ctx.beginPath();
+      ctx.moveTo(...P(-0.17, y - 0.12));
+      ctx.lineTo(...P(0, y + 0.05));
+      ctx.lineTo(...P(0.17, y - 0.12));
+      ctx.stroke();
     }
-    ctx.lineTo(...P(0.32, 0.12));
-    ctx.lineTo(...P(0.32, 0.5));
-    ctx.lineTo(...P(-0.32, 0.5));
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.beginPath();
-    ctx.ellipse(...P(-0.08, -0.2), 16, 24, -0.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(...P(0.08, -0.3), 7, 0, Math.PI * 2);
-    ctx.fill();
   } else {
     // 中間一道裂開的閃電，加驚嘆號
     ctx.fillStyle = it.dark;
@@ -1494,7 +1476,7 @@ function itemFaceTexture(kind) {
 const itemGeos = {};
 function itemGeo(kind) {
   if (itemGeos[kind]) return itemGeos[kind];
-  const pts = kind === 'wind' ? cloudPoints() : kind === 'glue' ? dropPoints() : burstPoints();
+  const pts = kind === 'wind' ? cloudPoints() : kind === 'reach' ? arrowPoints() : burstPoints();
   const g = new THREE.ExtrudeGeometry(outlineShape(pts), {
     depth: 0.18, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3, curveSegments: 12,
   });
@@ -1561,54 +1543,17 @@ function triggerItem(kind) {
   } else if (kind === 'quake') {
     quakeTime = 1.5;
     toast('地震！');
-  } else if (kind === 'glue') {
-    glueCoins();
+  } else if (kind === 'reach') {
+    reachTime = 6;
+    toast('長推板！');
   }
   beep(520, 0.2, 0.06, 'triangle', 'item');
   setTimeout(() => beep(780, 0.2, 0.05, 'triangle', 'item'), 120);
 }
 
-// 在檯面中間一帶挑一枚幣，把它附近的幾枚黏成一塊（推起來會整塊一起動）
-function glueCoins() {
-  // 挑最靠近前緣的一坨幣黏成一大塊，再往前推一把，讓整坨一起掉下去
-  const onTable = coins.filter((c) => {
-    const t = c.body.translation();
-    return t.y > 0 && t.y < 1.2 && t.z > FRONT_Z - 3 && t.z < FRONT_Z && Math.abs(t.x) < halfW - 0.3;
-  });
-  if (!onTable.length) { toast('檯面上沒有幣可以黏'); return; }
-  onTable.sort((a, b) => b.body.translation().z - a.body.translation().z);
-  const center = onTable[Math.min(onTable.length - 1, Math.floor(Math.random() * 4))];
-  const p0 = center.body.translation();
-  const near = onTable
-    .map((c) => ({ c, d: Math.hypot(c.body.translation().x - p0.x, c.body.translation().z - p0.z) }))
-    .filter((o) => o.c !== center && o.d < 1.8)
-    .sort((a, b) => a.d - b.d)
-    .slice(0, 11)
-    .map((o) => o.c);
-  const q1 = new THREE.Quaternion().copy(center.body.rotation());
-  const q1inv = q1.clone().invert();
-  for (const c of near) {
-    const p = c.body.translation();
-    const local = new THREE.Vector3(p.x - p0.x, p.y - p0.y, p.z - p0.z).applyQuaternion(q1inv);
-    const q2 = new THREE.Quaternion().copy(c.body.rotation());
-    const frame2 = q2.clone().invert().multiply(q1);
-    const data = RAPIER.JointData.fixed(
-      { x: local.x, y: local.y, z: local.z }, { x: 0, y: 0, z: 0, w: 1 },
-      { x: 0, y: 0, z: 0 }, { x: frame2.x, y: frame2.y, z: frame2.z, w: frame2.w },
-    );
-    world.createImpulseJoint(data, center.body, c.body, true);
-  }
-  for (const c of [center, ...near]) {
-    c.glued = true;
-    c.mesh.material = quality === 'low' ? glueMatPlain : glueMats;
-  }
-  // 整坨往前推一把
-  for (const c of [center, ...near]) c.body.applyImpulse({ x: 0, y: c.body.mass() * 1.5, z: c.body.mass() * 6 }, true);
-  toast(`黏黏球！黏住了 ${near.length + 1} 枚幣`);
-}
-
-// 每一步：一陣風往前推、地震亂抖
+// 每一步：一陣風往前推、地震亂抖、長推板倒數
 function applyEffects() {
+  if (reachTime > 0) reachTime -= STEP;
   if (windTime > 0) {
     windTime -= STEP;
     for (const c of coins) {

@@ -8,7 +8,7 @@ await page.goto('http://localhost:8765/');
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 await page.evaluate(() => { const g = __game; g.applyQuality('mid'); g.clearTable();
   const q = { x: -0.7071, y: 0, z: 0, w: 0.7071 }; // 平躺，正面朝上
-  g.spawnProp('item', 'wind', { x: -2, y: 0.3, z: 0 }, q); g.spawnProp('item', 'glue', { x: 0, y: 0.3, z: 0 }, q); g.spawnProp('item', 'quake', { x: 2, y: 0.3, z: 0 }, q);
+  g.spawnProp('item', 'wind', { x: -2, y: 0.3, z: 0 }, q); g.spawnProp('item', 'reach', { x: 0, y: 0.3, z: 0 }, q); g.spawnProp('item', 'quake', { x: 2, y: 0.3, z: 0 }, q);
   g.simulate(0.5); const c = g.camera; c.position.set(0, 4, 2.5); c.lookAt(0, 0, 0); });
 await page.waitForTimeout(1200);
 await page.screenshot({ path: '/tmp/pd-shots/items3.png' });
