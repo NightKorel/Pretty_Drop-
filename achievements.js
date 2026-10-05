@@ -12,6 +12,7 @@ export const STAT_NAMES = {
   upgradesBought: '買過的升級',
   spins: '轉過的轉盤',
   itemsUsed: '用過的道具',
+  shakes: '甩過幾次',
 };
 
 // 成就：check(遊戲狀態) 回傳 true 就達成；points 是給多少成就點數

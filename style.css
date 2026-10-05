@@ -96,6 +96,28 @@ html, body {
   transition: opacity 1s;
 }
 
+/* 主動技能按鈕：右下角的圓鈕，冷卻時顯示倒數 */
+#skillBtn {
+  position: fixed;
+  right: 16px;
+  bottom: 44px;
+  z-index: 3;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: rgba(30, 23, 36, 0.85);
+  color: var(--gold);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+#skillBtn[hidden] { display: none; }
+#skillBtn:disabled { border-color: #4a4458; color: var(--dim); cursor: default; }
+#skillBtn:not(:disabled):active { transform: scale(0.94); }
+
 #loading {
   position: fixed;
   inset: 0;

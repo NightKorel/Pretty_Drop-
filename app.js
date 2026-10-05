@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.41';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.41';
+import { makeCoinMaterials } from './coin.js?v=0.0.42';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.42';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.41';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.41';
+} from './slime.js?v=0.0.42';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.42';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -108,6 +108,13 @@ const UPGRADES = {
     desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
     levels: [1, 2, 3, 4, 5],                            // 一次丟幾枚
     base: 400, growth: 2,
+  },
+  // 主動技能：排在最後面，但買過大金幣就會出現（after）。插在中間的話，舊存檔後面幾項會被藏起來
+  shake: {
+    name: '甩一甩',
+    desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩鬆。甩的時候掉下去的都不算，會放回檯面上。升級讓冷卻變短',
+    levels: [0, 300, 270, 240, 210, 180, 150],         // 冷卻幾秒（沒買就不能用）
+    base: 100, growth: 1.7, after: 'lucky',
   },
 };
 // 遊戲裡的錢：100 以內取 10 的倍數，超過 100 取 50 的倍數，看起來比較乾脆
@@ -525,8 +532,22 @@ function bump(el) {
   el.classList.add('pop');
 }
 let shopShownWallet = -1;
+const skillBtn = document.getElementById('skillBtn');
+skillBtn.addEventListener('click', startShake);
+let skillShown = '';
+function updateSkillBtn() {
+  const unlocked = upValue('shake') > 0;
+  const left = Math.ceil(shakeCd);
+  const text = !unlocked ? '' : left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : '甩一甩';
+  if (text === skillShown) return;
+  skillShown = text;
+  skillBtn.hidden = !unlocked;
+  skillBtn.textContent = text;
+  skillBtn.disabled = left > 0;
+}
 function updateHud() {
   walletEl.textContent = wallet;
+  updateSkillBtn();
   shopBtn.classList.toggle('ready', canAffordSomething());
   // 商店開著時，錢變了就更新按鈕能不能按
   if (shopEl.classList.contains('show') && shopShownWallet !== wallet) {
@@ -1269,6 +1290,14 @@ let windTime = 0;
 let quakeTime = 0;
 let quakeTick = 0;
 let reachTime = 0;
+// 甩一甩：甩的期間（加上甩完一下子）掉下去的東西都放回檯面上
+const SHAKE_TIME = 1.2;      // 甩幾秒
+const SHAKE_GUARD = 3;       // 從開始甩算起幾秒內掉下去的都不算
+let shakeTime = 0;
+let shakeGuard = 0;
+let shakeTick = 0;
+let shakeDir = 1;
+let shakeCd = 0;             // 冷卻還剩幾秒
 let reachExtra = 0;          // 長推板：推板現在多伸出去多少
 const REACH_EXTRA = 1.0;     // 最多多伸 1 格（再多，推板尾巴會離開擋牆，幣會掉到推板後面）
 const REACH_SPEED = 1.5;     // 長推板的期間推板快 1.5 倍
@@ -1551,9 +1580,44 @@ function triggerItem(kind) {
   setTimeout(() => beep(780, 0.2, 0.05, 'triangle', 'item'), 120);
 }
 
-// 每一步：一陣風往前推、地震亂抖、長推板倒數
+// 甩一甩（主動技能）
+function startShake() {
+  if (upValue('shake') <= 0 || shakeCd > 0) return;
+  shakeTime = SHAKE_TIME;
+  shakeGuard = SHAKE_GUARD;
+  shakeCd = upValue('shake');
+  stats.shakes++;
+  toast('甩一甩！掉下去的都不算喔');
+  for (let k = 0; k < 6; k++) setTimeout(() => beep(k % 2 ? 180 : 140, 0.09, 0.07, 'square', 'item'), k * 100);
+}
+// 甩的時候掉下去的東西放回檯面上（從上面輕輕放下來）
+function putBack(body) {
+  body.setTranslation({ x: (Math.random() * 2 - 1) * (halfW - 1), y: 2.5 + Math.random(), z: -1.5 + Math.random() * 2.5 }, true);
+  body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+}
+
+// 每一步：一陣風往前推、地震亂抖、長推板倒數、甩一甩
 function applyEffects() {
   if (reachTime > 0) reachTime -= STEP;
+  if (shakeGuard > 0) shakeGuard -= STEP;
+  if (shakeTime > 0) {
+    shakeTime -= STEP;
+    shakeTick += STEP;
+    if (shakeTick >= 0.1) {
+      shakeTick = 0;
+      shakeDir = -shakeDir;
+      // 整台左右甩：每樣東西往同一邊拋、往上彈一點
+      const kick = (b, side, up) => {
+        if (b.translation().y < -0.5) return;
+        const m = b.mass();
+        b.applyImpulse({ x: shakeDir * m * side * (0.7 + Math.random() * 0.6), y: m * up * (0.6 + Math.random() * 0.8), z: (Math.random() - 0.5) * m * 1.2 }, true);
+      };
+      for (const c of coins) kick(c.body, 3, 1.8);
+      for (const d of dolls) kick(d.body, 2.5, 1.5);
+      for (const pr of props) kick(pr.body, 2.5, 1.5);
+    }
+  }
   if (windTime > 0) {
     windTime -= STEP;
     for (const c of coins) {
@@ -1730,7 +1794,8 @@ const shopWalletEl = document.getElementById('shopWallet');
 
 // 上一項買過一次，下一項才會出現
 function shopVisible(i) {
-  return i === 0 || upgrades[UPGRADE_KEYS[i - 1]] >= 1;
+  const prev = UPGRADES[UPGRADE_KEYS[i]].after || UPGRADE_KEYS[i - 1];
+  return i === 0 || upgrades[prev] >= 1;
 }
 
 function canAffordSomething() {
@@ -1802,6 +1867,7 @@ function saveData() {
     wallet,
     upgrades: { ...upgrades },
     pusherPhase,
+    shakeCd: Math.ceil(shakeCd),
     bigCount: bigChance.count,
     rainCount: rainChance.count,
     dollCount: dollChance.count,
@@ -1860,6 +1926,7 @@ function applySave(d) {
     upgrades[key] = Math.min(UPGRADES[key].prices.length, Math.max(0, lv));
   }
   pusherPhase = Number(d.pusherPhase) || 0;
+  shakeCd = Math.min(UPGRADES.shake.levels[1], Math.max(0, Number(d.shakeCd) || 0));
   bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
   rainChance.count = Math.max(0, Math.floor(Number(d.rainCount) || 0));
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
@@ -1948,7 +2015,9 @@ function stepSim() {
   for (let i = coins.length - 1; i >= 0; i--) {
     const b = coins[i].body.translation();
     const value = coins[i].value;
-    if (b.y < -1.2) {
+    if (b.y < -1.2 && shakeGuard > 0) {
+      putBack(coins[i].body);
+    } else if (b.y < -1.2) {
       if (b.z > FRONT_Z - 0.5 && Math.abs(b.x) < halfW + 0.1) {
         won += value;
         wallet += value;
@@ -1972,6 +2041,7 @@ function stepSim() {
   for (let i = props.length - 1; i >= 0; i--) {
     const t = props[i].body.translation();
     if (t.y >= -1.2) continue;
+    if (shakeGuard > 0) { putBack(props[i].body); continue; }
     const pr = props[i];
     const front = t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2;
     removeProp(i);
@@ -1994,6 +2064,7 @@ function stepSim() {
   for (let i = dolls.length - 1; i >= 0; i--) {
     const t = dolls[i].body.translation();
     if (t.y >= -1.2) continue;
+    if (shakeGuard > 0) { putBack(dolls[i].body); continue; }
     const d = dolls[i];
     const info = slimeInfo(d.id);
     if (t.z > FRONT_Z - 0.6 && Math.abs(t.x) < halfW + 0.2) {
@@ -2069,6 +2140,8 @@ function updateTimers(frame) {
     }
   }
 
+  if (shakeCd > 0) shakeCd = Math.max(0, shakeCd - frame);
+
   // 媽媽十元：固定時間給 10 枚，手上滿 100 枚就先不給（給了也不超過 100）
   if (wallet < MOM_CAP) {
     refillTimer += frame;
@@ -2118,7 +2191,11 @@ function tick(now) {
 
   updateCoinSound();
   updateHud();
+  // 甩的時候畫面跟著晃
+  const sway = shakeTime > 0 ? Math.sin(simTime * 60) * 0.08 * (shakeTime / SHAKE_TIME) : 0;
+  camera.position.x += sway;
   renderer.render(scene, camera);
+  camera.position.x -= sway;
   requestAnimationFrame(tick);
 }
 
@@ -2131,7 +2208,7 @@ updateLotteryBadge();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, startShake, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= UPGRADES[key].prices[lv]; }, UPGRADE_KEYS };
