@@ -650,3 +650,9 @@ body.fever #feverBar b { box-shadow: 0 0 8px #ff8fab; }
 /* 有字距的大字：最後一個字後面也會多一段字距，左邊補一樣的寬度才會真的置中 */
 #rainBanner .hc, #feverBanner .hc { padding-left: 6px; }
 .rebornText .hc { padding-left: 4px; }
+
+/* 小寶物推下去跳出的數字：各自的顏色（2026-10-05 納可定） */
+.float.gem { font-size: 26px; font-weight: 900; }
+.float.gem-blue { color: #8fbcff; text-shadow: 0 0 10px rgba(80, 140, 255, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
+.float.gem-pink { color: #ffa3cc; text-shadow: 0 0 10px rgba(255, 110, 175, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
+.float.gem-pearl { color: #fff3e2; text-shadow: 0 0 10px rgba(255, 220, 235, 0.95), 0 0 18px rgba(180, 220, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.6); }
