@@ -78,6 +78,24 @@ export const SLIME_SETS = [
       { name: '黃金史萊姆', look: 'metal', color: '#f4c95d', sparkle: true },
     ],
   },
+  {
+    // 動物：一樣的奶油感身體，用耳朵、翅膀分出是什麼動物。ear 是耳朵（或耳朵裡面）的顏色
+    id: 'animal',
+    name: '動物',
+    unlock: { set: 'metal', kinds: 6 },
+    skins: [
+      { name: '白兔史萊姆', look: 'cream', animal: 'rabbit', color: '#f7f0e6', ear: '#ffb3c6' },
+      { name: '橘貓史萊姆', look: 'cream', animal: 'cat', color: '#ffb15c', ear: '#ffd9c2' },
+      { name: '柴犬史萊姆', look: 'cream', animal: 'dog', color: '#e9a25a', ear: '#b8702f' },
+      { name: '小熊史萊姆', look: 'cream', animal: 'bear', color: '#a8754f', ear: '#7d5236' },
+      { name: '灰兔史萊姆', look: 'cream', animal: 'rabbit', color: '#a9a4b3', ear: '#ffc2d1' },
+      { name: '黑貓史萊姆', look: 'cream', animal: 'cat', color: '#3a3532', ear: '#8a6a7a' },
+      { name: '狐狸史萊姆', look: 'cream', animal: 'fox', color: '#ff8a3d', ear: '#fff3e6' },
+      { name: '熊貓史萊姆', look: 'cream', animal: 'panda', color: '#f6f3ec', ear: '#2a2628' },
+      { name: '小蝙蝠史萊姆', look: 'cream', animal: 'bat', color: '#6b5a9e', ear: '#463a6e' },
+      { name: '天使史萊姆', look: 'cream', animal: 'angel', color: '#fff1c9', ear: '#ffffff', sparkle: true },
+    ],
+  },
 ];
 
 export const SET_BY_ID = Object.fromEntries(SLIME_SETS.map((s) => [s.id, s]));
@@ -323,6 +341,96 @@ function makePoints(n, size, color, at) {
   return new THREE.Points(geo, new THREE.PointsMaterial({ color, size, transparent: true, opacity: 0.9, depthWrite: false }));
 }
 
+// ===== 動物的耳朵、翅膀、光環（只有樣子，不影響物理） =====
+const ballGeo = new THREE.SphereGeometry(1, 20, 14);
+const coneGeo = new THREE.ConeGeometry(1, 1, 20);
+const haloGeo = new THREE.TorusGeometry(0.17, 0.024, 10, 32);
+const haloMat = new THREE.MeshStandardMaterial({ color: 0xf4c95d, metalness: 0.8, roughness: 0.3, emissive: 0x6a4a10 });
+const wingGeos = {};
+function wingGeo(kind) {
+  if (wingGeos[kind]) return wingGeos[kind];
+  // 翅膀的根部在 (0, 0)，往 +x 長出去
+  const sh = new THREE.Shape();
+  if (kind === 'angel') {
+    // 圓圓的羽毛翅膀：上緣一道弧線，下緣三片羽毛
+    sh.moveTo(0, 0.05);
+    sh.quadraticCurveTo(0.1, 0.34, 0.42, 0.3);
+    sh.quadraticCurveTo(0.44, 0.17, 0.33, 0.17);
+    sh.quadraticCurveTo(0.35, 0.05, 0.23, 0.07);
+    sh.quadraticCurveTo(0.21, -0.05, 0.1, 0.0);
+    sh.quadraticCurveTo(0.04, -0.04, 0, 0.05);
+  } else {
+    // 蝙蝠翅膀：尖尖的骨架，下緣一段一段往內凹
+    const pts = [[0.44, 0.3], [0.36, 0.05], [0.2, -0.01], [0, 0.02]];
+    sh.moveTo(0, 0.1);
+    sh.lineTo(0.14, 0.27);
+    sh.lineTo(0.44, 0.3);
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1];
+      const [x1, y1] = pts[i];
+      sh.quadraticCurveTo((x0 + x1) / 2, (y0 + y1) / 2 + 0.07, x1, y1);
+    }
+  }
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2, curveSegments: 10 });
+  g.translate(0, 0, -0.01);
+  wingGeos[kind] = g;
+  return g;
+}
+const partMat = (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.7, sheen: 0.25, sheenColor: new THREE.Color(color) });
+
+function addAnimalParts(g, skin, bodyMat) {
+  const H = SLIME_H;
+  const earMat = partMat(skin.ear);
+  const part = (geo, mat, [sx, sy, sz], [x, y, z], rz = 0, ry = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.scale.set(sx, sy, sz);
+    m.position.set(x, y, z);
+    m.rotation.set(0, ry, rz);
+    m.castShadow = true;
+    g.add(m);
+    return m;
+  };
+  for (const side of [-1, 1]) {
+    switch (skin.animal) {
+      case 'rabbit':
+        // 長長的兔耳朵，裡面粉粉的
+        part(ballGeo, bodyMat, [0.075, 0.26, 0.05], [side * 0.15, H + 0.12, 0], -side * 0.16);
+        part(ballGeo, earMat, [0.042, 0.19, 0.02], [side * 0.157, H + 0.13, 0.035], -side * 0.16);
+        break;
+      case 'cat':
+      case 'bat':
+      case 'fox': {
+        // 三角形的尖耳朵；狐狸的比較大
+        const big = skin.animal === 'fox' ? 1.3 : skin.animal === 'bat' ? 0.85 : 1;
+        part(coneGeo, bodyMat, [0.13 * big, 0.24 * big, 0.07 * big], [side * 0.27, H - 0.06 + 0.1 * big, 0], -side * 0.38);
+        part(coneGeo, earMat, [0.075 * big, 0.15 * big, 0.03 * big], [side * 0.275, H - 0.07 + 0.09 * big, 0.04 * big], -side * 0.38);
+        break;
+      }
+      case 'dog':
+        // 垂下來的狗耳朵
+        part(ballGeo, earMat, [0.1, 0.21, 0.05], [side * 0.5, H * 0.74, 0.06], side * 0.32);
+        break;
+      case 'bear':
+      case 'panda':
+        // 圓圓的熊耳朵
+        part(ballGeo, skin.animal === 'panda' ? earMat : bodyMat, [0.11, 0.11, 0.06], [side * 0.3, H - 0.06, -0.02]);
+        if (skin.animal === 'bear') part(ballGeo, earMat, [0.06, 0.06, 0.02], [side * 0.3, H - 0.06, 0.03]);
+        break;
+    }
+    // 翅膀長在背後兩側，往後斜
+    if (skin.animal === 'bat' || skin.animal === 'angel') {
+      const w = part(wingGeo(skin.animal), skin.animal === 'bat' ? earMat : partMat('#ffffff'), [side * 1.4, 1.4, 1.4], [side * 0.36, H * 0.38, -0.26], 0, side * 0.35);
+      w.castShadow = false;
+    }
+  }
+  if (skin.animal === 'angel') {
+    const halo = new THREE.Mesh(haloGeo, haloMat);
+    halo.rotation.x = Math.PI / 2;
+    halo.position.set(0, H + 0.13, 0);
+    g.add(halo);
+  }
+}
+
 // 做一隻史萊姆娃娃（模型的原點在底部中心，臉朝 +z）
 export function makeSlimeMesh(id, scale, fancy = true) {
   const { skin } = slimeInfo(id);
@@ -368,7 +476,20 @@ export function makeSlimeMesh(id, scale, fancy = true) {
     eye.position.set(Math.sin(th) * r, ey * SLIME_H, Math.cos(th) * r).addScaledVector(n, 0.002);
     eye.lookAt(eye.position.clone().add(n));
     g.add(eye);
+    // 熊貓：眼睛外面一圈黑眼圈（眼睛改白的）
+    if (skin.animal === 'panda') {
+      eye.material = eyeWhite;
+      eye.scale.set(0.03, 0.045, 0.004);
+      const patch = new THREE.Mesh(eyeGeo, eyeBlack);
+      patch.renderOrder = 3;
+      patch.scale.set(0.085, 0.11, 0.003);
+      patch.position.copy(eye.position).addScaledVector(n, -0.001);
+      patch.rotation.copy(eye.rotation);
+      patch.rotateZ(side * 0.5);
+      g.add(patch);
+    }
   }
+  if (skin.animal) addAnimalParts(g, skin, body.material);
   // 夜空：身體裡有幾顆小星星
   if (skin.look === 'night') {
     g.add(makePoints(10, 0.035, 0xfff6d0, () => {
@@ -412,6 +533,7 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
   const by = h * 0.88;
   const rw = w * 0.36;
   const rh = h * 0.66;
+  if (owned && skin.animal) drawAnimalIcon(ctx, skin, cx, by, rw, rh, w, h); // 耳朵、翅膀先畫，壓在身體後面
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(cx - rw, by);
@@ -462,10 +584,71 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
   ctx.ellipse(cx + rw * 0.35, by - rh * 0.78, rw * 0.18, rh * 0.06, -0.5, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
-  ctx.fillStyle = isDark(skin.color) ? '#ffffff' : '#1e1724';
+  const panda = skin.animal === 'panda';
   for (const s of [-1, 1]) {
+    if (panda) {
+      ctx.fillStyle = '#2a2628';
+      ctx.beginPath();
+      ctx.ellipse(cx + s * rw * 0.3, by - rh * 0.45, w * 0.06, h * 0.085, s * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = panda || isDark(skin.color) ? '#ffffff' : '#1e1724';
     ctx.beginPath();
-    ctx.ellipse(cx + s * rw * 0.3, by - rh * 0.45, w * 0.032, h * 0.055, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + s * rw * 0.3, by - rh * 0.45, w * 0.032 * (panda ? 0.7 : 1), h * 0.055 * (panda ? 0.7 : 1), 0, 0, Math.PI * 2);
     ctx.fill();
+  }
+  if (skin.animal === 'angel') {
+    ctx.strokeStyle = '#f4c95d';
+    ctx.lineWidth = Math.max(2, h * 0.03);
+    ctx.beginPath();
+    ctx.ellipse(cx, by - rh * 1.08, rw * 0.42, rh * 0.08, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+// 圖鑑小圖的耳朵、翅膀（畫在身體後面）
+function drawAnimalIcon(ctx, skin, cx, by, rw, rh, w, h) {
+  const top = by - rh;
+  const blob = (color, x, y, ex, ey, rot = 0) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y, ex, ey, rot, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  const tri = (color, x, y, bw, th, tilt) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x - bw, y);
+    ctx.lineTo(x + tilt, y - th);
+    ctx.lineTo(x + bw, y);
+    ctx.closePath();
+    ctx.fill();
+  };
+  for (const s of [-1, 1]) {
+    switch (skin.animal) {
+      case 'rabbit':
+        blob(skin.color, cx + s * rw * 0.25, top - rh * 0.12, rw * 0.13, rh * 0.32, s * 0.15);
+        blob(skin.ear, cx + s * rw * 0.25, top - rh * 0.1, rw * 0.06, rh * 0.22, s * 0.15);
+        break;
+      case 'cat':
+      case 'bat':
+      case 'fox': {
+        const big = skin.animal === 'fox' ? 1.3 : skin.animal === 'bat' ? 0.85 : 1;
+        tri(skin.color, cx + s * rw * 0.45, top + rh * 0.16, rw * 0.2 * big, rh * 0.36 * big, s * rw * 0.12);
+        tri(skin.ear, cx + s * rw * 0.45, top + rh * 0.14, rw * 0.1 * big, rh * 0.24 * big, s * rw * 0.08);
+        break;
+      }
+      case 'dog':
+        blob(skin.ear, cx + s * rw * 0.72, top + rh * 0.3, rw * 0.16, rh * 0.26, s * 0.5);
+        break;
+      case 'bear':
+      case 'panda':
+        blob(skin.animal === 'panda' ? skin.ear : skin.color, cx + s * rw * 0.5, top + rh * 0.1, rw * 0.2, rw * 0.2);
+        if (skin.animal === 'bear') blob(skin.ear, cx + s * rw * 0.5, top + rh * 0.1, rw * 0.1, rw * 0.1);
+        break;
+    }
+    if (skin.animal === 'bat' || skin.animal === 'angel') {
+      blob(skin.animal === 'bat' ? skin.ear : '#ffffff', cx + s * rw * 1.05, by - rh * 0.55, rw * 0.38, rh * 0.2, -s * 0.5);
+    }
   }
 }
