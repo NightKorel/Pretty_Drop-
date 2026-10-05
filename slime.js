@@ -32,14 +32,14 @@ export const SLIME_SETS = [
     name: '果凍',
     unlock: null,
     skins: [
-      { name: '蘇打果凍', look: 'jelly', color: '#6ec8ff' },
-      { name: '檸檬果凍', look: 'jelly', color: '#ffe066' },
-      { name: '青蘋果果凍', look: 'jelly', color: '#8fe36a' },
-      { name: '柳橙果凍', look: 'jelly', color: '#ff9440' },
-      { name: '葡萄果凍', look: 'jelly', color: '#8a63ff' },
-      { name: '草莓果凍', look: 'jelly', color: '#ff6f91' },
-      { name: '薄荷果凍', look: 'jelly', color: '#3fd6c0' },
-      { name: '可樂果凍', look: 'jelly', color: '#8a3a12' },
+      { name: '蘇打果凍', look: 'jelly', color: '#8fd3ff' },
+      { name: '檸檬果凍', look: 'jelly', color: '#ffe27a' },
+      { name: '青蘋果果凍', look: 'jelly', color: '#b4ee86' },
+      { name: '蜜桃果凍', look: 'jelly', color: '#ffb59c' },
+      { name: '葡萄果凍', look: 'jelly', color: '#b99cff' },
+      { name: '草莓果凍', look: 'jelly', color: '#ff8fa8' },
+      { name: '海鹽果凍', look: 'jelly', color: '#8eeedb' },
+      { name: '薰衣草果凍', look: 'jelly', color: '#e3a6ff' },
       { name: '夜空果凍', look: 'night', color: '#2c3a8c' },
       { name: '鑽石史萊姆', look: 'diamond', color: '#ffffff', sparkle: true },
     ],
@@ -192,6 +192,19 @@ function flakeTexture(skin) {
   });
 }
 
+// 鑽石：一樣的輪廓，但每一圈只有 10 個面、每一面都是平的，看起來像切割過的寶石。
+// 讓一個面正對前方（臉的位置），眼睛才能貼在平面上
+const FACETS = 10;
+let diamondGeo = null;
+function getDiamondGeo() {
+  if (diamondGeo) return diamondGeo;
+  const pts = PROFILE.map(([r, y]) => new THREE.Vector2(r * SLIME_R, y * SLIME_H));
+  const g = new THREE.LatheGeometry(pts, FACETS, -Math.PI / FACETS).toNonIndexed();
+  g.computeVertexNormals(); // 拆開每個三角形各自算法線＝每一面都是平的
+  diamondGeo = g;
+  return diamondGeo;
+}
+
 // 假的半透明（低畫質用）：一般的半透明（後面的金幣會透出來），再加「邊緣濃、中間透」，
 // 看起來像有厚度的果凍。比真正的透光計算省很多效能。
 function fakeJelly(color, { center = 0.38, edge = 0.93, glow = 0.12, rough = 0.42, back = false } = {}) {
@@ -218,9 +231,10 @@ function fakeJelly(color, { center = 0.38, edge = 0.93, glow = 0.12, rough = 0.4
 function realJelly(skin) {
   const color = new THREE.Color(skin.color);
   if (skin.look === 'diamond') {
+    // 鑽石的折射率 2.4，加上色散（光分成彩色），切面才會一閃一閃有彩色
     return new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, roughness: 0.22, transmission: 1, thickness: 1, ior: 1.8,
-      iridescence: 0.6, iridescenceIOR: 1.5, clearcoat: 0.3, clearcoatRoughness: 0.4,
+      color: 0xffffff, roughness: 0.02, transmission: 1, thickness: 1.2, ior: 2.4,
+      dispersion: 5, specularIntensity: 1, attenuationColor: new THREE.Color('#e6f0ff'), attenuationDistance: 2,
     });
   }
   return new THREE.MeshPhysicalMaterial({
@@ -286,15 +300,16 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   const { skin } = slimeInfo(id);
   const g = new THREE.Group();
   let body;
+  const geo = skin.look === 'diamond' ? getDiamondGeo() : getBodyGeo();
   if (isJelly(skin) && fancy) {
-    body = new THREE.Mesh(getBodyGeo(), realJelly(skin));
+    body = new THREE.Mesh(geo, realJelly(skin));
     body.castShadow = true;
   } else if (isJelly(skin)) {
     const [backMat, frontMat] = jellyLayers(skin);
-    const inner = new THREE.Mesh(getBodyGeo(), backMat);
+    const inner = new THREE.Mesh(geo, backMat);
     inner.renderOrder = 1;
     g.add(inner);
-    body = new THREE.Mesh(getBodyGeo(), frontMat);
+    body = new THREE.Mesh(geo, frontMat);
     body.renderOrder = 2;
     body.castShadow = true;
   } else {
@@ -306,15 +321,19 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   // 豆豆眼：深色史萊姆用白的。眼睛是貼在表面的扁片，不會凸出來
   const eyeMat = isDark(skin.color) ? eyeWhite : eyeBlack;
   const ey = 0.5;                                  // 眼睛在身體的哪個高度（0 到 1）
-  const er = radiusAt(ey) * SLIME_R;
+  let er = radiusAt(ey) * SLIME_R;
   const slope = (radiusAt(ey + 0.02) - radiusAt(ey - 0.02)) / 0.04 * (SLIME_R / SLIME_H);
   for (const side of [-1, 1]) {
     const th = side * 0.27;
+    // 鑽石的前面是一片平面，眼睛要往內收到平面上
+    const r = skin.look === 'diamond' ? er * Math.cos(Math.PI / FACETS) / Math.cos(th) : er;
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
     eye.renderOrder = 3; // 眼睛最後畫，不會被半透明的身體蓋得霧霧的
     eye.scale.set(0.045, 0.07, 0.004);
-    const n = new THREE.Vector3(Math.sin(th), -slope, Math.cos(th)).normalize();
-    eye.position.set(Math.sin(th) * er, ey * SLIME_H, Math.cos(th) * er).addScaledVector(n, 0.002);
+    const n = skin.look === 'diamond'
+      ? new THREE.Vector3(0, -slope, 1).normalize()
+      : new THREE.Vector3(Math.sin(th), -slope, Math.cos(th)).normalize();
+    eye.position.set(Math.sin(th) * r, ey * SLIME_H, Math.cos(th) * r).addScaledVector(n, 0.002);
     eye.lookAt(eye.position.clone().add(n));
     g.add(eye);
   }

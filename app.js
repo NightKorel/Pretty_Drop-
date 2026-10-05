@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.39';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.39';
+import { makeCoinMaterials } from './coin.js?v=0.0.40';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.40';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.39';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.39';
+} from './slime.js?v=0.0.40';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.40';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -28,7 +28,12 @@ async function initPhysics() {
   await RAPIER.init(rawUrl);
 }
 document.getElementById('loading').textContent = '機台準備中……（下載物理引擎）';
-await initPhysics();
+try {
+  await initPhysics();
+} catch (e) {
+  window.__fail?.('E05', e && e.message);
+  throw e;
+}
 document.getElementById('loading').textContent = '機台準備中……（擺硬幣）';
 
 // ===== 數值（之後調手感主要改這裡） =====
@@ -208,7 +213,15 @@ function upValue(key) {
 
 // ===== 畫面 =====
 const canvas = document.getElementById('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+} catch (e) {
+  window.__fail?.('E03', e && e.message);
+  throw e;
+}
+// 手機記憶體不夠時，系統會把 3D 畫面關掉，跳提示告訴玩家
+canvas.addEventListener('webglcontextlost', () => window.__warn?.('E09'));
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;

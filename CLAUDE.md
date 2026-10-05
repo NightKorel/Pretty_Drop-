@@ -95,4 +95,5 @@
 - 存檔放瀏覽器 localStorage（存檔太大再改 IndexedDB），可匯出匯入 JSON。
 - 如果要用 AI：先走「手動複製貼上」或免費方案。**API 鑰匙只存在納可的瀏覽器，絕對不能寫進程式或推上 GitHub。**
 - 想加到手機主畫面、離線可玩時：做 manifest＋`sw.js`＋`icons/`。`sw.js` 一律先上網抓新的，沒網路才用存著的；新增遊戲檔案要記得加進 `sw.js` 的檔案清單。
+- 錯誤碼寫在 `index.html` 最下面的 `ERRORS`（E01 到 E09）。新的載入步驟或可能壞掉的地方，要接上 `window.__fail`（載入時）或 `window.__warn`（玩到一半）。
 - 測試：用 Playwright（`npm root -g` 底下）開本機伺服器（`python3 -m http.server`）實際點按鈕。**手機和電腦都要測**（Voice_it 出過只在手機發生的開場錯誤）。開場時會跑到的程式，不要碰還沒宣告的 `let`／`const`。截圖存暫存資料夾，別存進 repo。截圖很花 tokens：只截必要的畫面，能用程式數值檢查的就先用數值。
