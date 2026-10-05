@@ -609,3 +609,7 @@ html, body {
 .item .price { font-size: 13px; color: var(--gold); margin-top: 4px; font-weight: 700; }
 .item .price.short { color: var(--dim); font-weight: 400; }
 #settings .grp > .cheats { padding-bottom: 8px; }
+
+/* 商店「一鍵買到能買的最高」勾選 */
+.buyMax { display: flex; align-items: center; gap: 8px; padding: 4px 2px 10px; font-size: 13px; color: var(--dim); cursor: pointer; }
+.buyMax input { width: 18px; height: 18px; accent-color: var(--gold); }

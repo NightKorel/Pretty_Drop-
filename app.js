@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.60';
-import { drawDigits } from './digits.js?v=0.0.60';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.60';
+import { makeCoinMaterials } from './coin.js?v=0.0.61';
+import { drawDigits } from './digits.js?v=0.0.61';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.61';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.60';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.60';
+} from './slime.js?v=0.0.61';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.61';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -61,63 +61,63 @@ const MOM_GIVE = 10;         // 媽媽每次給幾枚
 const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得掛機刷）
 
 // ===== 商店升級 =====
-// 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項，越後面的越好也越貴。
+// 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項。
+// 順序照常識：越無感的越前面、越便宜；越有感的越後面、越貴（2026-10-05 納可定）。
 // 每升一級價錢乘上 growth。levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
+  guard: {
+    name: '側溝擋板',
+    desc: '從前緣往後裝矮矮的擋板，幣比較不會掉進兩側溝',
+    levels: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2],   // 擋板長度
+    base: 10, growth: 1.45,
+  },
   refill: {
     name: '媽媽十元',
     desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
     levels: [30, 26, 22, 19, 16, 14, 12, 10],          // 媽媽幾秒給一次
     base: 10, growth: 1.45,
   },
-  dropRate: {
-    name: '投幣速度',
-    desc: '手變快，一秒能投更多枚（一開始一秒一枚）',
-    levels: [1.0, 0.85, 0.72, 0.6, 0.5, 0.42, 0.35],  // 兩次投幣之間至少隔幾秒
-    base: 10, growth: 1.5,
-  },
   speed: {
     name: '推板加速',
     desc: '推板來回得更快，幣推得更勤',
     levels: [4.4, 4.15, 3.9, 3.7, 3.5, 3.3, 3.15, 3.0], // 推板來回一次幾秒（一開始慢；滿級和每級幅度都收小，2026-10-05 納可：最快太快）
-    base: 20, growth: 1.45,
+    base: 20, growth: 1.5,
   },
-  guard: {
-    name: '側溝擋板',
-    desc: '從前緣往後裝矮矮的擋板，幣比較不會掉進兩側溝',
-    levels: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2],   // 擋板長度
+  dropRate: {
+    name: '投幣速度',
+    desc: '手變快，一秒能投更多枚（一開始一秒一枚）',
+    levels: [1.0, 0.85, 0.72, 0.6, 0.5, 0.42, 0.35],  // 兩次投幣之間至少隔幾秒
     base: 30, growth: 1.5,
   },
   lucky: {
     name: '大金幣',
     desc: '投幣時有機會掉出大金幣（推下去值 10 枚），升級讓機會變大',
     levels: [0, 0.015, 0.025, 0.035, 0.045, 0.055, 0.065, 0.08], // 每投一枚變成大金幣的機率（沒買就沒有）
-    base: 60, growth: 1.5,
+    base: 60, growth: 1.55,
   },
   rain: {
     name: '金幣雨機率',
     desc: '解鎖金幣雨：每一秒都有小小的機會下一場，升級讓機會變大',
     levels: [0, 0.003, 0.0045, 0.006, 0.0075, 0.009, 0.011, 0.013, 0.016], // 每秒下金幣雨的機率（沒買就不會下）
-    base: 100, growth: 1.5,
+    base: 120, growth: 1.5,
   },
   rainSize: {
     name: '金幣雨變大',
     desc: '每場金幣雨撒下來的幣變多',
     levels: [30, 40, 50, 60, 70, 80, 100, 150],        // 一場金幣雨幾枚
-    base: 150, growth: 1.55,
+    base: 200, growth: 1.5,
   },
   multi: {
     name: '一次多投',
     desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
     levels: [1, 2, 3, 4, 5],                            // 一次丟幾枚
-    base: 400, growth: 2,
+    base: 500, growth: 1.9,
   },
-  // 主動技能：排在最後面，但買過大金幣就會出現（after）。插在中間的話，舊存檔後面幾項會被藏起來
   shake: {
     name: '甩一甩',
     desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩鬆。甩的時候掉下去的都不算，會放回檯面上。升級讓冷卻變短',
     levels: [0, 300, 270, 240, 210, 180, 150],         // 冷卻幾秒（沒買就不能用）
-    base: 100, growth: 1.7, after: 'lucky',
+    base: 300, growth: 1.6,
   },
 };
 // 遊戲裡的錢：100 以內取 10 的倍數，超過 100 取 50 的倍數，看起來比較乾脆
@@ -139,13 +139,6 @@ for (const u of Object.values(UPGRADES)) {
   });
 }
 const UPGRADE_KEYS = Object.keys(UPGRADES);
-// 商店分類（畫面上一類一類收合）
-const SHOP_CATS = [
-  ['coin', '投幣', ['refill', 'dropRate', 'multi']],
-  ['push', '推板', ['speed', 'guard']],
-  ['luck', '好運', ['lucky', 'rain', 'rainSize']],
-  ['skill', '技能', ['shake']],
-];
 
 // ===== 輪迴 =====
 // 玩家自己選什麼時候輪迴：清空錢、商店升級、檯面；保留圖鑑、成就、裝飾品和輪迴點買的東西。
@@ -209,7 +202,7 @@ const dolls = [];            // 檯面上的史萊姆娃娃
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
 const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 35 秒一隻）
 let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
-const MAX_DOLLS = 4;         // 檯面上最多同時幾隻（輪迴點「娃娃上限」可以再加）
+const MAX_DOLLS = 3;         // 檯面上最多同時幾隻；一開始 3 隻，輪迴點「娃娃上限」才加（2026-10-05 納可定）
 const maxDolls = () => MAX_DOLLS + perkLv('dollCap');
 let dollTimer = 0;
 
@@ -342,11 +335,7 @@ const groups = (member, filter) => (member << 16) | filter;
 const WALL_GROUPS = groups(GROUP_WALL, GROUP_COIN);
 const COIN_GROUPS = groups(GROUP_COIN, 0xffff);
 const OTHER_GROUPS = groups(GROUP_OTHER, 0xffff & ~GROUP_WALL);
-// 左右的牆：只有物理、不畫出來，畫面可以把檯面拉得更近更大
-for (const side of [-1, 1]) {
-  const wall = addBox(0.15, 3, tableLen / 2, side * (outerW + 0.15), 3, (FRONT_Z + BACK_Z) / 2, null);
-  wall.body.collider(0).setCollisionGroups(WALL_GROUPS);
-}
+// 左右的牆拿掉了（2026-10-05 納可：偶爾有金幣卡在兩邊很奇怪），推到側邊的東西直接掉進側溝
 // 推板上方的擋牆（推板往回縮時，把推板上的幣刮下來）
 addBox(outerW, 3, 0.2, 0, PUSHER_H + 0.05 + 3, WALL_Z, 0x3b2f4f, { rough: 0.6 });
 // 推板
@@ -2068,9 +2057,9 @@ const shopListEl = document.getElementById('shopList');
 const shopWalletEl = document.getElementById('shopWallet');
 
 // 上一項買過一次，下一項才會出現
+// 買過上一項才會出現；自己已經有等級的也照樣顯示（換過順序的舊存檔不會被藏起來）
 function shopVisible(i) {
-  const prev = UPGRADES[UPGRADE_KEYS[i]].after || UPGRADE_KEYS[i - 1];
-  return i === 0 || upgrades[prev] >= 1;
+  return i === 0 || upgrades[UPGRADE_KEYS[i - 1]] >= 1 || upgrades[UPGRADE_KEYS[i]] >= 1;
 }
 
 function canAffordSomething() {
@@ -2091,29 +2080,31 @@ function renderShop() {
     shopListEl.innerHTML = html + rebirthHtml();
     return;
   }
-  SHOP_CATS.forEach(([cat, title, keys], ci) => {
-    let inner = '';
-    let shown = 0;
-    let can = 0;
-    for (const key of keys) {
-      const i = UPGRADE_KEYS.indexOf(key);
-      if (!shopVisible(i)) continue;
-      shown++;
-      const u = UPGRADES[key];
-      const lv = upgrades[key];
-      const max = u.prices.length;
-      const lvText = lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`;
-      const price = lv < max ? upPrice(key) : 0;
-      if (lv < max && wallet >= price) can++;
-      inner += buyRowHtml({
-        name: u.name, lv: lvText, desc: u.desc,
-        price: lv < max ? `${price} 枚` : '', canPay: wallet >= price,
-        btn: lv >= max ? '<button type="button" disabled>滿級</button>'
-          : `<button type="button" data-buy="${key}" ${wallet < price ? 'disabled' : ''}>升級</button>`,
-      });
+  // 不分類（納可定）；滿級的收進最下面的「已滿級」，預設收起來。
+  // 「一鍵買到最高」打勾時，按升級會一次買到手上的錢買得起的最高級
+  html += `<label class="buyMax"><input type="checkbox" id="buyMaxChk"${buyMaxOn ? ' checked' : ''}> 一鍵買到能買的最高</label>`;
+  let maxed = '';
+  let maxedN = 0;
+  UPGRADE_KEYS.forEach((key, i) => {
+    if (!shopVisible(i)) return;
+    const u = UPGRADES[key];
+    const lv = upgrades[key];
+    const max = u.prices.length;
+    if (lv >= max) {
+      maxedN++;
+      maxed += buyRowHtml({ name: u.name, lv: `Lv ${lv}（滿級）`, desc: u.desc, btn: '<button type="button" disabled>滿級</button>' });
+      return;
     }
-    if (shown) html += groupHtml(`shop.${cat}`, title, can ? `${can} 項買得起` : `${shown} 項`, inner, ci === 0);
+    const price = upPrice(key);
+    const plan = buyMaxOn ? maxBuyPlan(key) : null;
+    const priceText = plan && plan.levels > 1 ? `${price} 枚（買到 Lv ${lv + plan.levels}，共 ${plan.cost} 枚）` : `${price} 枚`;
+    html += buyRowHtml({
+      name: u.name, lv: `Lv ${lv} / ${max}`, desc: u.desc,
+      price: priceText, canPay: wallet >= price,
+      btn: `<button type="button" data-buy="${key}" ${wallet < price ? 'disabled' : ''}>升級</button>`,
+    });
   });
+  if (maxedN) html += groupHtml('shop.maxed', '已滿級', `${maxedN} 項`, maxed);
   const next = UPGRADE_KEYS.findIndex((_, i) => !shopVisible(i));
   if (next > 0) html += '<div class="item locked"><div class="info"><div class="desc">買下上面最後一項，就會出現新的升級</div></div></div>';
   shopListEl.innerHTML = html;
@@ -2259,7 +2250,27 @@ function animateAngel(m, t) {
   m.rotation.y = yaw;
 }
 
-function buy(key) {
+// 一鍵買到最高：手上的錢從現在這一級一路買上去，最多買到幾級、共要多少
+let buyMaxOn = false;
+function maxBuyPlan(key) {
+  const u = UPGRADES[key];
+  let lv = upgrades[key];
+  let cost = 0;
+  let levels = 0;
+  while (lv < u.prices.length && cost + upPrice(key, lv) <= wallet) {
+    cost += upPrice(key, lv);
+    lv++;
+    levels++;
+  }
+  return { levels, cost };
+}
+function buyUpgrade(key) {
+  if (!buyMaxOn) { buy(key); return; }
+  const n = maxBuyPlan(key).levels;
+  for (let k = 0; k < n; k++) buy(key, k < n - 1);
+}
+
+function buy(key, quiet = false) {
   const i = UPGRADE_KEYS.indexOf(key);
   if (i < 0 || !shopVisible(i)) return;
   const u = UPGRADES[key];
@@ -2270,6 +2281,7 @@ function buy(key) {
   stats.upgradesBought++;
   checkAchievements();
   if (key === 'guard') buildGuards();
+  if (quiet) return; // 一次買好幾級：最後一級才響、才重畫、才存
   beep(660, 0.08, 0.06, 'triangle', 'shop');
   setTimeout(() => beep(990, 0.12, 0.06, 'triangle', 'shop'), 80);
   bump(walletEl);
@@ -2285,9 +2297,15 @@ shopBtn.addEventListener('click', () => {
   shopEl.classList.toggle('show');
 });
 document.getElementById('shopClose').addEventListener('click', () => shopEl.classList.remove('show'));
+shopListEl.addEventListener('change', (e) => {
+  if (e.target.id !== 'buyMaxChk') return;
+  buyMaxOn = e.target.checked;
+  renderShop();
+  saveGame();
+});
 shopListEl.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-buy]');
-  if (b) buy(b.dataset.buy);
+  if (b) buyUpgrade(b.dataset.buy);
   const t = e.target.closest('button[data-shoptab]');
   if (t) { shopTab = t.dataset.shoptab; rebirthArmed = 0; renderShop(); }
   const pk = e.target.closest('button[data-perk]');
@@ -2309,7 +2327,7 @@ function saveData() {
     version: 1,
     gemSet: true,
     // 設定也跟著存（納可：重新載入、讀檔都要回來）：自動投幣、瞄準位置、畫質、音效
-    settings: { auto: autoDrop, aimX, quality, sound: { ...soundOn } },
+    settings: { auto: autoDrop, aimX, quality, sound: { ...soundOn }, buyMax: buyMaxOn },
     wallet,
     upgrades: { ...upgrades },
     pusherPhase,
@@ -2371,6 +2389,7 @@ function loadSave() {
 function applySave(d) {
   if (d.settings) {
     if (d.settings.auto) setAuto(true);
+    buyMaxOn = !!d.settings.buyMax;
     if (Number.isFinite(d.settings.aimX)) aimX = Math.max(-3, Math.min(3, d.settings.aimX));
   }
   rebirth.points = Math.max(0, Math.floor(Number(d.rebirth?.points) || 0));
@@ -2400,7 +2419,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.60 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.61 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2412,7 +2431,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.60 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.61 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
