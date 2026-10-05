@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.90';
-import { drawDigits } from './digits.js?v=0.0.90';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.90';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.90';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.91';
+import { drawDigits } from './digits.js?v=0.0.91';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.91';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.91';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.90';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.90';
+} from './slime.js?v=0.0.91';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.91';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -532,7 +532,7 @@ const PRIZE_R = 0.78;        // 洞口邊緣的半徑
 const PRIZE_CATCH = 0.36;    // 幣的中心離洞口中心多近算掉進去
 const PRIZE_AMP = 2.7;       // 左右移動的幅度
 const PRIZE_CD = 8;          // 入賞後暗下來（滑回去的時候）
-const PRIZE_OPEN = 15;       // 出來後開幾秒
+const PRIZE_OPEN = 10;       // 出來後開幾秒（2026-10-05 納可：10 秒沒投進就跑走）
 const PRIZE_PARK = TABLE_W / 2 + PRIZE_R + 1.2; // 收起來時停在檯面外面哪裡
 const prizeChance = new PseudoRandom(1 / 75); // 每秒擲一次，平均大約 75 秒出來一次
 let prizeState = 'off';      // off 收著、in 滑進來、on 開著、out 滑回去
