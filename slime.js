@@ -593,11 +593,13 @@ export function makeSlimeMesh(id, scale, fancy = true) {
       : new THREE.Vector3(Math.sin(th), -slope, Math.cos(th)).normalize();
     eye.position.set(Math.sin(th) * r, ey * SLIME_H, Math.cos(th) * r).addScaledVector(n, 0.002);
     eye.lookAt(eye.position.clone().add(n));
+    eye.userData.eyeY = eye.scale.y; // 眨眼時從這個高度壓扁
     g.add(eye);
     // 熊貓：眼睛外面一圈黑眼圈（眼睛改白的）
     if (skin.animal === 'panda') {
       eye.material = eyeWhite;
       eye.scale.set(0.03, 0.045, 0.004);
+      eye.userData.eyeY = eye.scale.y;
       const patch = new THREE.Mesh(eyeGeo, eyeBlack);
       patch.renderOrder = 3;
       patch.scale.set(0.085, 0.11, 0.003);
@@ -633,9 +635,26 @@ export function makeSlimeMesh(id, scale, fancy = true) {
 }
 
 
-// 每一幀更新特效（閃光一閃一閃）
+// 眨眼：每隻各自隨機，很偶爾才眨一次（納可：真的很偶爾就好）
+const BLINK_MIN = 12;        // 兩次眨眼至少隔幾秒
+const BLINK_MAX = 30;        // 最多隔幾秒（檯面上有好幾隻，加起來才不會一直有人在眨）
+const BLINK_TIME = 0.15;     // 眨一下幾秒
+function blinkAmount(g, time) {
+  const u = g.userData;
+  if (u.nextBlink === undefined) u.nextBlink = time + BLINK_MIN * Math.random() + 2;
+  if (time >= u.nextBlink + BLINK_TIME) {
+    // 大約七次裡面一次連眨兩下
+    u.nextBlink = Math.random() < 0.15 ? time + 0.12 : time + BLINK_MIN + Math.random() * (BLINK_MAX - BLINK_MIN);
+  }
+  const k = (time - u.nextBlink) / BLINK_TIME;
+  return k > 0 && k < 1 ? Math.sin(k * Math.PI) : 0; // 0 張開、1 閉上
+}
+
+// 每一幀更新特效（閃光一閃一閃、眨眼）
 export function updateSlimeEffects(g, time) {
+  const shut = blinkAmount(g, time);
   for (const ch of g.children) {
+    if (ch.userData.eyeY) ch.scale.y = ch.userData.eyeY * (1 - shut * 0.88);
     if (ch.userData.sparkle) {
       ch.rotation.y = time * 0.6;
       ch.material.opacity = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(time * 4));
