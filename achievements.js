@@ -76,7 +76,7 @@ export const ACHIEVEMENTS = [
 
 // 裝飾品：slot 是裝在哪裡（同一個 slot 一次只能裝一個），價錢是成就點數。
 // 同一類（slot）的價錢都一樣，不同類可以不一樣（2026-10-05 納可定）
-const SLOT_PRICE = { pusher: 60, pusherDeco: 80, table: 60, background: 50, coin: 120 };
+const SLOT_PRICE = { pusher: 60, pusherDeco: 80, table: 60, background: 50, coin: 120, light: 70 };
 // apply(畫面) 把外觀換上去，remove(畫面) 換回原本的
 function tableColor(id, name, color) {
   return {
@@ -177,6 +177,15 @@ function pusherDeco(id, name, draw) {
     remove: (v) => v.setPusherDeco(null),
   };
 }
+// 燈光（2026-10-04 納可：燈光不要跟真實時間自動變，讓玩家自己選）：整台機台的打光換一種氣氛
+// hemi 環境光、sun 主燈、warm 上方的小燈、exp 整體亮度；neon 是額外兩盞霓虹燈（左粉右青）
+function lightMood(id, name, m) {
+  return {
+    id, name, slot: 'light', price: SLOT_PRICE.light,
+    apply: (v) => v.setLight(m),
+    remove: (v) => v.setLight(null),
+  };
+}
 function star(ctx, x, y, r) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -250,6 +259,10 @@ export const DECORATIONS = [
   pusherDeco('decoCandy', '糖果點點', DECO_DRAW.candy),
   pusherDeco('decoStripes', '斜條紋', DECO_DRAW.stripes),
   pusherDeco('decoChecker', '格紋', DECO_DRAW.checker),
+  lightMood('lightDay', '白天', { hemi: [0xffffff, 1.0], sun: [0xfffaf0, 2.8], warm: [0xfff0d8, 6], exp: 1.2, env: 0.75 }),
+  lightMood('lightSunset', '黃昏', { hemi: [0xff9a62, 0.9], sun: [0xff8a3a, 2.8], warm: [0xff6a2a, 26], exp: 1.05, env: 0.3 }),
+  lightMood('lightMoon', '月光', { hemi: [0x5f7fd0, 0.8], sun: [0xa9c2ff, 2.2], warm: [0x7f9cff, 14], exp: 0.95, env: 0.28 }),
+  lightMood('lightNeon', '夜晚霓虹', { hemi: [0x4a3a90, 0.6], sun: [0x9fb0ff, 0.9], warm: [0xff3fa0, 22], exp: 1.0, env: 0.22, neon: true }),
   tableColor('tableRed', '紅絨布檯面', 0x7a2433),
   tableColor('tableBlue', '深藍絨布檯面', 0x1f3f6b),
   tableColor('tableBlack', '黑絨布檯面', 0x1d1b22),
@@ -265,6 +278,7 @@ export const DECORATIONS = [
 export const DECORATION_SLOTS = {
   pusher: '推板顏色',
   pusherDeco: '推板花紋',
+  light: '燈光',
   table: '檯面',
   coin: '硬幣',
   background: '背景',

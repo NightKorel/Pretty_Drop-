@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.80';
-import { drawDigits } from './digits.js?v=0.0.80';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.80';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.80';
+import { makeCoinMaterials } from './coin.js?v=0.0.81';
+import { drawDigits } from './digits.js?v=0.0.81';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.81';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.81';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.80';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.80';
+} from './slime.js?v=0.0.81';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.81';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -307,6 +307,30 @@ scene.add(sun);
 const warm = new THREE.PointLight(0xffb85c, 14, 20);
 warm.position.set(0, 5, 2);
 scene.add(warm);
+
+// 燈光（成就商店的裝飾品）：換掉環境光、主燈、上方小燈的顏色和亮度；霓虹多兩盞彩色燈。null 換回原本的
+const LIGHT_BASE = { hemi: [hemi.color.getHex(), hemi.intensity], sun: [sun.color.getHex(), sun.intensity], warm: [warm.color.getHex(), warm.intensity], exp: renderer.toneMappingExposure, env: scene.environmentIntensity };
+let neonLights = null;
+function setLight(m) {
+  const L = m || LIGHT_BASE;
+  HEMI_COLOR.set(L.hemi[0]);
+  hemi.intensity = L.hemi[1];
+  SUN_COLOR.set(L.sun[0]);
+  sun.intensity = L.sun[1];
+  warm.color.set(L.warm[0]);
+  warm.intensity = L.warm[1];
+  renderer.toneMappingExposure = L.exp;
+  scene.environmentIntensity = L.env; // 倒影收小一點，燈光的顏色才看得出來（金幣大多是反射倒影）
+  hemi.color.copy(HEMI_COLOR);
+  sun.color.copy(SUN_COLOR);
+  if (L.neon && !neonLights) {
+    neonLights = [new THREE.PointLight(0xff5fb8, 30, 16), new THREE.PointLight(0x4fe3ff, 30, 16)];
+    neonLights[0].position.set(-4.5, 3, -2);
+    neonLights[1].position.set(4.5, 3, -2);
+    for (const n of neonLights) scene.add(n);
+  }
+  if (neonLights) for (const n of neonLights) n.visible = !!L.neon;
+}
 
 // ===== 物理 =====
 const world = new RAPIER.World({ x: 0, y: -19.6, z: 0 });
@@ -1467,7 +1491,7 @@ const achEl = document.getElementById('ach');
 const achListEl = document.getElementById('achList');
 let achTab = 'list';
 // 裝飾品換外觀時可以動到的東西
-const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
+const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
 
 function checkAchievements() {
   const kinds = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);
