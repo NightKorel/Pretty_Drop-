@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.43';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.43';
+import { makeCoinMaterials } from './coin.js?v=0.0.44';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.44';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.43';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.43';
+} from './slime.js?v=0.0.44';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.44';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -76,7 +76,7 @@ const UPGRADES = {
   speed: {
     name: '推板加速',
     desc: '推板來回得更快，幣推得更勤',
-    levels: [3.2, 3.05, 2.9, 2.75, 2.6, 2.45, 2.3, 2.2], // 推板來回一次幾秒
+    levels: [4.4, 3.9, 3.5, 3.1, 2.8, 2.55, 2.35, 2.2], // 推板來回一次幾秒（一開始慢，2026-10-05 納可：太快）
     base: 20, growth: 1.45,
   },
   guard: {
