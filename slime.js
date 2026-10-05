@@ -24,7 +24,7 @@ export const SLOTS = [
   { value: 500, rarity: 'legend' },
 ];
 
-// look：jelly 半透明果凍、night 夜空（半透明裡有小星星）、diamond 鑽石、
+// look：jelly 半透明果凍、night 夜空（半透明裡有小星星）、rainbow 彩虹果凍、diamond 鑽石、gem 彩色寶石（跟鑽石一樣的切面）、
 //       cream 甜點（霧面奶油感）、twotone 上下雙色甜點、flake 金箔巧克力、metal 金屬、pearl 珍珠
 export const SLIME_SETS = [
   {
@@ -41,7 +41,7 @@ export const SLIME_SETS = [
       { name: '海鹽果凍', look: 'jelly', color: '#8eeedb' },
       { name: '薰衣草果凍', look: 'jelly', color: '#e3a6ff' },
       { name: '夜空果凍', look: 'night', color: '#2c3a8c' },
-      { name: '鑽石史萊姆', look: 'diamond', color: '#ffffff', sparkle: true },
+      { name: '彩虹果凍', look: 'rainbow', color: '#ffe3ef', sparkle: true },
     ],
   },
   {
@@ -96,7 +96,27 @@ export const SLIME_SETS = [
       { name: '天使史萊姆', look: 'cream', animal: 'angel', color: '#fff1c9', ear: '#ffffff', sparkle: true },
     ],
   },
+  {
+    // 寶石：全部用鑽石的切面身體，換寶石的顏色（2026-10-05 納可：鑽石很漂亮，獨立出來一套）
+    id: 'gem',
+    name: '寶石',
+    unlock: { set: 'animal', kinds: 6 },
+    skins: [
+      { name: '紫水晶史萊姆', look: 'gem', color: '#b48cff' },
+      { name: '黃水晶史萊姆', look: 'gem', color: '#ffcf5c' },
+      { name: '粉晶史萊姆', look: 'gem', color: '#ffb0cc' },
+      { name: '橄欖石史萊姆', look: 'gem', color: '#b2e05a' },
+      { name: '海藍寶史萊姆', look: 'gem', color: '#86dcff' },
+      { name: '托帕石史萊姆', look: 'gem', color: '#ff9f5a' },
+      { name: '藍寶石史萊姆', look: 'gem', color: '#2f5bff' },
+      { name: '紅寶石史萊姆', look: 'gem', color: '#ff2b4a' },
+      { name: '祖母綠史萊姆', look: 'gem', color: '#14b871' },
+      { name: '鑽石史萊姆', look: 'diamond', color: '#ffffff', sparkle: true },
+    ],
+  },
 ];
+// 切面身體（鑽石、寶石）
+const faceted = (skin) => skin.look === 'diamond' || skin.look === 'gem';
 
 export const SET_BY_ID = Object.fromEntries(SLIME_SETS.map((s) => [s.id, s]));
 
@@ -251,11 +271,26 @@ function getDiamondGeo() {
   return diamondGeo;
 }
 
+// 彩虹果凍：從頭頂到底部一圈一圈淡淡的彩虹（果凍不要太飽和，納可：高飽和很難吃）
+let rainbowTex = null;
+function getRainbowTex() {
+  if (!rainbowTex) {
+    rainbowTex = canvasTexture((ctx) => {
+      const cols = ['#ffb3c1', '#ffd6a5', '#fdffb6', '#caffbf', '#9bf6ff', '#a0c4ff', '#d7b8ff'];
+      const g = ctx.createLinearGradient(0, 0, 0, 128);
+      cols.forEach((c, i) => g.addColorStop(i / (cols.length - 1), c));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 256, 128);
+    });
+  }
+  return rainbowTex;
+}
+
 // 假的半透明（低畫質用）：一般的半透明（後面的金幣會透出來），再加「邊緣濃、中間透」，
 // 看起來像有厚度的果凍。比真正的透光計算省很多效能。
-function fakeJelly(color, { center = 0.38, edge = 0.93, glow = 0.12, rough = 0.42, back = false } = {}) {
+function fakeJelly(color, { center = 0.38, edge = 0.93, glow = 0.12, rough = 0.42, back = false, map = null } = {}) {
   const m = new THREE.MeshStandardMaterial({
-    color, roughness: rough, metalness: 0, transparent: true, depthWrite: false,
+    color, map, roughness: rough, metalness: 0, transparent: true, depthWrite: false,
     side: back ? THREE.BackSide : THREE.FrontSide,
   });
   m.onBeforeCompile = (sh) => {
@@ -283,6 +318,20 @@ function realJelly(skin) {
       dispersion: 5, specularIntensity: 1, attenuationColor: new THREE.Color('#e6f0ff'), attenuationDistance: 2,
     });
   }
+  if (skin.look === 'gem') {
+    // 彩色寶石：折射率比鑽石低一點（大約藍寶石），顏色從裡面透出來
+    return new THREE.MeshPhysicalMaterial({
+      color, roughness: 0.03, transmission: 1, thickness: 0.8, ior: 1.77,
+      dispersion: 2, specularIntensity: 1, attenuationColor: color.clone().lerp(new THREE.Color(1, 1, 1), 0.3), attenuationDistance: 2.5,
+      emissive: color, emissiveIntensity: 0.12, // 一點點自己的顏色亮出來，深色寶石才不會黑掉
+    });
+  }
+  if (skin.look === 'rainbow') {
+    return new THREE.MeshPhysicalMaterial({
+      map: getRainbowTex(), roughness: 0.35, clearcoat: 0.2, clearcoatRoughness: 0.5,
+      transmission: 0.8, thickness: 0.7, ior: 1.33, attenuationColor: new THREE.Color('#fff4fa'), attenuationDistance: 1.5,
+    });
+  }
   return new THREE.MeshPhysicalMaterial({
     color, roughness: 0.35, clearcoat: 0.2, clearcoatRoughness: 0.5,
     transmission: 0.92, thickness: 0.7, ior: 1.33,
@@ -299,6 +348,19 @@ function jellyLayers(skin) {
       fakeJelly(new THREE.Color('#f4f8ff'), { center: 0.18, edge: 0.85, glow: 0.2, rough: 0.25 }),
     ];
   }
+  if (skin.look === 'gem') {
+    return [
+      fakeJelly(color.clone().multiplyScalar(0.75), { center: 0.4, edge: 0.65, glow: 0.1, rough: 0.25, back: true }),
+      fakeJelly(color.clone().lerp(new THREE.Color(1, 1, 1), 0.2), { center: 0.35, edge: 0.9, glow: 0.2, rough: 0.2 }),
+    ];
+  }
+  if (skin.look === 'rainbow') {
+    const white = new THREE.Color(1, 1, 1);
+    return [
+      fakeJelly(new THREE.Color(0.75, 0.75, 0.75), { center: 0.35, edge: 0.6, glow: 0.05, back: true, map: getRainbowTex() }),
+      fakeJelly(white, { center: 0.45, edge: 0.95, glow: 0.14, map: getRainbowTex() }),
+    ];
+  }
   const night = skin.look === 'night';
   return [
     fakeJelly(color.clone().multiplyScalar(0.7), { center: night ? 0.6 : 0.35, edge: 0.6, glow: 0.05, back: true }),
@@ -306,7 +368,7 @@ function jellyLayers(skin) {
   ];
 }
 
-const isJelly = (skin) => skin.look === 'jelly' || skin.look === 'night' || skin.look === 'diamond';
+const isJelly = (skin) => ['jelly', 'night', 'rainbow', 'diamond', 'gem'].includes(skin.look);
 
 // 整體走微微霧面：粗糙度高一點、亮面塗層淡一點，反光不要太刺
 function bodyMaterial(skin, fancy) {
@@ -436,7 +498,7 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   const { skin } = slimeInfo(id);
   const g = new THREE.Group();
   let body;
-  const geo = skin.look === 'diamond' ? getDiamondGeo() : getBodyGeo();
+  const geo = faceted(skin) ? getDiamondGeo() : getBodyGeo();
   if (isJelly(skin) && fancy) {
     body = new THREE.Mesh(geo, realJelly(skin));
     body.castShadow = true;
@@ -456,7 +518,7 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   g.add(body);
   // 豆豆眼：深色史萊姆用白的。眼睛是貼在表面的扁片，不會凸出來
   const eyeMat = isDark(skin.color) ? eyeWhite : eyeBlack;
-  const dia = skin.look === 'diamond';
+  const dia = faceted(skin);
   const [lo, hi] = dia ? [DIAMOND[DIA_EYE[0]], DIAMOND[DIA_EYE[1]]] : [];
   const ey = dia ? (lo[1] + hi[1]) / 2 : 0.5;      // 眼睛在身體的哪個高度（0 到 1）
   const er = (dia ? (lo[0] + hi[0]) / 2 : radiusAt(ey)) * SLIME_R;
@@ -536,9 +598,16 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
   if (owned && skin.animal) drawAnimalIcon(ctx, skin, cx, by, rw, rh, w, h); // 耳朵、翅膀先畫，壓在身體後面
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(cx - rw, by);
-  ctx.bezierCurveTo(cx - rw * 1.06, by - rh * 0.58, cx - rw * 0.58, by - rh, cx, by - rh);
-  ctx.bezierCurveTo(cx + rw * 0.58, by - rh, cx + rw * 1.06, by - rh * 0.58, cx + rw, by);
+  if (faceted(skin)) {
+    // 切面的外框：照鑽石的輪廓畫成多邊形，頂端平平的
+    const ring = DIAMOND.slice(1, -1);
+    ring.forEach(([r, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, cx - r * rw, by - y * rh));
+    for (let i = ring.length - 1; i >= 0; i--) ctx.lineTo(cx + ring[i][0] * rw, by - ring[i][1] * rh);
+  } else {
+    ctx.moveTo(cx - rw, by);
+    ctx.bezierCurveTo(cx - rw * 1.06, by - rh * 0.58, cx - rw * 0.58, by - rh, cx, by - rh);
+    ctx.bezierCurveTo(cx + rw * 0.58, by - rh, cx + rw * 1.06, by - rh * 0.58, cx + rw, by);
+  }
   ctx.closePath();
   if (!owned) {
     ctx.fillStyle = '#3a3448';
@@ -558,12 +627,17 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
     g.addColorStop(0, '#ffffff');
     g.addColorStop(0.5, '#cfe9ff');
     g.addColorStop(1, '#f6d6ff');
+  } else if (skin.look === 'rainbow') {
+    ['#ffb3c1', '#ffd6a5', '#fdffb6', '#caffbf', '#9bf6ff', '#a0c4ff', '#d7b8ff'].forEach((c, i) => g.addColorStop(i / 6, c));
+  } else if (skin.look === 'gem') {
+    g.addColorStop(0, light);
+    g.addColorStop(1, dark);
   } else {
     g.addColorStop(0, light);
     g.addColorStop(1, skin.look === 'metal' || skin.look === 'pearl' ? dark : skin.color);
   }
   ctx.fillStyle = g;
-  const clear = skin.look === 'jelly' || skin.look === 'night' || skin.look === 'diamond';
+  const clear = isJelly(skin);
   ctx.globalAlpha = clear ? 0.82 : 1;
   ctx.fill();
   ctx.globalAlpha = 1;
