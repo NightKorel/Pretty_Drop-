@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.101';
-import { drawDigits } from './digits.js?v=0.0.101';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.101';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.101';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.102';
+import { drawDigits } from './digits.js?v=0.0.102';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.102';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.102';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.101';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.101';
+} from './slime.js?v=0.0.102';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.102';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -214,6 +214,9 @@ const dollQueue = [];        // 等著放上推板的史萊姆（推板縮在後
 const collection = {};       // 圖鑑：每種娃娃收集了幾隻
 const DOLL_CHANCE = 0.03;    // 每秒放一隻娃娃的機率（保底式，平均大約 35 秒一隻）
 let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾套，機率不變）
+const DOLL_MIN = 2;           // 少於這麼多隻就很快補上
+const DOLL_LOW_WAIT = 3;      // 少於 DOLL_MIN 隻後幾秒補一隻（Claude 定）
+let dollLowT = 0;
 const MAX_DOLLS = 3;         // 檯面上最多同時幾隻；一開始 3 隻，輪迴點「娃娃上限」才加（2026-10-05 納可定）
 const maxDolls = () => MAX_DOLLS + perkLv('dollCap');
 let dollTimer = 0;
@@ -3277,6 +3280,13 @@ function updateTimers(frame) {
   if (dollTimer >= 1) {
     dollTimer -= 1;
     if (dolls.length + dollQueue.length < maxDolls() && dollChance.roll()) dropNewDoll();
+  }
+  // 檯面上不能沒有史萊姆（2026-10-05 納可）：少於 2 隻的時候，等 3 秒就直接補一隻，不用等機率
+  if (dolls.length + dollQueue.length < DOLL_MIN && !rebornBusy && !rebirth.shopping) {
+    dollLowT += frame;
+    if (dollLowT >= DOLL_LOW_WAIT) { dollLowT = 0; dropNewDoll(); }
+  } else {
+    dollLowT = 0;
   }
 
   // 每一秒擲一次要不要放道具、彩券（保底式假隨機）
