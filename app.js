@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.91';
-import { drawDigits } from './digits.js?v=0.0.91';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.91';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.91';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.92';
+import { drawDigits } from './digits.js?v=0.0.92';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.92';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.92';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.91';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.91';
+} from './slime.js?v=0.0.92';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.92';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1984,7 +1984,7 @@ let rainRate = 0;
 // ===== 彩券與特殊道具：兩個獨立系統，都是檯面上的實體東西 =====
 // 特殊道具：機台隨機（保底式）放上檯面，推下前緣馬上發動
 const ITEMS = {
-  wind: { name: '一陣風', label: '風', color: '#9fd8ff', dark: '#2a6fb0', desc: '往前吹 2 秒，把檯面上的幣往前推' },
+  wind: { name: '陣風', label: '風', color: '#9fd8ff', dark: '#2a6fb0', desc: '往前吹 2 秒，把檯面上的幣往前推' },
   reach: { name: '長推板', label: '推', color: '#ffd166', dark: '#c0661c', desc: '推板下一下推得特別長，速度不變' },
   quake: { name: '地震', label: '震', color: '#ff8a3d', dark: '#b3261e', desc: '檯面抖一抖，把卡住的幣抖鬆' },
 };
@@ -2401,7 +2401,7 @@ function triggerItem(kind) {
 
   if (kind === 'wind') {
     windTime = 1.2;
-    toast('一陣風！');
+    toast('陣風！');
   } else if (kind === 'quake') {
     quakeTime = 1.5;
     toast('地震！');
@@ -2422,7 +2422,7 @@ function startShake() {
   toast('甩一甩！');
   for (let k = 0; k < 6; k++) setTimeout(() => beep(k % 2 ? 180 : 140, 0.09, 0.07, 'square', 'item'), k * 100);
 }
-// 每一步：一陣風往前推、地震亂抖、長推板倒數、甩一甩
+// 每一步：陣風往前推、地震亂抖、長推板倒數、甩一甩
 function applyEffects() {
   if (shakeTime > 0) {
     shakeTime -= STEP;
@@ -3292,7 +3292,7 @@ function stepSim() {
     } else if (front) {
       triggerItem(pr.kind);
     } else {
-      toast(`${ITEMS[pr.kind].name}掉進側溝了……`);
+      toast(`「${ITEMS[pr.kind].name}」掉進側溝了……`); // 道具名字加引號（2026-10-05 納可定）
     }
   }
   for (let i = dolls.length - 1; i >= 0; i--) {
