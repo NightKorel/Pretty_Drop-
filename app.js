@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.106';
-import { drawDigits } from './digits.js?v=0.0.106';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.106';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.106';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.107';
+import { drawDigits } from './digits.js?v=0.0.107';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.107';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.107';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.106';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.106';
+} from './slime.js?v=0.0.107';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.107';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -150,11 +150,13 @@ const UPGRADE_KEYS = Object.keys(UPGRADES);
 
 // ===== 輪迴 =====
 // 玩家自己選什麼時候輪迴：清空錢、商店升級、檯面；保留圖鑑、成就、裝飾品和輪迴點買的東西。
-// 輪迴點照「這一輪累計賺的錢」換，像經驗值表：第 n 點要累計賺到 REBIRTH_BASE × n^1.5 枚（越後面越難）。
+// 輪迴點照「這一輪累計賺的錢」換，像經驗值表：第 n 點要累計賺到 REBIRTH_BASE × n^REBIRTH_POW 枚（越後面越難）。
 // 數值是 Claude 先隨意設定的（2026-10-05），之後看手感調。
 const REBIRTH_BASE = 1000;  // 第 1 點 1000 枚（2026-10-05 納可：不要放太高）
+// 2026-10-05 納可：中後段買不到東西的時候，就是該輪迴的時候，點數曲線調低一點（1.5 → 1.25），那時候輪迴比較划算
+const REBIRTH_POW = 1.25;
 function rebirthNeed(n) {
-  const x = REBIRTH_BASE * Math.pow(n, 1.5);
+  const x = REBIRTH_BASE * Math.pow(n, REBIRTH_POW);
   return x < 10000 ? Math.round(x / 100) * 100 : Math.round(x / 1000) * 1000;
 }
 // 輪迴點商店：costs 是每一級要幾點。每一級都一樣 1 點，不會越來越貴（納可：輪迴點每一點都很珍貴）
