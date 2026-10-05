@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.94';
-import { drawDigits } from './digits.js?v=0.0.94';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.94';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.94';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.95';
+import { drawDigits } from './digits.js?v=0.0.95';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.95';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.95';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.94';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.94';
+} from './slime.js?v=0.0.95';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.95';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -112,14 +112,20 @@ const UPGRADES = {
   multi: {
     name: '一次多投',
     desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
-    levels: [1, 2, 3, 4, 5],                            // 一次丟幾枚
-    base: 500, growth: 1.9,
+    levels: [1, 3, 6, 10],                              // 一次丟幾枚（2026-10-05 納可：每級差遠一點、最多 Lv 3）
+    base: 500, growth: 2.4,
   },
   shake: {
     name: '甩一甩',
     desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩下去。升級讓冷卻變短',
     levels: [0, 300, 270, 240, 210, 180, 150],         // 冷卻幾秒（沒買就不能用）
     base: 300, growth: 1.6,
+  },
+  summon: {
+    name: '召喚史萊姆',
+    desc: '解鎖技能「召喚」：按一下，馬上放一隻史萊姆娃娃到推板上。升級讓冷卻變短',
+    levels: [0, 240, 210, 180, 150, 120, 100],         // 冷卻幾秒（沒買就不能用）。2026-10-05 納可要的
+    base: 800, growth: 1.6,
   },
 };
 // 遊戲裡的錢：100 以內取 10 的倍數，超過 100 取 50 的倍數，看起來比較乾脆
@@ -661,9 +667,16 @@ function movePrize() {
     prizeDropT += STEP;
     if (prizeDropT >= 0.12) {
       prizeDropT = 0;
-      const c = spawnCoin(prizeX + (Math.random() - 0.5) * 0.8, PRIZE_Y - 0.2, DROP_Z + 0.9 + Math.random() * 0.3, 0.6, prizeDropBig);
+      // 灑在檯面中間一帶的上方（2026-10-05 納可：跟著入賞口掉會掉出去，等於白給）
+      const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.8);
+      const c = spawnCoin(x, 6 + Math.random() * 2, -3.5 + Math.random() * 3.5, Math.PI, prizeDropBig);
       prizeDropBig = false;
-      if (!c) prizeDrops = 0; else prizeDrops--;
+      if (!c) prizeDrops = 0;
+      else {
+        prizeDrops--;
+        c.body.setLinvel({ x: 0, y: -2, z: 0 }, true);
+        c.body.setAngvel({ x: (Math.random() - 0.5) * 12, y: 0, z: (Math.random() - 0.5) * 12 }, true);
+      }
     }
   }
 }
@@ -1014,6 +1027,7 @@ let shopShownWallet = -1;
 const SKILLS = [
   { el: document.getElementById('skillBtn'), key: 'shake', name: '甩一甩', cd: () => shakeCd, use: () => startShake() },
   { el: document.getElementById('rainBtn'), key: 'rain', name: '金幣雨', cd: () => rainCd, use: () => startRainSkill() },
+  { el: document.getElementById('summonBtn'), key: 'summon', name: '召喚', cd: () => summonCd, use: () => startSummon() },
 ];
 for (const sk of SKILLS) { sk.el.addEventListener('click', sk.use); sk.shown = null; }
 function updateSkillBtn() {
@@ -1182,10 +1196,17 @@ function dropCoin() {
   for (let k = 0; k < n; k++) {
     // 還沒買「大金幣」就完全不會出現，保底進度也不累積
     const big = upValue('lucky') > 0 && bigChance.roll();
-    const spread = n > 1 ? (k - (n - 1) / 2) * 0.75 : 0;
+    // 超過 6 枚排成前後兩排，才不會一整排太寬撞到兩邊
+    const rows = n > 6 ? 2 : 1;
+    const per = Math.ceil(n / rows);
+    const row = Math.floor(k / per);
+    const col = k % per;
+    const inRow = row === rows - 1 ? n - per * row : per;
+    const spread = inRow > 1 ? (col - (inRow - 1) / 2) * 0.75 + row * 0.37 : 0;
     const lim = halfW - COIN_R - 0.05;
     const x = Math.max(-lim, Math.min(lim, aimX + spread + (Math.random() - 0.5) * 0.05));
-    const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + (Math.random() - 0.5) * 0.3, 0.4, big);
+    const zRow = rows > 1 ? (row - 0.5) * 0.7 : 0;
+    const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + zRow + (Math.random() - 0.5) * 0.3, 0.4, big);
     if (!c) break;
     dropped++;
     if (big) {
@@ -2056,6 +2077,26 @@ function startRainSkill() {
   if (upValue('rain') <= 0 || rainCd > 0 || rainQueue > 0) return;
   rainCd = upValue('rain');
   startRain();
+}
+
+// 召喚史萊姆（主動技能，2026-10-05 納可要的）：馬上從袋子抽一隻放到推板上。
+// 檯面上的娃娃已經滿了就不放、也不算冷卻（Claude 定）
+let summonCd = 0;
+function startSummon() {
+  if (upValue('summon') <= 0 || summonCd > 0) return;
+  if (dolls.length + dollQueue.length >= maxDolls()) {
+    toast('檯面上的史萊姆滿了，先推下去一隻吧');
+    return;
+  }
+  const before = dollQueue.length + dolls.length;
+  dropNewDoll();
+  if (dollQueue.length + dolls.length === before) {
+    toast('現在召喚不出來，等一下再試');
+    return;
+  }
+  summonCd = upValue('summon');
+  toast('召喚史萊姆！');
+  [660, 880, 1320].forEach((f, k) => setTimeout(() => beep(f, 0.14, 0.05, 'sine', 'item'), k * 90));
 }
 
 // ===== 狂熱時間（2026-10-05 納可定）=====
@@ -2945,6 +2986,7 @@ function doRebirth() {
   reachQueued = false;
   shakeTime = shakeCd = 0;
   rainCd = 0;
+  summonCd = 0;
   feverGauge = 0;
   if (feverTime > 0) { feverTime = 0; endFever(); }
   prefill();
@@ -3106,6 +3148,7 @@ function saveData() {
     pusherPhase,
     shakeCd: Math.ceil(shakeCd),
     rainCd: Math.ceil(rainCd),
+    summonCd: Math.ceil(summonCd),
     feverGauge,
     bigCount: bigChance.count,
     dollCount: dollChance.count,
@@ -3187,6 +3230,7 @@ function applySave(d) {
   pusherPhase = Number(d.pusherPhase) || 0;
   shakeCd = Math.min(UPGRADES.shake.levels[1], Math.max(0, Number(d.shakeCd) || 0));
   rainCd = Math.min(UPGRADES.rain.levels[1], Math.max(0, Number(d.rainCd) || 0));
+  summonCd = Math.min(UPGRADES.summon.levels[1], Math.max(0, Number(d.summonCd) || 0));
   feverGauge = Math.min(FEVER_MAX - 1, Math.max(0, Math.floor(Number(d.feverGauge) || 0)));
   bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
@@ -3468,6 +3512,7 @@ function updateTimers(frame) {
 
   if (shakeCd > 0) shakeCd = Math.max(0, shakeCd - frame);
   if (rainCd > 0) rainCd = Math.max(0, rainCd - frame);
+  if (summonCd > 0) summonCd = Math.max(0, summonCd - frame);
 
   // 媽媽十元：固定時間給 10 枚，手上滿 100 枚就先不給（給了也不超過 100）
   if (wallet < MOM_CAP) {
@@ -3622,7 +3667,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { get prize() { return { x: prizeX, cd: prizeCd, state: prizeState, v: prizeState === 'on' ? Math.sign(prizeV) * prizeSpeed : 0 }; }, showPrize, coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { get prize() { return { x: prizeX, cd: prizeCd, state: prizeState, v: prizeState === 'on' ? Math.sign(prizeV) * prizeSpeed : 0 }; }, showPrize, coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, tutorSeen, get tutorNow() { return tutorNow && tutorNow.id; }, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
