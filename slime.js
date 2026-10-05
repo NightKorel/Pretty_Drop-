@@ -849,7 +849,31 @@ function addHat(g, skin) {
 }
 
 // 飲料裡面的東西：冰塊、珍珠、檸檬片、氣泡，還有頭上的吸管。位置每一隻固定（照名字算），不會每次都不一樣
-const cubeGeo = new THREE.BoxGeometry(0.17, 0.17, 0.17);
+// 冰塊：空心的方框，只有 12 條細細的邊（2026-10-05 納可：實心白白的像豆腐）。
+// 12 條邊併成一個形狀、所有飲料共用，顏色不吃光，幾乎不花效能
+const cubeGeo = (() => {
+  const S = 0.19 / 2;
+  const T = 0.011;
+  const bars = [];
+  for (const a of [-S, S]) for (const b of [-S, S]) {
+    bars.push([[S * 2 + T, T, T], [0, a, b]]); // 沿 x
+    bars.push([[T, S * 2 + T, T], [a, 0, b]]); // 沿 y
+    bars.push([[T, T, S * 2 + T], [a, b, 0]]); // 沿 z
+  }
+  const pos = [];
+  const idx = [];
+  for (const [[w, h, d], [x, y, z]] of bars) {
+    const bg = new THREE.BoxGeometry(w, h, d);
+    const base = pos.length / 3;
+    const p = bg.attributes.position;
+    for (let i = 0; i < p.count; i++) pos.push(p.getX(i) + x, p.getY(i) + y, p.getZ(i) + z);
+    for (const i of bg.index.array) idx.push(base + i);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  return g;
+})();
 const pearlGeo = new THREE.SphereGeometry(0.055, 12, 8);
 const lemonGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.025, 20);
 const strawGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.62, 12);
@@ -860,8 +884,8 @@ const pearlMat = new THREE.MeshStandardMaterial({ color: 0x2c160b, roughness: 0.
 const lemonMat = new THREE.MeshStandardMaterial({ color: 0xffe25c, roughness: 0.5, emissive: 0x3a2a00 });
 function addDrinkParts(g, skin, fancy) {
   if (!cubeMat) {
-    cubeMat = new THREE.MeshPhysicalMaterial({ color: 0xf2fbff, roughness: 0.12, clearcoat: 1, emissive: 0xcfeeff, emissiveIntensity: 0.25 });
-    cubeMatLow = new THREE.MeshStandardMaterial({ color: 0xf2fbff, roughness: 0.2, emissive: 0xcfeeff, emissiveIntensity: 0.3 });
+    cubeMat = new THREE.MeshBasicMaterial({ color: 0xe8f8ff });
+    cubeMatLow = cubeMat;
   }
   let seed = skin.name.length * 7919 + skin.color.charCodeAt(2);
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -1015,7 +1039,8 @@ export function slimePartBoxes(mesh) {
 
 // 做一隻史萊姆娃娃（模型的原點在底部中心，臉朝 +z）
 // id 可以是「套.第幾隻」，也可以直接給一個造型（例如轉生動畫的天使）
-export function makeSlimeMesh(id, scale, fancy = true) {
+// half：融合史萊姆用。-1 只留左半邊（臉朝前時的左邊）、1 只留右半邊
+export function makeSlimeMesh(id, scale, fancy = true, half = 0) {
   const skin = typeof id === 'string' ? slimeInfo(id).skin : id;
   const g = new THREE.Group();
   let body;
@@ -1026,6 +1051,7 @@ export function makeSlimeMesh(id, scale, fancy = true) {
   } else if (isJelly(skin)) {
     const [backMat, frontMat] = jellyLayers(skin);
     const inner = new THREE.Mesh(geo, backMat);
+    inner.userData.isBody = true;
     inner.renderOrder = 1;
     g.add(inner);
     body = new THREE.Mesh(geo, frontMat);
@@ -1096,9 +1122,60 @@ export function makeSlimeMesh(id, scale, fancy = true) {
     pts.userData.sparkle = true;
     g.add(pts);
   }
+  if (half) cutHalf(g, half, body);
   g.scale.setScalar(scale);
   g.userData.skin = skin;
   g.userData.body = body;
+  return g;
+}
+
+// ===== 融合（2026-10-04 納可定：兩隻碰在一起融合，外觀左半 A、右半 B）=====
+// 身體只留一半的三角形（每個三角形照中心在哪一邊分），眼睛、耳朵這些零件照位置留在自己那一邊；
+// 正中間的東西（帽子、吸管、閃光）只留 A 的
+const halfGeos = new Map();
+function halfGeo(geo, side) {
+  const key = geo.uuid + side;
+  if (halfGeos.has(key)) return halfGeos.get(key);
+  const src = geo.index ? geo.toNonIndexed() : geo;
+  const names = Object.keys(src.attributes);
+  const keep = [];
+  const pos = src.attributes.position;
+  for (let t = 0; t < pos.count; t += 3) {
+    const cx = pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2);
+    if (cx * side >= 0) keep.push(t);
+  }
+  const out = new THREE.BufferGeometry();
+  for (const n of names) {
+    const a = src.attributes[n];
+    const arr = new Float32Array(keep.length * 3 * a.itemSize);
+    let o = 0;
+    for (const t of keep) for (let v = 0; v < 3; v++) for (let c = 0; c < a.itemSize; c++) arr[o++] = a.array[(t + v) * a.itemSize + c];
+    out.setAttribute(n, new THREE.BufferAttribute(arr, a.itemSize));
+  }
+  halfGeos.set(key, out);
+  return out;
+}
+function cutHalf(g, side, body) {
+  for (const ch of [...g.children]) {
+    if (ch === body || ch.userData.isBody) {
+      ch.geometry = halfGeo(ch.geometry, side);
+      continue;
+    }
+    const x = ch.position.x;
+    const mine = Math.abs(x) < 0.04 ? side < 0 : x * side > 0;
+    if (!mine) g.remove(ch);
+  }
+}
+export function makeFusedMesh(idA, idB, scale, fancy = true) {
+  const a = makeSlimeMesh(idA, 1, fancy, -1);
+  const b = makeSlimeMesh(idB, 1, fancy, 1);
+  const g = new THREE.Group();
+  // 零件攤平放在同一層，眨眼、閃光、碰撞盒都照舊找得到
+  for (const ch of [...a.children, ...b.children]) g.add(ch);
+  g.scale.setScalar(scale);
+  g.userData.skin = a.userData.skin;
+  g.userData.body = a.userData.body;
+  g.userData.fused = true;
   return g;
 }
 
@@ -1233,12 +1310,13 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
         ctx.stroke();
       }
     }
-    ctx.fillStyle = 'rgba(245, 252, 255, 0.85)';
+    ctx.strokeStyle = 'rgba(240, 250, 255, 0.9)';
+    ctx.lineWidth = Math.max(1, w * 0.012);
     [[-0.35, 0.62, 0.3], [0.2, 0.7, -0.4], [0.45, 0.5, 0.2]].forEach(([dx, dy, rot]) => {
       ctx.save();
       ctx.translate(cx + dx * rw, by - dy * rh);
       ctx.rotate(rot);
-      ctx.fillRect(-w * 0.045, -w * 0.045, w * 0.09, w * 0.09);
+      ctx.strokeRect(-w * 0.045, -w * 0.045, w * 0.09, w * 0.09);
       ctx.restore();
     });
     if (skin.lemon) {
