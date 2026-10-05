@@ -2,14 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.67';
-import { drawDigits } from './digits.js?v=0.0.67';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.67';
+import { makeCoinMaterials } from './coin.js?v=0.0.68';
+import { drawDigits } from './digits.js?v=0.0.68';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.68';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.67';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.67';
+} from './slime.js?v=0.0.68';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.68';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -2530,7 +2530,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.67 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.68 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2542,7 +2542,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.67 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.68 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
@@ -2700,7 +2700,8 @@ function stepSim() {
       if (bookEl.classList.contains('show')) renderBook();
       saveGame();
     } else {
-      toast(`${info.skin.name}掉進側溝了……`);
+      // 圖鑑裡還沒收集過的，不說出名字（納可定）
+      toast(collection[d.id] ? `${info.skin.name}掉進側溝了……` : '某個史萊姆掉進側溝了……');
     }
     removeDoll(i);
   }
