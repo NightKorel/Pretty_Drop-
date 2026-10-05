@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.100';
-import { drawDigits } from './digits.js?v=0.0.100';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.100';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.100';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.101';
+import { drawDigits } from './digits.js?v=0.0.101';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.101';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.101';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.100';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.100';
+} from './slime.js?v=0.0.101';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.101';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -88,7 +88,7 @@ const UPGRADES = {
   dropRate: {
     name: '投幣速度',
     desc: '手變快，一秒能投更多枚（一開始一秒一枚）',
-    levels: [1.0, 0.85, 0.72, 0.6, 0.5, 0.42, 0.35],  // 兩次投幣之間至少隔幾秒
+    levels: [1.0, 0.9, 0.82, 0.75, 0.69, 0.64, 0.6],  // 兩次投幣之間至少隔幾秒（2026-10-05 納可：滿級太快，整體調慢，一開始的 1 秒不動；原本滿級 0.35）
     base: 30, growth: 1.5,
   },
   lucky: {
@@ -1931,9 +1931,9 @@ function startRain() {
   [880, 1100, 1320, 1760].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'rain'), k * 90));
 }
 
-// 補充金幣（Claude 定）：檯面上少於 40 枚，就下一場 30 枚的雨；下完等 3 秒再看，還不夠就再一場。
+// 補充金幣（Claude 定）：檯面上少於 25 枚，就下一場 30 枚的雨；下完等 3 秒再看，還不夠就再一場。
 // 不算玩家的錢、不算「金幣雨」次數，畫面上只跳一個小提示
-const REFILL_MIN = 40;
+const REFILL_MIN = 25;          // 一般玩最少會掉到 40 枚左右，設低一點才不會誤觸發
 const REFILL_SIZE = 30;
 let refillCheck = 0;
 let refills = 0;              // 這次開遊戲補了幾次（測試用）
