@@ -438,7 +438,7 @@ html, body {
 }
 #wheel .spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
 #wheel .spinBtn[hidden] { display: none; }
-#wheel #freeSpinBtn { background: #ff8fab; border-color: #ff8fab; color: #3a1020; }
+#wheel #freeSpinBtn { background: transparent; border-color: var(--gold); color: var(--gold); }
 #wheel #freeSpinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); }
 
 

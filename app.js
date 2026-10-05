@@ -2,13 +2,14 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.57';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.57';
+import { makeCoinMaterials } from './coin.js?v=0.0.58';
+import { drawDigits } from './digits.js?v=0.0.58';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.58';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS,
-} from './slime.js?v=0.0.57';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.57';
+} from './slime.js?v=0.0.58';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.58';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -1478,18 +1479,18 @@ const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平
 const TICKET_CHANCE = 0.006; // 每秒放一張彩券的機率（保底式，平均大約 3 分鐘一張），檯面上同時最多 1 張
 const MAX_PROPS = 3;         // 檯面上道具加彩券最多幾個
 // 彩券轉盤：推下檯面上的彩券免費轉一次；也可以花錢轉。
-// 上下左右四格是大獎（格子比較寬），中間夾著的都是小獎（格子窄、錢很少）（2026-10-05 納可定）。
-// 從最上面開始順時針排；span 是格子寬度（大獎 2、小獎 1），weight 是抽到的機會（跟格子寬度無關）。
-// 平均一次大約拿回 96 枚（價錢 100），大多是小獎，偶爾中大的
+// 一圈的順序照納可給的（2026-10-05）：500 10 100 200 20 50 200 50 20 200 100 10，從正上方順時針排。
+// 500 是紅色大獎、三格 200 是金色（格子比較寬，剛好在上下左右），其他都是黑色小格。
+// weight 是抽到的機會（跟格子寬度無關）。平均一次大約拿回 95 枚（價錢 100）
 const WHEEL = [
   { coins: 500, big: true, jackpot: true, weight: 0 }, // 上：大獎，用保底式機率
-  { coins: 10, weight: 7.75 }, { coins: 20, weight: 7.75 },
-  { coins: 150, big: true, weight: 16 },               // 右
-  { coins: 10, weight: 7.75 }, { coins: 30, weight: 7.75 },
-  { coins: 300, big: true, weight: 7 },                // 下
-  { coins: 20, weight: 7.75 }, { coins: 10, weight: 7.75 },
-  { coins: 200, big: true, weight: 12 },               // 左
-  { coins: 30, weight: 7.75 }, { coins: 20, weight: 7.75 },
+  { coins: 10, weight: 9.18 }, { coins: 100, weight: 9.18 },
+  { coins: 200, big: true, weight: 7.85 },             // 右
+  { coins: 20, weight: 9.18 }, { coins: 50, weight: 9.18 },
+  { coins: 200, big: true, weight: 7.85 },             // 下
+  { coins: 50, weight: 9.18 }, { coins: 20, weight: 9.18 },
+  { coins: 200, big: true, weight: 7.85 },             // 左
+  { coins: 100, weight: 9.18 }, { coins: 10, weight: 9.18 },
 ];
 const WHEEL_UNIT = (Math.PI * 2) / WHEEL.reduce((n, w) => n + (w.big ? 2 : 1), 0);
 // 每一格的中心角度（從正上方開始順時針算）和半寬
@@ -1872,8 +1873,7 @@ const ticketChance = new PseudoRandom(TICKET_CHANCE);
 let wheelAngle = 0;
 let wheelSpinning = false;
 
-const WHEEL_FONT = '"Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
-const WHEEL_SMALL_COLORS = ['#fff1d6', '#ffd6e5', '#d9f2e6', '#e3dcff'];
+// 配色收斂（納可：不要那麼花，高級一點）：黑底、金色、一點深紅；數字用金幣上的花體數字
 function drawWheel(now = performance.now()) {
   const ctx = wheelCanvas.getContext('2d');
   const W = wheelCanvas.width;
@@ -1882,29 +1882,36 @@ function drawWheel(now = performance.now()) {
   const R = W / 2 - 36;          // 格子的半徑
   const rim = 20;                // 外圈的厚度
   ctx.clearRect(0, 0, W, W);
-  // 外圈（深色，一圈小燈）
+  const goldGrad = (r0, r1) => {
+    const g = ctx.createLinearGradient(cx - r1, cy - r1, cx + r1, cy + r1);
+    g.addColorStop(0, '#f7e3a1');
+    g.addColorStop(0.45, '#d9a842');
+    g.addColorStop(1, '#a87522');
+    return g;
+  };
+  // 外圈：黑色加金邊，一圈小燈（暖白，轉的時候一閃一閃）
   ctx.beginPath();
   ctx.arc(cx, cy, R + rim, 0, Math.PI * 2);
-  ctx.fillStyle = '#3b2f4f';
+  ctx.fillStyle = '#141218';
   ctx.fill();
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = '#f4c95d';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = goldGrad(R, R + rim);
   ctx.stroke();
   const bulbs = 24;
   const blink = wheelSpinning ? Math.floor(now / 120) % 2 : -1;
   for (let i = 0; i < bulbs; i++) {
     const a = (i / bulbs) * Math.PI * 2;
     ctx.beginPath();
-    ctx.arc(cx + Math.cos(a) * (R + rim / 2), cy + Math.sin(a) * (R + rim / 2), 5, 0, Math.PI * 2);
+    ctx.arc(cx + Math.cos(a) * (R + rim / 2), cy + Math.sin(a) * (R + rim / 2), 4, 0, Math.PI * 2);
     const on = blink < 0 || i % 2 === blink;
-    ctx.fillStyle = on ? '#fff6d8' : '#8a7a5a';
-    ctx.shadowColor = on ? '#ffe9a8' : 'transparent';
-    ctx.shadowBlur = on ? 10 : 0;
+    ctx.fillStyle = on ? '#f6dc9a' : '#5a4a2a';
+    ctx.shadowColor = on ? 'rgba(246, 220, 154, 0.8)' : 'transparent';
+    ctx.shadowBlur = on ? 8 : 0;
     ctx.fill();
   }
   ctx.shadowBlur = 0;
   // 格子
-  let smallK = 0;
+  let k = 0;
   for (const w of WHEEL) {
     const a0 = wheelAngle + w.mid - w.half - Math.PI / 2;
     const a1 = wheelAngle + w.mid + w.half - Math.PI / 2;
@@ -1913,71 +1920,50 @@ function drawWheel(now = performance.now()) {
     ctx.arc(cx, cy, R, a0, a1);
     ctx.closePath();
     if (w.jackpot) {
-      const g = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
-      g.addColorStop(0, '#ff8fab');
-      g.addColorStop(1, '#d6336c');
+      const g = ctx.createRadialGradient(cx, cy, R * 0.15, cx, cy, R);
+      g.addColorStop(0, '#c9374f');
+      g.addColorStop(1, '#7a1426');
       ctx.fillStyle = g;
     } else if (w.big) {
-      const g = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
-      g.addColorStop(0, '#ffe08a');
-      g.addColorStop(1, '#e8a23a');
-      ctx.fillStyle = g;
+      ctx.fillStyle = goldGrad(0, R);
     } else {
-      ctx.fillStyle = WHEEL_SMALL_COLORS[smallK++ % WHEEL_SMALL_COLORS.length];
+      ctx.fillStyle = k++ % 2 ? '#1d1a22' : '#26222c'; // 黑色兩種深淺交錯，看得出分格
     }
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(217, 168, 66, 0.85)';
+    ctx.lineWidth = 2;
     ctx.stroke();
-    // 字一直是正的（像摩天輪的車廂），不會倒過來
+    // 數字一直是正的（像摩天輪的車廂），不會轉到倒過來
     const am = wheelAngle + w.mid - Math.PI / 2;
-    const tr = w.big ? R * 0.66 : R * 0.74;
-    ctx.save();
-    ctx.translate(cx + Math.cos(am) * tr, cy + Math.sin(am) * tr);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    if (w.big) {
-      ctx.fillStyle = w.jackpot ? '#ffffff' : '#5a3410';
-      if (w.jackpot) {
-        ctx.font = `900 ${Math.round(W * 0.05)}px ${WHEEL_FONT}`;
-        ctx.fillText('大獎', 0, -W * 0.038);
-      }
-      ctx.font = `900 ${Math.round(W * 0.075)}px ${WHEEL_FONT}`;
-      ctx.fillText(String(w.coins), 0, w.jackpot ? W * 0.025 : 0);
-    } else {
-      ctx.fillStyle = '#6b5a7a';
-      ctx.font = `700 ${Math.round(W * 0.042)}px ${WHEEL_FONT}`;
-      ctx.fillText(String(w.coins), 0, 0);
-    }
-    ctx.restore();
+    const tr = w.big ? R * 0.64 : R * 0.73;
+    const x = cx + Math.cos(am) * tr;
+    const y = cy + Math.sin(am) * tr;
+    if (w.jackpot) drawDigits(ctx, String(w.coins), x, y, W * 0.085, '#f7e3a1');
+    else if (w.big) drawDigits(ctx, String(w.coins), x, y, W * 0.08, '#3a2608');
+    else drawDigits(ctx, String(w.coins), x, y, W * 0.05, '#d9a842');
   }
-  // 中間的金色圓心，上面一顆星
+  // 中間的圓心：金色細圈加黑底
   ctx.beginPath();
   ctx.arc(cx, cy, R * 0.15, 0, Math.PI * 2);
-  ctx.fillStyle = '#f4c95d';
+  ctx.fillStyle = '#141218';
   ctx.fill();
   ctx.lineWidth = 4;
-  ctx.strokeStyle = '#fff6d8';
+  ctx.strokeStyle = goldGrad(0, R * 0.15);
   ctx.stroke();
   ctx.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-    const r = i % 2 ? R * 0.045 : R * 0.1;
-    ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-  }
-  ctx.closePath();
-  ctx.fillStyle = '#fff6d8';
+  ctx.arc(cx, cy, R * 0.06, 0, Math.PI * 2);
+  ctx.fillStyle = goldGrad(0, R * 0.06);
   ctx.fill();
-  // 上方的指針（紅色，白邊），尖端指進格子裡
+  // 上方的指針：金色，尖端指進格子裡
   ctx.beginPath();
-  ctx.moveTo(cx - 20, cy - R - rim - 6);
-  ctx.lineTo(cx + 20, cy - R - rim - 6);
-  ctx.lineTo(cx, cy - R + 26);
+  ctx.moveTo(cx - 18, cy - R - rim - 6);
+  ctx.lineTo(cx + 18, cy - R - rim - 6);
+  ctx.lineTo(cx, cy - R + 24);
   ctx.closePath();
-  ctx.fillStyle = '#e8435f';
+  ctx.fillStyle = goldGrad(R - 30, R + rim);
   ctx.fill();
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#141218';
   ctx.stroke();
 }
 
@@ -2410,7 +2396,7 @@ function applySave(d) {
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
   if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.57 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.58 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2422,7 +2408,7 @@ function applySave(d) {
   if (Array.isArray(d.unlockedSets)) {
     for (const id of d.unlockedSets) if (SET_BY_ID[id]) unlockedSets.add(id);
   } else {
-    // v0.0.57 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
+    // v0.0.58 以前的存檔：照當時的解鎖順序（果凍 → 甜點 → 金屬 → 動物 → 寶石）算出已經解鎖的組
     const old = [['sweets', 'jelly'], ['metal', 'sweets'], ['animal', 'metal'], ['gem', 'animal']];
     for (const [id, need] of old) if (unlockedSets.has(need) && kindsIn(need) >= 6) unlockedSets.add(id);
   }
