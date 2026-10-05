@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.102';
-import { drawDigits } from './digits.js?v=0.0.102';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.102';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.102';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.103';
+import { drawDigits } from './digits.js?v=0.0.103';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.103';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.103';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.102';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.102';
+} from './slime.js?v=0.0.103';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.103';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -64,7 +64,7 @@ const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得
 // ===== 商店升級 =====
 // 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項。
 // 順序照常識：越無感的越前面、越便宜；越有感的越後面、越貴（2026-10-05 納可定）。
-// 例外：媽媽十元永遠排第一個（納可：比較好笑）。
+// 例外：媽媽十元永遠排第一個（納可：比較好笑）；一次多投永遠排最後一個（2026-10-05 納可：天價，本來就該最後）。
 // 每升一級價錢乘上 growth。levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
   refill: {
@@ -109,12 +109,6 @@ const UPGRADES = {
     levels: [30, 40, 50, 60, 70, 80, 100, 150],        // 一場金幣雨幾枚
     base: 200, growth: 1.5,
   },
-  multi: {
-    name: '一次多投',
-    desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
-    levels: [1, 2, 3],                                  // 一次丟幾枚（2026-10-05 納可：最多一次 3 枚，升到 3 枚是天價）
-    base: 1000, growth: 10,
-  },
   shake: {
     name: '甩一甩',
     desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩下去。升級讓冷卻變短',
@@ -126,6 +120,12 @@ const UPGRADES = {
     desc: '解鎖技能「召喚」：按一下，馬上放一隻史萊姆娃娃到推板上。升級讓冷卻變短',
     levels: [0, 240, 210, 180, 150, 120, 100],         // 冷卻幾秒（沒買就不能用）。2026-10-05 納可要的
     base: 800, growth: 1.6,
+  },
+  multi: {
+    name: '一次多投',
+    desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
+    levels: [1, 2, 3],                                  // 一次丟幾枚（2026-10-05 納可：最多一次 3 枚，升到 3 枚是天價）
+    base: 1000, growth: 10,
   },
 };
 // 遊戲裡的錢：100 以內取 10 的倍數，超過 100 取 50 的倍數，看起來比較乾脆
