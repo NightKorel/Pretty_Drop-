@@ -25,7 +25,8 @@ export const SLOTS = [
 ];
 
 // look：jelly 半透明果凍、night 夜空（半透明裡有小星星）、rainbow 彩虹果凍、diamond 鑽石、gem 彩色寶石（跟鑽石一樣的切面）、
-//       cream 甜點（霧面奶油感）、twotone 上下雙色甜點、flake 金箔巧克力、metal 金屬、pearl 珍珠
+//       cream 甜點（霧面奶油感）、twotone 上下雙色甜點、flake 金箔巧克力、metal 金屬、pearl 珍珠、bismuth 鉍（彩虹光澤的金屬）
+// 拿出來存著的史萊姆（放錯組的）寫在 設計文件/史萊姆備用.txt，造型的程式留著，以後做新的一組可以直接用
 export const SLIME_SETS = [
   {
     id: 'jelly',
@@ -74,7 +75,7 @@ export const SLIME_SETS = [
       { name: '玫瑰金史萊姆', look: 'metal', color: '#eaa898' },
       { name: '黑鐵史萊姆', look: 'metal', color: '#3c3e43' },
       { name: '紫鈦史萊姆', look: 'metal', color: '#8a6fd1' },
-      { name: '黑珍珠史萊姆', look: 'pearl', color: '#2e2a3a' },
+      { name: '彩虹鉍史萊姆', look: 'bismuth', color: '#8a7fc0' },
       { name: '黃金史萊姆', look: 'metal', color: '#f4c95d', sparkle: true },
     ],
   },
@@ -93,7 +94,7 @@ export const SLIME_SETS = [
       { name: '狐狸史萊姆', look: 'cream', animal: 'fox', color: '#ff8a3d', ear: '#fff3e6' },
       { name: '熊貓史萊姆', look: 'cream', animal: 'panda', color: '#f6f3ec', ear: '#2a2628' },
       { name: '小蝙蝠史萊姆', look: 'cream', animal: 'bat', color: '#6b5a9e', ear: '#463a6e' },
-      { name: '天使史萊姆', look: 'cream', animal: 'angel', color: '#fff1c9', ear: '#ffffff', sparkle: true },
+      { name: '孔雀史萊姆', look: 'cream', animal: 'peacock', color: '#2f7fd8', ear: '#1fa37f', sparkle: true },
     ],
   },
   {
@@ -384,6 +385,9 @@ function bodyMaterial(skin, fancy) {
       return new THREE.MeshPhysicalMaterial({ map: flakeTexture(skin), roughness: 0.6, clearcoat: 0.15 });
     case 'pearl':
       return new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, metalness: 0.1, clearcoat: 0.25, iridescence: 0.6, iridescenceIOR: 1.4 });
+    case 'bismuth':
+      // 鉍：金屬表面一層薄薄的氧化膜，看起來是彩虹色（藍、紫、金、綠）
+      return new THREE.MeshPhysicalMaterial({ color, metalness: 1, roughness: 0.28, iridescence: 1, iridescenceIOR: 2.0, iridescenceThicknessRange: [250, 900] });
     case 'metal':
     default:
       return new THREE.MeshStandardMaterial({ color, metalness: 0.9, roughness: 0.5 });
@@ -483,6 +487,32 @@ function addAnimalParts(g, skin, bodyMat) {
     if (skin.animal === 'bat' || skin.animal === 'angel') {
       const w = part(wingGeo(skin.animal), skin.animal === 'bat' ? earMat : partMat('#ffffff'), [side * 1.4, 1.4, 1.4], [side * 0.36, H * 0.38, -0.26], 0, side * 0.35);
       w.castShadow = false;
+    }
+  }
+  if (skin.animal === 'peacock') {
+    // 孔雀：頭上三根小冠毛，背後一扇羽毛（每根末端一個金色的眼斑）
+    const eyeSpot = partMat('#f4c95d');
+    const spotCore = partMat('#1d3f9e');
+    for (const a of [-0.35, 0, 0.35]) {
+      const stalk = part(ballGeo, earMat, [0.012, 0.09, 0.012], [Math.sin(a) * 0.09, H + 0.06, -0.02], -a);
+      stalk.castShadow = false;
+      part(ballGeo, spotCore, [0.03, 0.03, 0.03], [Math.sin(a) * 0.17, H + 0.15, -0.02]);
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = (i - 3) * 0.28;                    // 左右張開
+      const dir = new THREE.Vector3(Math.sin(a), Math.cos(a), 0);
+      const base = new THREE.Vector3(0, H * 0.35, -0.42);
+      const f = part(ballGeo, earMat, [0.09, 0.42, 0.025], [0, 0, 0]);
+      f.position.copy(base).addScaledVector(dir, 0.4);
+      f.rotation.set(-0.35, 0, -a);
+      f.castShadow = false;
+      const tip = base.clone().addScaledVector(dir, 0.7);
+      const spot = part(ballGeo, eyeSpot, [0.07, 0.08, 0.02], [0, 0, 0]);
+      spot.position.copy(tip).add(new THREE.Vector3(0, 0, 0.1));
+      spot.rotation.set(-0.35, 0, -a);
+      const core = part(ballGeo, spotCore, [0.035, 0.04, 0.02], [0, 0, 0]);
+      core.position.copy(spot.position).add(new THREE.Vector3(0, 0, 0.012));
+      core.rotation.copy(spot.rotation);
     }
   }
   if (skin.animal === 'angel') {
@@ -636,6 +666,12 @@ export function drawSlimeIcon(ctx, id, w, h, owned) {
     g.addColorStop(0, light);
     g.addColorStop(1, skin.look === 'metal' || skin.look === 'pearl' ? dark : skin.color);
   }
+  if (skin.look === 'bismuth') {
+    g.addColorStop(0, '#7fd3ff');
+    g.addColorStop(0.35, '#b07cff');
+    g.addColorStop(0.7, '#f4c95d');
+    g.addColorStop(1, '#5fd39a');
+  }
   ctx.fillStyle = g;
   const clear = isJelly(skin);
   ctx.globalAlpha = clear ? 0.82 : 1;
@@ -723,6 +759,16 @@ function drawAnimalIcon(ctx, skin, cx, by, rw, rh, w, h) {
     }
     if (skin.animal === 'bat' || skin.animal === 'angel') {
       blob(skin.animal === 'bat' ? skin.ear : '#ffffff', cx + s * rw * 1.05, by - rh * 0.55, rw * 0.38, rh * 0.2, -s * 0.5);
+    }
+  }
+  if (skin.animal === 'peacock') {
+    for (let i = 0; i < 7; i++) {
+      const a = (i - 3) * 0.32;
+      const tx = cx + Math.sin(a) * rh * 0.95;
+      const ty = by - rh * 0.35 - Math.cos(a) * rh * 0.95;
+      blob(skin.ear, (cx + tx) / 2, (by - rh * 0.35 + ty) / 2, rw * 0.13, rh * 0.5, a);
+      blob('#f4c95d', tx, ty, rw * 0.12, rw * 0.12);
+      blob('#1d3f9e', tx, ty, rw * 0.06, rw * 0.06);
     }
   }
 }

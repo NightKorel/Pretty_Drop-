@@ -2,13 +2,13 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials } from './coin.js?v=0.0.47';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.47';
+import { makeCoinMaterials } from './coin.js?v=0.0.48';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.48';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon,
-} from './slime.js?v=0.0.47';
-import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.47';
+} from './slime.js?v=0.0.48';
+import { ACHIEVEMENTS, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.48';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -453,16 +453,24 @@ function removeDoll(i) {
 
 // 娃娃保底（納可定）：把「選擇的全部史萊姆」每一種放 DOLL_ROUNDS 份進袋子，洗亂之後一隻一隻拿，
 // 拿完再補一袋。這樣最多抽完一袋就一定看得到每一種，不會一直抽不到某一種。
-const DOLL_ROUNDS = 2;
+// 選好幾組時：全部放進同一個袋子；換組（多選或少選一組）就整袋重裝，新選的組馬上會出現。
+// 拿的時候不會連續兩隻同一組（納可定）：從「上一隻以外的組」裡挑，袋子裡剩越多的組越容易被挑到，
+// 這樣每一組會一起慢慢變少，不會最後剩一大串同一組。只選一組的時候就照順序拿。
+const DOLL_ROUNDS = 3;
 let dollBag = [];
-function refillDollBag() {
+let lastDollSet = null;
+function newDollBag() {
   const ids = activeSets.flatMap((set) => SLOTS.map((_, i) => `${set}.${i}`));
-  dollBag = [];
-  for (let r = 0; r < DOLL_ROUNDS; r++) dollBag.push(...ids);
-  for (let i = dollBag.length - 1; i > 0; i--) {
+  const bag = [];
+  for (let r = 0; r < DOLL_ROUNDS; r++) bag.push(...ids);
+  for (let i = bag.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [dollBag[i], dollBag[j]] = [dollBag[j], dollBag[i]];
+    [bag[i], bag[j]] = [bag[j], bag[i]];
   }
+  return bag;
+}
+function refillDollBag() {
+  dollBag = newDollBag();
 }
 
 // 機台放一隻新的娃娃到推板上方
@@ -480,9 +488,21 @@ function dropNewDoll(forceRarity) {
     // 袋子裡有已經沒在用的套，先丟掉
     dollBag = dollBag.filter((x) => activeSets.includes(x.split('.')[0]));
     if (!dollBag.length) refillDollBag();
-    const k = dollBag.findIndex((x) => !onTable.has(x));
-    if (k < 0) return; // 袋子裡剩下的都正好在檯面上，等下一次
+    // 選好幾組、袋子快抽完只剩上一隻那一組時，先把下一袋接在後面，才不會連續同一組
+    if (activeSets.length > 1 && dollBag.every((x) => x.startsWith(lastDollSet + '.'))) dollBag.push(...newDollBag());
+    const ok = dollBag.filter((x) => !onTable.has(x));
+    if (!ok.length) return; // 袋子裡剩下的都正好在檯面上，等下一次
+    // 照袋子裡每組剩幾隻來抽組（上一隻的組先排除；排除完沒得選才放行）
+    const count = {};
+    for (const x of ok) { const st = x.split('.')[0]; count[st] = (count[st] || 0) + 1; }
+    let sets = Object.keys(count).filter((st) => st !== lastDollSet);
+    if (!sets.length) sets = Object.keys(count);
+    let r = Math.random() * sets.reduce((a, st) => a + count[st], 0);
+    const pick = sets.find((st) => (r -= count[st]) < 0) || sets[sets.length - 1];
+    // 袋子已經洗亂過，拿這一組最前面的那隻
+    const k = dollBag.findIndex((x) => !onTable.has(x) && x.startsWith(pick + '.'));
     id = dollBag.splice(k, 1)[0];
+    lastDollSet = pick;
   }
   const scale = 0.85 + Math.random() * 0.35; // 大小略有不同
   const yaw = (Math.random() - 0.5) * 0.8;   // 大致面向玩家
@@ -939,6 +959,7 @@ bookListEl.addEventListener('click', (e) => {
     } else {
       activeSets.push(id);
     }
+    refillDollBag(); // 換組就整袋重裝
     renderBook();
     saveGame();
   }
@@ -2012,6 +2033,7 @@ function saveData() {
       return { type: pr.type, kind: pr.kind, p: [t.x, t.y, t.z], r: [r.x, r.y, r.z, r.w] };
     }),
     dollBag: [...dollBag],
+    lastDollSet,
     collection: { ...collection },
     activeSets,
     stats: { ...stats },
@@ -2077,8 +2099,9 @@ function applySave(d) {
     }
   }
   if (Array.isArray(d.dollBag)) dollBag = d.dollBag.filter((x) => slimeInfo(x));
+  if (SET_BY_ID[d.lastDollSet]) lastDollSet = d.lastDollSet;
   // 舊版（0.0.18）的娃娃名字對不上新的套，就不載入
-  // v0.0.47 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
+  // v0.0.48 鑽石從果凍搬到寶石組：舊存檔的 jelly.9 是鑽石，搬到 gem.9（果凍第 10 隻換成彩虹果凍）
   const oldCol = { ...(d.collection || {}) };
   if (!d.gemSet && oldCol['jelly.9']) {
     oldCol['gem.9'] = (Number(oldCol['gem.9']) || 0) + (Number(oldCol['jelly.9']) || 0);
@@ -2347,7 +2370,7 @@ updateLotteryBadge();
 updateHud();
 document.getElementById('loading').classList.add('hide');
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); }, openViewer, props, dropProp, spawnProp, triggerItem, startShake, rebirth, rebirthNeed, rebirthPending, doRebirth, buyPerk, upPrice, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
