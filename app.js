@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.88';
-import { drawDigits } from './digits.js?v=0.0.88';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.88';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.88';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.89';
+import { drawDigits } from './digits.js?v=0.0.89';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.89';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.89';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.88';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.88';
+} from './slime.js?v=0.0.89';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.89';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -524,20 +524,29 @@ function toggleShelf(id) {
 }
 
 // ===== 入賞口 =====
-// 後牆上一條軌道，一個金色的洞左右慢慢移動，高度在投幣會經過的地方（2026-10-04 納可：讓瞄準有意義）。
-// 幣從洞口正中間掉進去就「入賞」，給一個小獎；沒對準的會撞到洞的邊緣彈開。入賞後洞口暗下來一陣子
+// 後牆上一條軌道，一個金色的洞左右移動，高度在投幣會經過的地方（2026-10-04 納可：讓瞄準有意義）。
+// 幣從洞口正中間掉進去就「入賞」，給一個小獎；沒對準的會撞到洞的邊緣彈開。
+// 平常收在檯面外面，偶爾才從旁邊滑出來，移動忽快忽慢；入賞一次或時間到就滑回去（2026-10-05 納可：太容易中）
 const PRIZE_Y = 1.75;        // 洞口的高度（投幣從 3.2 掉下來）
 const PRIZE_R = 0.78;        // 洞口邊緣的半徑
 const PRIZE_CATCH = 0.36;    // 幣的中心離洞口中心多近算掉進去
 const PRIZE_AMP = 2.7;       // 左右移動的幅度
-const PRIZE_PERIOD = 9;      // 來回一次幾秒
-const PRIZE_CD = 8;          // 入賞後幾秒才再亮
-let prizeX = 0;
+const PRIZE_CD = 8;          // 入賞後暗下來（滑回去的時候）
+const PRIZE_OPEN = 15;       // 出來後開幾秒
+const PRIZE_PARK = TABLE_W / 2 + PRIZE_R + 1.2; // 收起來時停在檯面外面哪裡
+const prizeChance = new PseudoRandom(1 / 75); // 每秒擲一次，平均大約 75 秒出來一次
+let prizeState = 'off';      // off 收著、in 滑進來、on 開著、out 滑回去
+let prizeX = PRIZE_PARK;
+let prizeV = 0;              // 現在的速度（有方向）
+let prizeSpeed = 1.6;        // 現在的快慢
+let prizeTarget = 1.6;       // 正在慢慢變成的快慢
+let prizeRetarget = 0;
+let prizeOpenT = 0;
 let prizeCd = 0;
 let prizeDrops = 0;          // 小獎還有幾枚幣要掉
 let prizeDropBig = false;
 let prizeDropT = 0;
-const prizeBody = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, PRIZE_Y, DROP_Z));
+const prizeBody = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(PRIZE_PARK, PRIZE_Y, DROP_Z));
 for (let i = 0; i < 14; i++) {
   const a = (i / 14) * Math.PI * 2;
   world.createCollider(
@@ -561,7 +570,8 @@ const prizeMesh = new THREE.Group();
   arm.position.z = -(Math.abs(WALL_Z - DROP_Z) + PRIZE_R) / 2;
   prizeMesh.add(ring, glow, arm);
 }
-prizeMesh.position.set(0, PRIZE_Y, DROP_Z);
+prizeMesh.position.set(PRIZE_PARK, PRIZE_Y, DROP_Z);
+prizeMesh.visible = false;
 scene.add(prizeMesh);
 {
   // 後牆上的軌道（只有樣子）
@@ -569,12 +579,60 @@ scene.add(prizeMesh);
   rail.position.set(0, PRIZE_Y, WALL_Z + 0.26);
   scene.add(rail);
 }
+function showPrize() {
+  if (prizeState !== 'off') return;
+  const side = Math.random() < 0.5 ? -1 : 1;
+  prizeX = side * PRIZE_PARK;
+  prizeState = 'in';
+  prizeOpenT = PRIZE_OPEN;
+  prizeCd = 0;
+  [660, 990].forEach((f, k) => setTimeout(() => beep(f, 0.1, 0.035, 'triangle', 'item'), k * 90));
+}
+// 忽快忽慢：每隔一下子換一個目標快慢，現在的快慢慢慢追過去（Claude 定：每秒 0.5 到 3.4 格）
+function prizeWobble() {
+  prizeRetarget -= STEP;
+  if (prizeRetarget <= 0) {
+    prizeRetarget = 0.5 + Math.random() * 1.1;
+    prizeTarget = Math.random() < 0.3 ? 0.5 + Math.random() * 0.5 : 1.2 + Math.random() * 2.2;
+  }
+  prizeSpeed += (prizeTarget - prizeSpeed) * Math.min(1, STEP * 3);
+}
 function movePrize() {
-  prizeX = Math.sin((simTime / PRIZE_PERIOD) * Math.PI * 2) * PRIZE_AMP;
+  if (prizeState === 'off') {
+    if (simTime % 1 < STEP && prizeChance.roll()) showPrize();
+  } else if (prizeState === 'in') {
+    // 從旁邊滑進來，進到軌道範圍就開始左右跑
+    const dir = -Math.sign(prizeX);
+    prizeX += dir * 3 * STEP;
+    if (Math.abs(prizeX) <= PRIZE_AMP) {
+      prizeState = 'on';
+      prizeV = dir;
+      prizeSpeed = prizeTarget = 1.6;
+      prizeRetarget = 0.8;
+    }
+  } else if (prizeState === 'on') {
+    prizeWobble();
+    prizeX += Math.sign(prizeV) * prizeSpeed * STEP;
+    if (Math.abs(prizeX) >= PRIZE_AMP) {
+      prizeX = Math.sign(prizeX) * PRIZE_AMP;
+      prizeV = -Math.sign(prizeX);
+    }
+    prizeOpenT -= STEP;
+    if (prizeOpenT <= 0) prizeState = 'out';
+  } else {
+    // 往比較近的那一邊滑回去
+    const dir = prizeX >= 0 ? 1 : -1;
+    prizeX += dir * 3 * STEP;
+    if (Math.abs(prizeX) >= PRIZE_PARK) {
+      prizeX = dir * PRIZE_PARK;
+      prizeState = 'off';
+    }
+  }
   prizeBody.setNextKinematicTranslation({ x: prizeX, y: PRIZE_Y, z: DROP_Z });
   if (prizeCd > 0) prizeCd = Math.max(0, prizeCd - STEP);
+  if (prizeState === 'off') return;
   // 掉進洞口的幣：中心剛好往下穿過洞口上方一點點、又夠靠近中間
-  if (prizeCd <= 0) {
+  if (prizeState === 'on' && prizeCd <= 0) {
     for (let i = coins.length - 1; i >= 0; i--) {
       const c = coins[i];
       const t = c.body.translation();
@@ -611,6 +669,7 @@ function movePrize() {
 // 小獎（Claude 定）：大多是 8 枚幣，有時 1 枚大金幣加 4 枚幣，偶爾一張免費彩券
 function prizeWin() {
   prizeCd = PRIZE_CD;
+  prizeState = 'out';
   stats.prizes++;
   checkAchievements();
   const r = Math.random();
@@ -3373,6 +3432,7 @@ function tick(now) {
   aimGhost.position.x = aimX;
   // 入賞口：亮著的時候一閃一閃，冷卻中暗暗的
   prizeMesh.position.x = prizeX;
+  prizeMesh.visible = prizeState !== 'off';
   prizeRingMat.emissiveIntensity = prizeCd > 0 ? 0.05 : 0.7 + 0.3 * Math.sin(now / 160);
   prizeMesh.children[1].material.opacity = prizeCd > 0 ? 0.06 : 0.35;
   aimGhost.rotation.y += frame * 2;
@@ -3408,7 +3468,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { get prize() { return { x: prizeX, cd: prizeCd, v: Math.cos((simTime / PRIZE_PERIOD) * Math.PI * 2) * PRIZE_AMP * Math.PI * 2 / PRIZE_PERIOD }; }, coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { get prize() { return { x: prizeX, cd: prizeCd, state: prizeState, v: prizeState === 'on' ? Math.sign(prizeV) * prizeSpeed : 0 }; }, showPrize, coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };

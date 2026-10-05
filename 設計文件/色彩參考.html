@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推幣機色彩參考</title>
+<style>
+:root { --bg: #f7f5fa; --card: #ffffff; --ink: #2f2a3a; --sub: #6d6680; --line: #e4dfec; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1d1a24; --card: #27232f; --ink: #ece8f3; --sub: #a9a2b8; --line: #3a3446; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: system-ui, "Noto Sans TC", "PingFang TC", sans-serif; line-height: 1.7; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 20px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 16px; margin: 20px 0 6px; }
+p, li { color: var(--ink); }
+.sub { color: var(--sub); font-size: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 12px 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.sw { width: 92px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--card); font-size: 12px; }
+.sw b { display: block; height: 52px; }
+.sw span { display: block; padding: 4px 6px; color: var(--sub); font-family: ui-monospace, monospace; }
+.sw i { display: block; padding: 0 6px 5px; font-style: normal; color: var(--ink); }
+.grad { height: 40px; border-radius: 10px; margin: 6px 0 2px; border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: left; vertical-align: top; }
+code { font-family: ui-monospace, monospace; font-size: 13px; }
+.ok { color: #3f9b6e; } .ng { color: #d0566c; }
+</style>
+</head>
+<body>
+<main>
+<h1>推幣機色彩參考</h1>
+<p class="sub">2026-10-05 整理。以後調史萊姆、機台、介面的顏色時先翻這份。色票的數字可以直接抄進程式（#RRGGBB）。</p>
+
+<h2>一、先記住的五條通則</h2>
+<div class="card">
+<ol>
+<li>拉開差別靠換色相、換明暗，不靠調高飽和度（納可定案：高飽和看起來很難吃）。</li>
+<li>粉嫩色的範圍：HSL 的亮度 70% 到 92%，飽和度 25% 到 60%。亮度掉到 65% 以下就變「普通的顏色」，飽和低過 20% 就變灰。</li>
+<li>一整套顏色裡一定要有一個深色當「錨」（深藍紫、深可可色），字、外框、陰影用它，粉色才不會糊成一片。</li>
+<li>60-30-10：大面積 60% 用安靜的底色，30% 用主色，只有 10% 用最亮的點綴色。亮色留給按鈕、獎勵、稀有的東西。</li>
+<li>陰影別用灰黑，往藍紫偏；亮部往暖黃或粉偏。同一個東西亮部暖、暗部冷，看起來就有質感。</li>
+</ol>
+</div>
+
+<h2>二、四種感覺怎麼調</h2>
+
+<h3>可愛（軟、圓、像糖果）</h3>
+<div class="row">
+<div class="sw"><b style="background:#ffc8d6"></b><span>#ffc8d6</span><i>櫻花粉</i></div>
+<div class="sw"><b style="background:#ffe0b8"></b><span>#ffe0b8</span><i>蜜桃杏</i></div>
+<div class="sw"><b style="background:#fff2b0"></b><span>#fff2b0</span><i>奶油黃</i></div>
+<div class="sw"><b style="background:#c8f0d8"></b><span>#c8f0d8</span><i>薄荷</i></div>
+<div class="sw"><b style="background:#c8e4ff"></b><span>#c8e4ff</span><i>天空藍</i></div>
+<div class="sw"><b style="background:#5a4a6e"></b><span>#5a4a6e</span><i>錨：可可紫</i></div>
+</div>
+<ul>
+<li>暖色多一點（粉、杏、奶油），冷色當配角。</li>
+<li>臉頰紅暈、小亮點用比本體亮又偏粉的色，例如本體 <code>#ffc8d6</code>、亮點 <code>#fff0f4</code>。</li>
+<li>外框和字用可可紫，不用純黑。</li>
+</ul>
+
+<h3>夢幻（霧、光暈、像在雲裡）</h3>
+<div class="row">
+<div class="sw"><b style="background:#e8d8ff"></b><span>#e8d8ff</span><i>薰衣草霧</i></div>
+<div class="sw"><b style="background:#d6e6ff"></b><span>#d6e6ff</span><i>月光藍</i></div>
+<div class="sw"><b style="background:#ffd6ec"></b><span>#ffd6ec</span><i>雲朵粉</i></div>
+<div class="sw"><b style="background:#d4fbf4"></b><span>#d4fbf4</span><i>極光青</i></div>
+<div class="sw"><b style="background:#fff6dc"></b><span>#fff6dc</span><i>星光白</i></div>
+<div class="sw"><b style="background:#2c3a8c"></b><span>#2c3a8c</span><i>錨：夜空藍</i></div>
+</div>
+<ul>
+<li>主角是粉、紫、藍、青這一段冷暖交界的顏色，用漸層串起來。</li>
+<li>夢幻感來自「發光」：亮色疊在深色上（例如星星在夜空藍上），或東西邊緣加一圈淡淡的光。</li>
+<li>漸層的兩端色相差 60 度以內最順，差太遠中間會變髒。</li>
+</ul>
+
+<h3>精緻（安靜、有質感、像高級甜點店）</h3>
+<div class="row">
+<div class="sw"><b style="background:#f3ece4"></b><span>#f3ece4</span><i>象牙</i></div>
+<div class="sw"><b style="background:#d9c3b0"></b><span>#d9c3b0</span><i>奶茶</i></div>
+<div class="sw"><b style="background:#b9a6c9"></b><span>#b9a6c9</span><i>灰紫</i></div>
+<div class="sw"><b style="background:#9fb8ad"></b><span>#9fb8ad</span><i>灰綠</i></div>
+<div class="sw"><b style="background:#c9a56a"></b><span>#c9a56a</span><i>香檳金</i></div>
+<div class="sw"><b style="background:#3a3346"></b><span>#3a3346</span><i>錨：墨紫</i></div>
+</div>
+<ul>
+<li>飽和度壓低（15% 到 35%），用「帶一點灰」的顏色，再配一個金屬色。</li>
+<li>顏色數量少：一個畫面三到四色就夠，寧可少不要多。</li>
+<li>金色只用在細線、邊框、小點綴，大面積用金會變俗氣。</li>
+</ul>
+
+<h3>華麗（閃、金、珠寶感）</h3>
+<div class="row">
+<div class="sw"><b style="background:#f4c95d"></b><span>#f4c95d</span><i>金</i></div>
+<div class="sw"><b style="background:#9b2c4a"></b><span>#9b2c4a</span><i>酒紅</i></div>
+<div class="sw"><b style="background:#2a5c8f"></b><span>#2a5c8f</span><i>藍寶石</i></div>
+<div class="sw"><b style="background:#2e7d5f"></b><span>#2e7d5f</span><i>祖母綠</i></div>
+<div class="sw"><b style="background:#6b3fa0"></b><span>#6b3fa0</span><i>紫水晶</i></div>
+<div class="sw"><b style="background:#1c1626"></b><span>#1c1626</span><i>錨：絲絨黑</i></div>
+</div>
+<ul>
+<li>深色寶石色當底，金色當線條和亮點，這是轉盤（黑、金、深紅）那種感覺。</li>
+<li>華麗靠「對比」：深的底配亮的金，比全部都亮來得貴氣。</li>
+<li>閃光要少：一個畫面只讓一兩樣東西閃，全部都閃就廉價。</li>
+</ul>
+
+<h2>三、漸層配方</h2>
+<div class="card">
+<div class="grad" style="background:linear-gradient(90deg,#ffd6ec,#e8d8ff,#c8e4ff)"></div><span class="sub">棉花糖：#ffd6ec → #e8d8ff → #c8e4ff（夢幻、彩虹果凍）</span>
+<div class="grad" style="background:linear-gradient(90deg,#ffe0b8,#ffc8d6,#d9b8ff)"></div><span class="sub">晚霞：#ffe0b8 → #ffc8d6 → #d9b8ff（可愛、黃昏燈光）</span>
+<div class="grad" style="background:linear-gradient(90deg,#1a2366,#3b2c8c,#8a5cc9)"></div><span class="sub">夜空：#1a2366 → #3b2c8c → #8a5cc9（星座組、夜空果凍）</span>
+<div class="grad" style="background:linear-gradient(90deg,#9fe8ff,#7f8cff,#d38cff)"></div><span class="sub">蝶豆花：#9fe8ff → #7f8cff → #d38cff（飲料組已經用過類似的）</span>
+<div class="grad" style="background:linear-gradient(90deg,#8a6420,#f4c95d,#fff3c4,#f4c95d,#8a6420)"></div><span class="sub">金屬金：暗 → 金 → 亮 → 金 → 暗（假金屬、文字和框的金邊）</span>
+<div class="grad" style="background:linear-gradient(90deg,#b8fff0,#a8c8ff,#e0b0ff,#ffc8e0)"></div><span class="sub">極光：#b8fff0 → #a8c8ff → #e0b0ff → #ffc8e0</span>
+</div>
+
+<h2>四、3D 史萊姆、寶物用的顏色</h2>
+<h3>半透明（果凍、冰、寶石）</h3>
+<ul>
+<li>透光的材質顏色要比想要的樣子再淺一點，光穿過以後會變濃。</li>
+<li>厚的地方顏色深、薄的邊緣亮，這是「透」的感覺來源；邊緣加一圈淡淡的白光更像果凍。</li>
+<li>同一組裡顏色在色相環上平均分開（大約每 30 到 45 度一隻），一眼就分得出來。</li>
+</ul>
+<h3>金屬（真實金屬的基本色，抄來當起點）</h3>
+<div class="row">
+<div class="sw"><b style="background:#ffc356"></b><span>#ffc356</span><i>金</i></div>
+<div class="sw"><b style="background:#fcfaf5"></b><span>#fcfaf5</span><i>銀</i></div>
+<div class="sw"><b style="background:#f2a38a"></b><span>#f2a38a</span><i>銅</i></div>
+<div class="sw"><b style="background:#c4c7c7"></b><span>#c4c7c7</span><i>鐵</i></div>
+<div class="sw"><b style="background:#e8e9e9"></b><span>#e8e9e9</span><i>鋁</i></div>
+<div class="sw"><b style="background:#d5d0c8"></b><span>#d5d0c8</span><i>鈦</i></div>
+</div>
+<ul>
+<li>金屬的顏色幾乎全部來自倒影，本體色只決定「染什麼色」。看起來太暗通常是環境太暗，先調環境再調顏色。</li>
+<li>烤漆金屬（鈦藍、紫鈦這種）可以用比真實金屬濃的顏色，因為那是塗上去的。</li>
+</ul>
+<h3>毛茸茸、奶油</h3>
+<ul>
+<li>不透光的東西亮度不要超過 92%，不然在燈光下會整片白掉、看不出形狀。</li>
+<li>動物色從真的動物抄再調亮（柴犬、橘貓），可信度最高。</li>
+</ul>
+
+<h2>五、介面</h2>
+<div class="card">
+<table>
+<tr><th>用途</th><th>建議</th></tr>
+<tr><td>大面積面板</td><td>深、低飽和（現在的深紫灰就對），玩久不累眼</td></tr>
+<tr><td>主要按鈕</td><td>比面板亮、比點綴色暗；同一個畫面只有一種主按鈕色</td></tr>
+<tr><td>獎勵、數字</td><td>金色系，跟硬幣一致</td></tr>
+<tr><td>稀有度</td><td>普通 <code>#c9c2d6</code> 灰紫、稀有 <code>#7ec8ff</code> 藍、傳說 <code>#f4c95d</code> 金（現在用的，順序直覺，可以一直沿用）</td></tr>
+<tr><td>字</td><td>深底用 #ece8f3 這種帶一點紫的白，淺底用錨色，都不用純白純黑</td></tr>
+</table>
+</div>
+
+<h2>六、調色前後的檢查</h2>
+<div class="card">
+<ul>
+<li class="ok">✓ 縮小成圖鑑小圖時，同一組每隻還分得出來嗎？</li>
+<li class="ok">✓ 低畫質（不透光的假材質）下也還好看嗎？</li>
+<li class="ok">✓ 換到每一種燈光（白天、黃昏、月光、夜晚霓虹）看一次。</li>
+<li class="ok">✓ 白眼睛看得到嗎？看不到就換黑眼睛。</li>
+<li class="ng">✗ 想讓它「更顯眼」時第一個動作是加飽和：先試換色相或加亮邊。</li>
+<li class="ng">✗ 一個畫面裡亮色、閃光太多，就看不出哪個重要。</li>
+</ul>
+</div>
+
+<h2>參考來源</h2>
+<ul class="sub">
+<li><a href="https://icons8.com/blog/articles/pastel-color-palette/">Icons8：Pastel color palette guide</a>（粉嫩色的亮度、飽和度範圍）</li>
+<li><a href="https://devpalettes.com/blog/pastel-color-guide/">Pastel Color Guide</a></li>
+<li><a href="https://tips.clip-studio.com/en-us/articles/9742">CLIP STUDIO TIPS：MOE HYPER POP 配色</a>（萌系用低飽和、高對比）</li>
+<li><a href="https://designerup.co/blog/practical-guide-to-perfect-ui-color-palettes/">DesignerUp：UI 配色實用指南</a>（亮色只留給互動和強調）</li>
+<li><a href="https://www.media.io/color-palette/dreamy-color-palette.html">Media.io：Dreamy color palettes</a>（夢幻配色要一個深色錨）</li>
+<li>金屬基本色參考常見的 PBR 金屬數值表（Unreal、Substance 的金屬參考值）。</li>
+</ul>
+</main>
+</body>
+</html>
