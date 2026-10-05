@@ -2,15 +2,15 @@
 import * as THREE from './lib/three.module.js';
 import RAPIER from './lib/rapier.mjs';
 import { RoomEnvironment } from './lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.95';
-import { drawDigits } from './digits.js?v=0.0.95';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.95';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.95';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.96';
+import { drawDigits } from './digits.js?v=0.0.96';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.96';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.96';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.95';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.95';
+} from './slime.js?v=0.0.96';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES } from './achievements.js?v=0.0.96';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -112,8 +112,8 @@ const UPGRADES = {
   multi: {
     name: '一次多投',
     desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
-    levels: [1, 3, 6, 10],                              // 一次丟幾枚（2026-10-05 納可：每級差遠一點、最多 Lv 3）
-    base: 500, growth: 2.4,
+    levels: [1, 2, 3],                                  // 一次丟幾枚（2026-10-05 納可：最多一次 3 枚，升到 3 枚是天價）
+    base: 1000, growth: 10,
   },
   shake: {
     name: '甩一甩',
@@ -1196,17 +1196,10 @@ function dropCoin() {
   for (let k = 0; k < n; k++) {
     // 還沒買「大金幣」就完全不會出現，保底進度也不累積
     const big = upValue('lucky') > 0 && bigChance.roll();
-    // 超過 6 枚排成前後兩排，才不會一整排太寬撞到兩邊
-    const rows = n > 6 ? 2 : 1;
-    const per = Math.ceil(n / rows);
-    const row = Math.floor(k / per);
-    const col = k % per;
-    const inRow = row === rows - 1 ? n - per * row : per;
-    const spread = inRow > 1 ? (col - (inRow - 1) / 2) * 0.75 + row * 0.37 : 0;
+    const spread = n > 1 ? (k - (n - 1) / 2) * 0.75 : 0;
     const lim = halfW - COIN_R - 0.05;
     const x = Math.max(-lim, Math.min(lim, aimX + spread + (Math.random() - 0.5) * 0.05));
-    const zRow = rows > 1 ? (row - 0.5) * 0.7 : 0;
-    const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + zRow + (Math.random() - 0.5) * 0.3, 0.4, big);
+    const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + (Math.random() - 0.5) * 0.3, 0.4, big);
     if (!c) break;
     dropped++;
     if (big) {

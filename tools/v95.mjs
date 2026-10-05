@@ -1,4 +1,4 @@
-// v0.0.95：一次多投（1、3、6、10）、召喚史萊姆技能、入賞的獎勵灑在檯面上；電腦和手機各一次
+// v0.0.95：一次多投（1、2、3 枚，3 枚天價）、召喚史萊姆技能、入賞的獎勵灑在檯面上；電腦和手機各一次
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NPMG + '/playwright');
@@ -14,7 +14,7 @@ for (const [name, vp] of [['pc', { width: 1280, height: 800 }], ['phone', { widt
     g.setWallet(100000);
     // 一次多投
     out.multiPrices = g.UPGRADES.multi.prices.join(' ');
-    g.upgrades.multi = 3;
+    g.upgrades.multi = 2;
     const n0 = g.coins.length; g.dropAt(0); out.multiDropped = g.coins.length - n0;
     g.simulate(3);
     // 召喚
