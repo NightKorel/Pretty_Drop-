@@ -159,10 +159,19 @@ export const SLIME_R = 0.68;
 export const SLIME_H = 0.98;
 
 // 輪廓在某個高度（0 到 1）的半徑
+// 畫面用的輪廓：把上面那些點用平滑的曲線連起來（以前是一段一段的直線，金屬、果凍的倒影會出現一圈一圈的條紋）
+const SMOOTH = (() => {
+  const curve = new THREE.SplineCurve(PROFILE.map(([r, y]) => new THREE.Vector2(r, y)));
+  return curve.getPoints(64).map((v, i, a) => [
+    i === 0 || i === a.length - 1 ? v.x : Math.max(0, v.x),
+    i === 0 ? 0 : i === a.length - 1 ? 1 : Math.min(1, Math.max(0, v.y)),
+  ]);
+})();
 function radiusAt(y) {
-  for (let i = 1; i < PROFILE.length; i++) {
-    const [r0, y0] = PROFILE[i - 1];
-    const [r1, y1] = PROFILE[i];
+  for (let i = 1; i < SMOOTH.length; i++) {
+    const [r0, y0] = SMOOTH[i - 1];
+    const [r1, y1] = SMOOTH[i];
+    if (y1 <= y0) continue;
     if (y <= y1) return r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
   }
   return 0;
@@ -184,16 +193,7 @@ export function slimeHullPoints(scale) {
 let bodyGeo = null;
 function getBodyGeo() {
   if (bodyGeo) return bodyGeo;
-  const pts = [];
-  for (let i = 0; i < PROFILE.length - 1; i++) {
-    const [r0, y0] = PROFILE[i];
-    const [r1, y1] = PROFILE[i + 1];
-    for (let k = 0; k < 3; k++) {
-      const t = k / 3;
-      pts.push(new THREE.Vector2((r0 + (r1 - r0) * t) * SLIME_R, (y0 + (y1 - y0) * t) * SLIME_H));
-    }
-  }
-  pts.push(new THREE.Vector2(0, PROFILE[PROFILE.length - 1][1] * SLIME_H));
+  const pts = SMOOTH.map(([r, y]) => new THREE.Vector2(r * SLIME_R, y * SLIME_H));
   // LatheGeometry 自己會算好接縫處的法線，不要再重算，不然身體中間會出現一條線
   bodyGeo = new THREE.LatheGeometry(pts, 48);
   return bodyGeo;
@@ -208,6 +208,41 @@ function canvasTexture(draw) {
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
   return t;
+}
+
+// 金屬和果凍史萊姆自己的「攝影棚倒影」（2026-10-05 納可：果凍和金屬有點醜）：
+// 機台的房間倒影有很多一條一條的燈，照在圓圓的史萊姆上變成亂亂的條紋。這張是柔和的漸層加兩團柔光，
+// 倒影乾淨、像玩具一樣亮亮的。一張小圖，幾乎不花效能
+let studioTex = null;
+function getStudioEnv() {
+  if (studioTex) return studioTex;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, '#fffaf2');
+  g.addColorStop(0.35, '#e9e4f2');
+  g.addColorStop(0.55, '#8f8aa3');
+  g.addColorStop(0.7, '#3d3a4c');
+  g.addColorStop(1, '#1d1b26');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 128);
+  // 主燈（左上，暖白）和補光（右邊，淡粉紫），邊緣都是柔的
+  const blob = (x, y, r, col) => {
+    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, col);
+    rg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  blob(90, 30, 34, 'rgba(255,255,255,1)');
+  blob(200, 48, 26, 'rgba(255,225,240,0.8)');
+  blob(20, 52, 22, 'rgba(220,235,255,0.6)');
+  studioTex = new THREE.CanvasTexture(c);
+  studioTex.colorSpace = THREE.SRGBColorSpace;
+  studioTex.mapping = THREE.EquirectangularReflectionMapping;
+  return studioTex;
 }
 
 // 貼圖的上方對應史萊姆的頭頂
@@ -345,10 +380,14 @@ function realJelly(skin) {
       transmission: 0.8, thickness: 0.7, ior: 1.33, attenuationColor: new THREE.Color('#fff4fa'), attenuationDistance: 1.5,
     });
   }
+  // 果凍：表面一層水亮的塗層、裡面淡一點，顏色是透亮的，不會被後面的檯面染得灰灰的
+  const night = skin.look === 'night';
   return new THREE.MeshPhysicalMaterial({
-    color, roughness: 0.35, clearcoat: 0.2, clearcoatRoughness: 0.5,
-    transmission: 0.92, thickness: 0.7, ior: 1.33,
-    attenuationColor: color, attenuationDistance: skin.look === 'night' ? 0.35 : 0.9,
+    color, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.1,
+    transmission: night ? 0.88 : 0.7, thickness: 0.55, ior: 1.33,
+    attenuationColor: color, attenuationDistance: night ? 0.35 : 2.2,
+    emissive: color, emissiveIntensity: night ? 0.02 : 0.22,
+    envMap: getStudioEnv(), envMapIntensity: 0.9,
   });
 }
 
@@ -399,17 +438,23 @@ function bodyMaterial(skin, fancy) {
       return new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, metalness: 0.1, clearcoat: 0.25, iridescence: 0.6, iridescenceIOR: 1.4 });
     case 'bismuth':
       // 鉍：金屬表面一層薄薄的氧化膜，看起來是彩虹色（藍、紫、金、綠）
-      return new THREE.MeshPhysicalMaterial({ color, metalness: 1, roughness: 0.28, iridescence: 1, iridescenceIOR: 2.0, iridescenceThicknessRange: [250, 900] });
+      return new THREE.MeshPhysicalMaterial({ color, metalness: 1, roughness: 0.28, iridescence: 1, iridescenceIOR: 2.0, iridescenceThicknessRange: [250, 900], envMap: getStudioEnv(), envMapIntensity: 1.2 });
     case 'metal':
     default:
-      return new THREE.MeshStandardMaterial({ color, metalness: 0.9, roughness: 0.5 });
+      // 金屬：像烤漆的金屬玩具，底下是霧霧的金屬，上面一層亮亮的透明漆（低畫質省掉透明漆）
+      if (!fancy) return new THREE.MeshStandardMaterial({ color, metalness: 0.85, roughness: 0.3, envMap: getStudioEnv(), envMapIntensity: 1.1 });
+      return new THREE.MeshPhysicalMaterial({
+        color, metalness: 0.85, roughness: 0.38, clearcoat: 0.7, clearcoatRoughness: 0.12,
+        envMap: getStudioEnv(), envMapIntensity: 1.1,
+      });
   }
 }
 
 const eyeGeo = new THREE.SphereGeometry(1, 16, 12);
 // 眼睛設成「半透明但其實不透明」，才能排在半透明的身體後面畫
-const eyeBlack = new THREE.MeshStandardMaterial({ color: 0x1e1724, roughness: 0.35, transparent: true, opacity: 1 });
-const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, transparent: true, opacity: 1 });
+// 眼睛不吃光（2026-10-05：以前太陽照到的那一邊，黑眼睛會反光變灰）：永遠是純黑、純白，像畫上去的豆豆眼
+const eyeBlack = new THREE.MeshBasicMaterial({ color: 0x1e1724, transparent: true, opacity: 1 });
+const eyeWhite = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, toneMapped: false });
 
 function makePoints(n, size, color, at) {
   const pos = new Float32Array(n * 3);
