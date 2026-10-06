@@ -6,7 +6,7 @@
 export const STAT_NAMES = {
   coinsDropped: '投出去的幣',
   coinsWon: '推下來的幣',
-  bigWon: '推下來的大金幣',
+  bigWon: '推下來的金幣',
   dollsCollected: '收集到的娃娃',
   rains: '遇到的金幣雨',
   upgradesBought: '買過的升級',
@@ -59,8 +59,8 @@ export const ACHIEVEMENTS = [
   { id: 'drop10000', icon: 'bell', cat: 'coin', name: '一萬次的叮', desc: '總共投出 10000 枚幣', points: 50, check: (g) => g.stats.coinsDropped >= 10000 },
   { id: 'won500', icon: 'coinFall', cat: 'coin', name: '嘩啦嘩啦', desc: '總共推下來 500 枚幣', points: 20, check: (g) => g.stats.coinsWon >= 500 },
   { id: 'won5000', icon: 'mountain', cat: 'coin', name: '金山', desc: '總共推下來 5000 枚幣', points: 50, check: (g) => g.stats.coinsWon >= 5000 },
-  { id: 'big1', icon: 'bigCoin', cat: 'coin', name: '大的來了', desc: '推下來第一枚大金幣', points: 10, check: (g) => g.stats.bigWon >= 1 },
-  { id: 'big50', icon: 'bigCoins', cat: 'coin', name: '大金幣收藏家', desc: '總共推下來 50 枚大金幣', points: 30, check: (g) => g.stats.bigWon >= 50 },
+  { id: 'big1', icon: 'bigCoin', cat: 'coin', name: '大的來了', desc: '推下來第一枚金幣', points: 10, check: (g) => g.stats.bigWon >= 1 },
+  { id: 'big50', icon: 'bigCoins', cat: 'coin', name: '金幣收藏家', desc: '總共推下來 50 枚金幣', points: 30, check: (g) => g.stats.bigWon >= 50 },
   { id: 'firstDoll', icon: 'slime', cat: 'slime', name: '抱回家', desc: '收集到第一隻史萊姆娃娃', points: 10, check: (g) => g.stats.dollsCollected >= 1 },
   { id: 'doll50', icon: 'slimes', cat: 'slime', name: '史萊姆牧場', desc: '總共收集 50 隻娃娃', points: 30, check: (g) => g.stats.dollsCollected >= 50 },
   { id: 'legend', icon: 'sparkle', cat: 'slime', name: '閃閃發亮', desc: '收集到一隻傳說娃娃', points: 30, check: (g) => g.legend },
@@ -78,8 +78,9 @@ export const ACHIEVEMENTS = [
 // 裝飾品：slot 是裝在哪裡（同一個 slot 一次只能裝一個），價錢是成就點數。
 // 同一類（slot）的價錢都一樣，不同類可以不一樣（2026-10-05 納可定）
 // 2026-10-05 納可：成就商品不准很貴，每樣 30 到 60 點
-const SLOT_PRICE = { coinFace: 60, pusher: 40, pusherDeco: 50, table: 40, background: 30, coin: 50, light: 40 };
-export const REMOVED_DECOR = { themeCandy: 150, themeSea: 150, themeArcade: 150 }; // 拿掉的裝飾品（機台主題）：買過的退還點數
+const SLOT_PRICE = { coinFace: 60, pusher: 40, pusherDeco: 50, table: 40, background: 30, light: 40 };
+// 拿掉的裝飾品：買過的退還點數（機台主題 2026-10-05；硬幣顏色 2026-10-06，因為銅、銀、金三種幣本身就是不同顏色；夜晚霓虹 2026-10-06 變成預設）
+export const REMOVED_DECOR = { themeCandy: 150, themeSea: 150, themeArcade: 150, coinBronze: 50, coinRose: 50, coinSilver: 50, lightNeon: 40 };
 // apply(畫面) 把外觀換上去，remove(畫面) 換回原本的
 function tableColor(id, name, color) {
   return {
@@ -95,63 +96,7 @@ function bgColor(id, name, color) {
     remove: (v) => { v.scene.background.set(0x14121c); },
   };
 }
-// 硬幣換色：在原本的顏色上乘一個色調（一般幣和大金幣都會換）
-// grey：先把金色的貼圖換成灰階的，再上色（銀色要用這個，金色乘什麼都變不成銀色）
-const greyMaps = new Map();
-function greyOf(tex, THREE) {
-  if (greyMaps.has(tex)) return greyMaps.get(tex);
-  const src = tex.image;
-  const c = document.createElement('canvas');
-  c.width = src.width;
-  c.height = src.height;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(src, 0, 0);
-  const img = ctx.getImageData(0, 0, c.width, c.height);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const l = Math.min(255, (img.data[i] * 0.4 + img.data[i + 1] * 0.45 + img.data[i + 2] * 0.15) * 1.15);
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = l;
-  }
-  ctx.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = tex.colorSpace;
-  t.center.copy(tex.center);
-  t.rotation = tex.rotation;
-  t.repeat.copy(tex.repeat);
-  t.wrapS = tex.wrapS;
-  t.wrapT = tex.wrapT;
-  greyMaps.set(tex, t);
-  return t;
-}
-function coinTint(id, name, tint, plain, grey = false) {
-  const mats = (v) => [...v.coinMatFancy, ...v.bigMatFancy];
-  return {
-    id, name, slot: 'coin', price: SLOT_PRICE.coin,
-    apply: (v) => {
-      for (const m of mats(v)) {
-        if (!m.userData.baseColor) m.userData.baseColor = m.color.clone();
-        if (m.userData.baseMap === undefined) m.userData.baseMap = m.map;
-        if (grey) {
-          if (m.map) { m.map = greyOf(m.userData.baseMap, v.THREE); m.color.set(tint); }
-          else m.color.set(tint).multiplyScalar(0.92); // 側邊沒有貼圖，直接換色
-          m.needsUpdate = true;
-        } else {
-          m.color.copy(m.userData.baseColor).multiply(new v.THREE.Color(tint));
-        }
-      }
-      if (!v.coinMatPlain.userData.baseColor) v.coinMatPlain.userData.baseColor = v.coinMatPlain.color.clone();
-      v.coinMatPlain.color.set(plain);
-    },
-    remove: (v) => {
-      for (const m of mats(v)) {
-        if (m.userData.baseColor) m.color.copy(m.userData.baseColor);
-        if (m.userData.baseMap !== undefined && m.map !== m.userData.baseMap) { m.map = m.userData.baseMap; m.needsUpdate = true; }
-      }
-      if (v.coinMatPlain.userData.baseColor) v.coinMatPlain.color.copy(v.coinMatPlain.userData.baseColor);
-    },
-  };
-}
-
-// 硬幣圖案（2026-10-05 納可：以後可以買不同圖案的硬幣）：換正面的浮雕，背面數字不變，可以跟硬幣顏色一起搭
+// 硬幣圖案（2026-10-05 納可：以後可以買不同圖案的硬幣）：換正面的浮雕，背面數字不變，銅、銀、金三種幣都會換
 function coinFace(id, name, kind) {
   return {
     id, name, slot: 'coinFace', price: SLOT_PRICE.coinFace,
@@ -191,6 +136,8 @@ function pusherDeco(id, name, draw) {
 }
 // 燈光（2026-10-04 納可：燈光不要跟真實時間自動變，讓玩家自己選）：整台機台的打光換一種氣氛
 // hemi 環境光、sun 主燈、warm 上方的小燈、exp 整體亮度；neon 是額外兩盞霓虹燈（左粉右青）
+// 預設燈光：夜晚霓虹（2026-10-06 納可：配藍色背景很好看）。原本在商店賣，買過的退點數
+export const LIGHT_NEON = { hemi: [0x4a3a90, 0.6], sun: [0x9fb0ff, 0.9], warm: [0xff3fa0, 22], exp: 1.0, env: 0.22, neon: true };
 function lightMood(id, name, m) {
   return {
     id, name, slot: 'light', price: SLOT_PRICE.light,
@@ -274,7 +221,8 @@ export const DECORATIONS = [
   lightMood('lightDay', '白天', { hemi: [0xffffff, 1.0], sun: [0xfffaf0, 2.8], warm: [0xfff0d8, 6], exp: 1.2, env: 0.75 }),
   lightMood('lightSunset', '黃昏', { hemi: [0xff9a62, 0.9], sun: [0xff8a3a, 2.8], warm: [0xff6a2a, 26], exp: 1.05, env: 0.3 }),
   lightMood('lightMoon', '月光', { hemi: [0x5f7fd0, 0.8], sun: [0xa9c2ff, 2.2], warm: [0x7f9cff, 14], exp: 0.95, env: 0.28 }),
-  lightMood('lightNeon', '夜晚霓虹', { hemi: [0x4a3a90, 0.6], sun: [0x9fb0ff, 0.9], warm: [0xff3fa0, 22], exp: 1.0, env: 0.22, neon: true }),
+  // 原本的預設燈光（2026-10-06 預設改成夜晚霓虹，原本的燈放進商店）
+  lightMood('lightWarm', '暖黃', { hemi: [0xfff4e0, 0.6], sun: [0xffffff, 2.2], warm: [0xffb85c, 14], exp: 1.1, env: 0.6 }),
   tableColor('tableRed', '紅絨布檯面', 0x7a2433),
   tableColor('tableBlue', '深藍絨布檯面', 0x1f3f6b),
   tableColor('tableBlack', '黑絨布檯面', 0x1d1b22),
@@ -282,9 +230,6 @@ export const DECORATIONS = [
   bgColor('bgNight', '夜空藍背景', 0x0d1530),
   bgColor('bgWarm', '暖咖啡背景', 0x2a1d16),
   bgColor('bgPlum', '梅子紫背景', 0x2e1c2e),
-  coinTint('coinBronze', '古銅硬幣', 0xb8906e, 0xa87a4e),
-  coinTint('coinRose', '玫瑰金硬幣', 0xffc9bd, 0xe0a090),
-  coinTint('coinSilver', '銀色硬幣', 0xe4e8ee, 0xbfc4cc, true),
   coinFace('faceStar', '星星', 'star'),
   coinFace('faceHeart', '愛心', 'heart'),
   coinFace('facePaw', '貓掌', 'paw'),
@@ -297,7 +242,6 @@ export const DECORATION_SLOTS = {
   pusherDeco: '推板花紋',
   light: '燈光',
   table: '檯面',
-  coin: '硬幣顏色',
   coinFace: '硬幣圖案',
   background: '背景',
 };

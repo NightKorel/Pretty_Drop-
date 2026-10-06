@@ -10,7 +10,7 @@ import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
 } from './slime.js?v=0.0.107';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR } from './achievements.js?v=0.0.107';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.0.107';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -50,8 +50,15 @@ const PUSHER_DEPTH = 7.5;    // 推板前後長度
 const PUSHER_H = 0.6;        // 推板高度
 const PUSHER_MID = -3.5 - PUSHER_DEPTH / 2; // 推板中心來回的中點
 const PUSHER_AMP = 1.2;      // 推板來回的幅度
-const COIN_R = 0.5;          // 硬幣做大顆、厚一點，每一枚看起來比較值錢
-const COIN_H = 0.14;
+const COIN_R = 0.5;          // 硬幣做大顆、厚一點，每一枚看起來比較值錢（瞄準範圍照這個算）
+const COIN_H = 0.14;         // 三種幣一樣厚（2026-10-06 納可同意 Claude 的建議）
+// 三種硬幣（2026-10-06 納可定：銅 1、銀 5、金 10，大金幣取消）。投一枚一樣花 1 枚。
+// r 是半徑：銅小、銀跟原本一樣、金大；plain 是低畫質用的顏色
+const COIN_KINDS = {
+  copper: { name: '銅幣', value: 1, r: 0.44, plain: 0xc27a4e },
+  silver: { name: '銀幣', value: 5, r: 0.5, plain: 0xc9ced8 },
+  gold: { name: '金幣', value: 10, r: 0.56, plain: 0xd9a53a },
+};
 const DROP_Y = 3.2;          // 投幣高度
 const DROP_Z = -4.6;         // 投幣的前後位置（推板上方）
 const STEP = 1 / 60;           // 物理一步的秒數
@@ -59,7 +66,6 @@ const START_WALLET = 30;
 const MAX_COINS = 300;       // 檯面上幣的上限（保護效能）
 const GUARD_H = 0.1;          // 側溝擋板的高度（一枚幣厚 0.14，擋板大約七成高）
 const MOM_GIVE = 10;         // 媽媽每次給幾枚
-const MOM_CAP = 100;         // 手上滿這麼多，媽媽就先不給（免得掛機刷）
 
 // ===== 商店升級 =====
 // 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項。
@@ -91,10 +97,10 @@ const UPGRADES = {
     levels: [1.0, 0.9, 0.82, 0.75, 0.69, 0.64, 0.6],  // 兩次投幣之間至少隔幾秒（2026-10-05 納可：滿級太快，整體調慢，一開始的 1 秒不動；原本滿級 0.35）
     base: 30, growth: 1.5,
   },
-  lucky: {
-    name: '大金幣',
-    desc: '投幣時有機會掉出大金幣（推下去值 10 枚），升級讓機會變大',
-    levels: [0, 0.015, 0.025, 0.035, 0.045, 0.055, 0.065, 0.08], // 每投一枚變成大金幣的機率（沒買就沒有）
+  silver: {
+    name: '銀幣',
+    desc: '解鎖銀幣（推下去值 5 枚，投一枚一樣花 1 枚）。升級讓銀幣變多',
+    levels: [0, 3, 4, 5, 6, 7, 8, 9],                 // 每 20 枚裡有幾枚銀幣（沒買就沒有）
     base: 60, growth: 1.55,
   },
   rain: {
@@ -108,6 +114,12 @@ const UPGRADES = {
     desc: '每場金幣雨撒下來的幣變多',
     levels: [30, 40, 50, 60, 70, 80, 100, 150],        // 一場金幣雨幾枚
     base: 200, growth: 1.4,  // 2026-10-05 漲幅收小（原本 1.5），40 到 60 分那段才有東西可以買
+  },
+  gold: {
+    name: '金幣',
+    desc: '解鎖金幣（推下去值 10 枚，投一枚一樣花 1 枚）。升級讓金幣變多',
+    levels: [0, 1, 2, 3, 4, 5, 6],                    // 每 20 枚裡有幾枚金幣（沒買就沒有）
+    base: 400, growth: 1.5,
   },
   shake: {
     name: '甩一甩',
@@ -162,14 +174,16 @@ function rebirthNeed(n) {
 // 輪迴點商店：costs 是每一級要幾點。每一級都一樣 1 點，不會越來越貴（納可：輪迴點每一點都很珍貴）
 // 以後要卡進度，用「這一層全部升到多少級才開第二層」來卡（納可定）
 // 每一級的效果不一定一樣，所以畫面上只寫「升級後」那一級的效果（納可定）。eff(lv) 是第 lv 級的效果
-const PERK_MULT = 0.1;       // 收入加成每級 +10%，用加的（3 級就是多拿 30%）（2026-10-05 納可定）
+const PERK_MULT = 0.1;       // 收入加成每級 +10%（2026-10-05 納可定）。2026-10-06 納可：改成複利，每級乘 1.1（3 級是 1.1³ ≈ 多拿 33%）
 const PERK_MONEY = [0, 100, 300, 600, 1000, 1500]; // 初始資金每一級總共多幾枚（納可定）
-const PERK_OFF = 0.1;        // 商店打折每級 -10%
+const PERK_OFF = 0.1;        // 商店打折每級 -10%，複利（每級乘 0.9，2026-10-06 納可）
+const perkMult = (lv) => Math.pow(1 + PERK_MULT, lv);
+const perkOff = (lv) => Math.pow(1 - PERK_OFF, lv);
 const PERKS = {
-  mult: { name: '收入加成', costs: [1, 1, 1, 1, 1], eff: (lv) => `推下來的幣、娃娃、轉盤都多拿 ${Math.round(lv * PERK_MULT * 100)}%` },
+  mult: { name: '收入加成', costs: [1, 1, 1, 1, 1], eff: (lv) => `推下來的幣、娃娃、轉盤都多拿 ${Math.round((perkMult(lv) - 1) * 100)}%` },
   startMoney: { name: '初始資金', costs: [1, 1, 1, 1, 1], eff: (lv) => `輪迴後一開始手上多 ${PERK_MONEY[lv]} 枚` },
   headStart: { name: '起跑', costs: [1, 1, 1], eff: (lv) => `輪迴後「媽媽十元」「投幣速度」「推板加速」直接從 Lv ${lv} 開始` },
-  discount: { name: '商店打折', costs: [1, 1, 1, 1], eff: (lv) => `商店升級便宜 ${Math.round(lv * PERK_OFF * 100)}%` },
+  discount: { name: '商店打折', costs: [1, 1, 1, 1], eff: (lv) => `商店升級便宜 ${Math.round((1 - perkOff(lv)) * 100)}%` },
   dollCap: { name: '娃娃上限', costs: [1, 1], eff: (lv) => `檯面上同時最多 ${MAX_DOLLS + lv} 隻娃娃` },
   // 小寶物（2026-10-05 納可定：可以解鎖和增加上限）：照價值順序一級開一種
   gems: { name: '小寶物', costs: [1, 1, 1], eff: (lv) => `機台會放${TREASURE_ORDER.slice(0, lv).map((k) => `${TREASURES[k].name}（${TREASURES[k].value} 枚）`).join('、')}` },
@@ -182,12 +196,9 @@ const perkLv = (k) => rebirth.perks[k];
 // 商店升級的價錢（打折後一樣取乾脆的數字）
 function upPrice(key, lv = upgrades[key]) {
   const p = UPGRADES[key].prices[lv];
-  const off = 1 - perkLv('discount') * PERK_OFF;
+  const off = perkOff(perkLv('discount'));
   return off < 1 ? niceMoney(p * off) : p;
 }
-const BIG_VALUE = 10;         // 大金幣推下去值幾枚
-const BIG_R = 0.7;
-const BIG_H = 0.18;
 
 // ===== 狀態 =====
 let wallet = START_WALLET;
@@ -319,8 +330,9 @@ const warm = new THREE.PointLight(0xffb85c, 14, 20);
 warm.position.set(0, 5, 2);
 scene.add(warm);
 
-// 燈光（成就商店的裝飾品）：換掉環境光、主燈、上方小燈的顏色和亮度；霓虹多兩盞彩色燈。null 換回原本的
-const LIGHT_BASE = { hemi: [hemi.color.getHex(), hemi.intensity], sun: [sun.color.getHex(), sun.intensity], warm: [warm.color.getHex(), warm.intensity], exp: renderer.toneMappingExposure, env: scene.environmentIntensity };
+// 燈光（成就商店的裝飾品）：換掉環境光、主燈、上方小燈的顏色和亮度；霓虹多兩盞彩色燈。null 換回預設
+// 預設是夜晚霓虹（2026-10-06 納可）；原本的暖黃燈放進成就商店
+const LIGHT_BASE = LIGHT_NEON;
 let neonLights = null;
 function setLight(m) {
   const L = m || LIGHT_BASE;
@@ -342,6 +354,7 @@ function setLight(m) {
   }
   if (neonLights) for (const n of neonLights) n.visible = !!L.neon;
 }
+setLight(null);
 
 // ===== 物理 =====
 const world = new RAPIER.World({ x: 0, y: -19.6, z: 0 });
@@ -504,23 +517,20 @@ function toggleShelf(id) {
 }
 
 // ===== 幣 =====
-const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_H, 28);
-const coinMatFancy = makeCoinMaterials();
-const coinMatPlain = new THREE.MeshLambertMaterial({ color: 0xd9a53a, emissive: 0x1a1000 });
-let coinMeshMat = coinMatFancy;
-// 大金幣：大一號、背面寫 10，顏色比一般幣深一點點
-const bigGeo = new THREE.CylinderGeometry(BIG_R, BIG_R, BIG_H, 32);
-const bigMatFancy = makeCoinMaterials('10').map((m) => {
-  m.color.multiply(new THREE.Color(0xddcfb4)); // 在原本的顏色上壓深一點點（側邊也是）
-  return m;
-});
-const bigMatPlain = new THREE.MeshLambertMaterial({ color: 0xc7952f, emissive: 0x160c00 });
-let bigMeshMat = bigMatFancy;
+// 每種幣自己的形狀和材質：背面寫面額；fancy 是高、中畫質，plain 是低畫質
+for (const [kind, k] of Object.entries(COIN_KINDS)) {
+  k.geo = new THREE.CylinderGeometry(k.r, k.r, COIN_H, 28);
+  k.fancy = makeCoinMaterials(String(k.value), kind);
+  k.plainMat = new THREE.MeshLambertMaterial({ color: k.plain, emissive: 0x140c00 });
+}
+const coinMat = (kind) => (quality === 'low' ? COIN_KINDS[kind].plainMat : COIN_KINDS[kind].fancy);
 const COIN_EDGE = 0.03;
 const coinEuler = new THREE.Euler();
 const coinQuat = new THREE.Quaternion();
 
-function spawnCoin(x, y, z, tilt = 0, big = false) {
+function spawnCoin(x, y, z, tilt = 0, kind = 'copper') {
+  if (!COIN_KINDS[kind]) kind = 'copper';
+  const K = COIN_KINDS[kind];
   if (coins.length >= MAX_COINS) return null;
   coinEuler.set(Math.random() * tilt, Math.random() * Math.PI, Math.random() * tilt);
   coinQuat.setFromEuler(coinEuler);
@@ -533,23 +543,19 @@ function spawnCoin(x, y, z, tilt = 0, big = false) {
       .setCcdEnabled(true),
   );
   world.createCollider(
-    RAPIER.ColliderDesc.roundCylinder(
-      (big ? BIG_H : COIN_H) / 2 - COIN_EDGE,
-      (big ? BIG_R : COIN_R) - COIN_EDGE,
-      COIN_EDGE,
-    )
+    RAPIER.ColliderDesc.roundCylinder(COIN_H / 2 - COIN_EDGE, K.r - COIN_EDGE, COIN_EDGE)
       .setDensity(1)
       .setContactSkin(0.01) // 留一層很薄的皮，疊在一起時比較不會抖
-      .setCollisionGroups(big ? OTHER_GROUPS : COIN_GROUPS)
+      .setCollisionGroups(COIN_GROUPS)
       .setFriction(COIN_FRICTION)
       .setRestitution(0),
     body,
   );
-  const mesh = big ? new THREE.Mesh(bigGeo, bigMeshMat) : new THREE.Mesh(coinGeo, coinMeshMat);
+  const mesh = new THREE.Mesh(K.geo, coinMat(kind));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
-  const coin = { body, mesh, value: big ? BIG_VALUE : 1 };
+  const coin = { body, mesh, kind, value: K.value };
   coins.push(coin);
   return coin;
 }
@@ -680,7 +686,7 @@ function placeQueuedDolls() {
     const z = zMin + Math.random() * Math.min(0.4, zMax - zMin);
     // 挑擋到最少東西的位置
     const others = [
-      ...coins.map((c) => ({ body: c.body, r: c.value > 1 ? BIG_R : COIN_R })),
+      ...coins.map((c) => ({ body: c.body, r: COIN_KINDS[c.kind].r })),
       ...treasures.map((t) => ({ body: t.body, r: 0.45 })),
       ...props.map((p) => ({ body: p.body, r: 0.6 })),
       ...dolls.map((d) => ({ body: d.body, r: SLIME_R * (d.scale || 1) })),
@@ -774,7 +780,7 @@ function prefill() {
 // 賺錢都走這裡：算上輪迴的收入加成（小數存起來，湊滿 1 枚再給）
 let earnCarry = 0;
 function earn(v) {
-  const x = v * (1 + perkLv('mult') * PERK_MULT) + earnCarry;
+  const x = v * perkMult(perkLv('mult')) + earnCarry;
   const n = Math.floor(x);
   earnCarry = x - n;
   wallet += n;
@@ -857,12 +863,8 @@ function updateHud() {
     shopShownWallet = wallet;
     renderShop();
   }
-  if (wallet < MOM_CAP) {
-    const left = Math.ceil(upValue('refill') - refillTimer);
-    refillEl.textContent = `${left} 秒後獲得 ${MOM_GIVE} 枚`;
-  } else {
-    refillEl.textContent = `手上滿 ${MOM_CAP} 枚，先不會獲得`;
-  }
+  const left = Math.ceil(upValue('refill') - refillTimer);
+  refillEl.textContent = `${left} 秒後獲得 ${MOM_GIVE} 枚`;
 }
 // 置中的字，開頭和結尾的符號不算（2026-10-05 納可定）：例如「+1」是 1 在正中間、「金幣雨！」是幣在正中間。
 // 做法：符號用絕對定位掛在字的外面，不佔置中的寬度
@@ -895,7 +897,7 @@ const SOUND_KINDS = {
   drop: '投幣',
   clink: '硬幣碰撞',
   win: '幣掉下來',
-  big: '大金幣',
+  big: '銀幣、金幣',
   rain: '金幣雨',
   mom: '媽媽給錢',
   shop: '商店購買',
@@ -955,7 +957,7 @@ function updateCoinSound() {
 }
 
 // ===== 瞄準與投幣 =====
-const aimGhost = new THREE.Mesh(coinGeo, new THREE.MeshBasicMaterial({ color: 0xf4c95d, transparent: true, opacity: 0.35 }));
+const aimGhost = new THREE.Mesh(COIN_KINDS.silver.geo, new THREE.MeshBasicMaterial({ color: 0xf4c95d, transparent: true, opacity: 0.35 }));
 aimGhost.position.set(0, DROP_Y, DROP_Z);
 scene.add(aimGhost);
 
@@ -973,7 +975,37 @@ function aimFromEvent(e) {
   }
 }
 
-const bigChance = new PseudoRandom(UPGRADES.lucky.levels[0]);
+// 掉落袋子（2026-10-06 納可定）：三袋混在一起抽，每袋 20 枚、比例固定，三袋抽完才補三袋。
+// 銀幣、金幣的等級變了（買升級、輪迴、讀檔），袋子馬上照新比例重裝
+const BAG_SIZE = 20;
+let coinBag = [];
+let coinBagMix = '';
+function bagCounts() {
+  const silver = upValue('silver');
+  const gold = upValue('gold');
+  return { gold, silver, copper: BAG_SIZE - silver - gold };
+}
+function refillCoinBag() {
+  const n = bagCounts();
+  coinBagMix = `${n.silver},${n.gold}`;
+  coinBag = [];
+  for (let b = 0; b < 3; b++) for (const kind of ['copper', 'silver', 'gold']) for (let i = 0; i < n[kind]; i++) coinBag.push(kind);
+  for (let i = coinBag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [coinBag[i], coinBag[j]] = [coinBag[j], coinBag[i]];
+  }
+}
+function nextCoinKind() {
+  const n = bagCounts();
+  if (!coinBag.length || coinBagMix !== `${n.silver},${n.gold}`) refillCoinBag();
+  return coinBag.pop();
+}
+// 金幣雨、補錢雨、狂熱時間掉下來的幣：照袋子的比例隨機，不動袋子
+function randomCoinKind() {
+  const n = bagCounts();
+  const r = Math.random() * BAG_SIZE;
+  return r < n.gold ? 'gold' : r < n.gold + n.silver ? 'silver' : 'copper';
+}
 const dollChance = new PseudoRandom(DOLL_CHANCE);
 
 
@@ -988,23 +1020,19 @@ function setAuto(on) {
 function dropCoin() {
   // 手上沒幣就安靜地什麼都不做；自動投幣不會關掉，有錢了會繼續投
   if (wallet <= 0) return;
-  if (bigChance.p !== upValue('lucky')) bigChance.setChance(upValue('lucky'));
   // 一次多投：一起丟出好幾枚，左右稍微散開；手上不夠就丟手上有的
   const n = Math.min(wallet, upValue('multi'));
   let dropped = 0;
   for (let k = 0; k < n; k++) {
-    // 還沒買「大金幣」就完全不會出現，保底進度也不累積
-    const big = upValue('lucky') > 0 && bigChance.roll();
+    const kind = nextCoinKind();
     const spread = n > 1 ? (k - (n - 1) / 2) * 0.75 : 0;
     const lim = halfW - COIN_R - 0.05;
     const x = Math.max(-lim, Math.min(lim, aimX + spread + (Math.random() - 0.5) * 0.05));
-    const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + (Math.random() - 0.5) * 0.3, 0.4, big);
+    const c = spawnCoin(x, DROP_Y + k * 0.15, DROP_Z + (Math.random() - 0.5) * 0.3, 0.4, kind);
     if (!c) break;
     dropped++;
-    if (big) {
-      floatText('大金幣！', new THREE.Vector3(x, DROP_Y, DROP_Z));
-      beep(1500, 0.15, 0.05, 'triangle', 'big');
-    }
+    if (kind === 'gold') beep(1500, 0.15, 0.05, 'triangle', 'big');
+    else if (kind === 'silver') beep(1250, 0.1, 0.035, 'triangle', 'big');
   }
   if (!dropped) return;
   wallet -= dropped;
@@ -1110,11 +1138,7 @@ function applyQuality(q) {
   sun.castShadow = shadows;
   scene.environment = q === 'low' ? null : envTex;
   hemi.intensity = q === 'low' ? 1.4 : 0.6;
-  coinMeshMat = q === 'low' ? coinMatPlain : coinMatFancy;
-  bigMeshMat = q === 'low' ? bigMatPlain : bigMatFancy;
-  for (const c of coins) {
-    c.mesh.material = c.value > 1 ? bigMeshMat : coinMeshMat;
-  }
+  for (const c of coins) c.mesh.material = coinMat(c.kind);
   for (const t of treasures) t.mesh.material = treasureMaterial(t.kind, q !== 'low');
   // 娃娃換畫質要整隻重做（高／中是真的透光，低是假的半透明）
   for (const d of dolls) {
@@ -1288,7 +1312,7 @@ function makeMiniView(canvas, withCoins) {
   if (withCoins) {
     // 腳下放幾枚硬幣，半透明的娃娃才看得出透光
     for (let i = 0; i < 7; i++) {
-      const c = new THREE.Mesh(coinGeo, coinMatFancy);
+      const c = new THREE.Mesh(COIN_KINDS.gold.geo, COIN_KINDS.gold.fancy);
       const a = (i / 7) * Math.PI * 2;
       c.position.set(Math.cos(a) * 0.8, -0.07, Math.sin(a) * 0.8 - 0.1);
       c.rotation.y = a;
@@ -1571,23 +1595,19 @@ function toast(html) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
 }
 
-// 硬幣圖案：換一般幣和大金幣正面的貼圖。裝著硬幣顏色（例如銀色）的話，先拿下再裝回去，顏色才會跟著新圖案
+// 硬幣圖案：換三種幣正面的貼圖（每種金屬各畫一份）
 const faceMapCache = {};
-let faceBase = null;
-function setCoinFace(kind) {
-  const fronts = [coinMatFancy[1], bigMatFancy[1]];
-  if (!faceBase) faceBase = { map: fronts[0].map, normalMap: fronts[0].normalMap, roughnessMap: fronts[0].roughnessMap };
-  const maps = kind ? (faceMapCache[kind] ||= makeFaceMaps(kind)) : faceBase;
-  const tint = DECORATIONS.find((x) => x.id === equipped.coin);
-  if (tint) tint.remove(decorView);
-  for (const m of fronts) {
+const faceBase = {};
+function setCoinFace(face) {
+  for (const [kind, k] of Object.entries(COIN_KINDS)) {
+    const m = k.fancy[1];
+    faceBase[kind] ||= { map: m.map, normalMap: m.normalMap, roughnessMap: m.roughnessMap };
+    const maps = face ? (faceMapCache[`${face}.${kind}`] ||= makeFaceMaps(face, kind)) : faceBase[kind];
     m.map = maps.map;
     m.normalMap = maps.normalMap;
     m.roughnessMap = maps.roughnessMap;
-    m.userData.baseMap = undefined;
     m.needsUpdate = true;
   }
-  if (tint) tint.apply(decorView);
 }
 
 // ===== 成就與成就商店 =====
@@ -1595,7 +1615,7 @@ const achEl = document.getElementById('ach');
 const achListEl = document.getElementById('achList');
 let achTab = 'list';
 // 裝飾品換外觀時可以動到的東西
-const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, setCoinFace, coinMatFancy, bigMatFancy, coinMatPlain, bigMatPlain };
+const decorView = { THREE, scene, table: table.mesh, pusher: pusher.mesh, setPusherDeco, setLight, setCoinFace };
 
 function checkAchievements() {
   const kinds = SLIME_SETS.reduce((n, st) => n + kindsIn(st.id), 0);
@@ -1855,7 +1875,7 @@ const REACH_EXTRA = 3.0;     // 多伸 3 格。推板尾巴會離開擋牆，掉
 // 從畫面上方翻轉著掉下一枚幣（金幣雨、狂熱時間共用）
 function dropRainCoin() {
   const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.2);
-  const c = spawnCoin(x, 9 + Math.random() * 3, -5.5 + Math.random() * 6, Math.PI);
+  const c = spawnCoin(x, 9 + Math.random() * 3, -5.5 + Math.random() * 6, Math.PI, randomCoinKind());
   if (!c) return false;
   c.body.setLinvel({ x: 0, y: -2 - Math.random() * 2, z: 0 }, true);
   c.body.setAngvel({ x: (Math.random() - 0.5) * 16, y: 0, z: (Math.random() - 0.5) * 16 }, true);
@@ -1899,7 +1919,7 @@ const FEVER_TIME = 20;
 const FEVER_SPEED = 1.6;     // 狂熱時推板快幾倍
 const FEVER_RAIN = 6;        // 狂熱時每秒掉幾枚金幣
 const FEVER_DOLL = { common: 10, rare: 30, legend: 50 };
-const FEVER_BIG = 2;         // 大金幣 +2（納可定）
+const FEVER_BIG = 2;         // 金幣 +2（原本是大金幣 +2，納可定）
 const FEVER_GEM = 5;         // 小寶物都 +5（納可定）
 let feverGauge = 0;
 let feverTime = 0;
@@ -2957,7 +2977,6 @@ function saveData() {
     rainCd: Math.ceil(rainCd),
     summonCd: Math.ceil(summonCd),
     feverGauge,
-    bigCount: bigChance.count,
     dollCount: dollChance.count,
     jackpotCount: jackpotChance.count,
     freeSpins,
@@ -2998,7 +3017,7 @@ function saveData() {
       const t = c.body.translation();
       const r = c.body.rotation();
       const arr = [t.x, t.y, t.z, r.x, r.y, r.z, r.w].map((v) => Math.round(v * 1000) / 1000);
-      if (c.value > 1) arr.push(1); // 第 8 格有 1 表示大金幣
+      if (c.kind !== 'copper') arr.push(c.kind); // 第 8 格寫幣的種類，沒寫是銅幣
       return arr;
     }),
   };
@@ -3030,6 +3049,8 @@ function applySave(d) {
   rebirth.gained = Math.max(0, Math.floor(Number(d.rebirth?.gained) || 0));
   for (const k of PERK_KEYS) rebirth.perks[k] = Math.min(PERKS[k].costs.length, Math.max(0, Math.floor(Number(d.rebirth?.perks?.[k]) || 0)));
   wallet = Math.max(0, Math.floor(Number(d.wallet) || 0));
+  // 舊存檔買過「大金幣」：換成同樣等級的「銀幣」（2026-10-06）
+  if (d.upgrades && d.upgrades.lucky && !d.upgrades.silver) d.upgrades.silver = d.upgrades.lucky;
   for (const key of Object.keys(upgrades)) {
     const lv = Math.floor(Number(d.upgrades?.[key]) || 0);
     upgrades[key] = Math.min(UPGRADES[key].prices.length, Math.max(0, lv));
@@ -3039,7 +3060,6 @@ function applySave(d) {
   rainCd = Math.min(UPGRADES.rain.levels[1], Math.max(0, Number(d.rainCd) || 0));
   summonCd = Math.min(UPGRADES.summon.levels[1], Math.max(0, Number(d.summonCd) || 0));
   feverGauge = Math.min(FEVER_MAX - 1, Math.max(0, Math.floor(Number(d.feverGauge) || 0)));
-  bigChance.count = Math.max(0, Math.floor(Number(d.bigCount) || 0));
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
   jackpotChance.count = Math.max(0, Math.floor(Number(d.jackpotCount) || 0));
   // 舊版的轉盤券換成免費抽獎次數
@@ -3100,7 +3120,8 @@ function applySave(d) {
   won = Number(d.won) || 0;
   lost = Number(d.lost) || 0;
   for (const c of (d.coins || []).slice(0, MAX_COINS)) {
-    const coin = spawnCoin(c[0], c[1], c[2], 0, c[7] === 1);
+    // 舊存檔第 8 格是 1 表示大金幣（值 10），換成金幣
+    const coin = spawnCoin(c[0], c[1], c[2], 0, c[7] === 1 ? 'gold' : c[7]);
     if (coin) coin.body.setRotation({ x: c[3], y: c[4], z: c[5], w: c[6] }, true);
   }
 }
@@ -3175,17 +3196,20 @@ function stepSim() {
   for (let i = coins.length - 1; i >= 0; i--) {
     const b = coins[i].body.translation();
     const value = coins[i].value;
+    const kind = coins[i].kind;
     if (b.y < -1.2) {
       if (b.z > FRONT_Z - 0.5 && Math.abs(b.x) < halfW + 0.1) {
         const got = earn(value);
         stats.coinsWon += got;
-        addFever(value > 1 ? FEVER_BIG : 1);
-        if (value > 1) stats.bigWon++;
-        floatText(`+${got}`, new THREE.Vector3(b.x, 0, FRONT_Z), value > 1 ? 'big' : '');
+        addFever(kind === 'gold' ? FEVER_BIG : 1);
+        if (kind === 'gold') stats.bigWon++;
+        floatText(`+${got}`, new THREE.Vector3(b.x, 0, FRONT_Z), kind === 'gold' ? 'big' : kind === 'silver' ? 'silver' : '');
         bump(walletEl);
-        addCombo(value);
-        if (value > 1) {
+        addCombo(got);
+        if (kind === 'gold') {
           bigCoinFanfare();
+        } else if (kind === 'silver') {
+          beep(1320 * (1 + Math.min(comboCount, 60) * 0.01), 0.16, 0.07, 'triangle', 'big');
         } else {
           // 連續掉下來時音越來越高，像一串叮叮叮
           beep(1100 * (1 + Math.min(comboCount, 24) * 0.025), 0.14, 0.07, 'sine', 'win');
@@ -3336,17 +3360,13 @@ function updateTimers(frame) {
   if (rainCd > 0) rainCd = Math.max(0, rainCd - frame);
   if (summonCd > 0) summonCd = Math.max(0, summonCd - frame);
 
-  // 媽媽十元：固定時間給 10 枚，手上滿 100 枚就先不給（給了也不超過 100）
-  if (wallet < MOM_CAP) {
-    refillTimer += frame;
-    if (refillTimer >= upValue('refill')) {
-      refillTimer = 0;
-      wallet = Math.min(MOM_CAP, wallet + MOM_GIVE);
-      bump(walletEl);
-      beep(990, 0.1, 0.05, 'triangle', 'mom');
-    }
-  } else {
+  // 媽媽十元：固定時間給 10 枚，不管手上有多少錢都給（2026-10-06 納可：拿掉滿 100 枚就不給的限制）
+  refillTimer += frame;
+  if (refillTimer >= upValue('refill')) {
     refillTimer = 0;
+    wallet += MOM_GIVE;
+    bump(walletEl);
+    beep(990, 0.1, 0.05, 'triangle', 'mom');
   }
 }
 
@@ -3483,8 +3503,9 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, bigChance, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, get coinBag() { return coinBag; }, nextCoinKind, refillCoinBag, COIN_KINDS, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
+  PERKS, PERK_KEYS, perkLv,
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, tutorSeen, get tutorNow() { return tutorNow && tutorNow.id; }, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
 requestAnimationFrame((t) => { lastT = t; tick(t); });

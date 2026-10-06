@@ -22,6 +22,6 @@ const d = await page.evaluate((N) => {
   return { coins: s.coins, phase: s.pusherPhase };
 }, N);
 const out = `// 開局檯面上的硬幣擺法（事先模擬好、已經落定），省掉每次開遊戲都要等硬幣掉下來的時間。\n// 由 tools/layout.mjs 產生：清空檯面、隨機撒幣、模擬到穩定，再把位置存下來。改了硬幣大小或檯面要重跑。\nexport const START_PHASE = ${d.phase.toFixed(4)};\nexport const START_LAYOUT = ${JSON.stringify(d.coins)};\n`;
-fs.writeFileSync('/home/user/Pretty_Drop-/start-layout.js', out);
+fs.writeFileSync(process.env.OUT || new URL('../start-layout.js', import.meta.url).pathname, out);
 console.log(d.coins.length, d.phase);
 await browser.close();

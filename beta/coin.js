@@ -176,8 +176,18 @@ function texture(canvas, srgb = false) {
   return t;
 }
 
+// 三種金屬（2026-10-06 納可：銅、銀、金反光亮度不同，但差別不要太大）：
+// rgb 是幣面的底色；rough 是表面多霧（凹處、凸處），數字越大越霧；env 是反射環境的強度。
+// 銅最霧、銀最亮、金在中間
+export const METALS = {
+  copper: { rgb: [222, 132, 88], warm: true, rough: [0.7, 0.2], side: 0xc27a52, sideRough: 0.45, env: 0.85 },
+  silver: { rgb: [218, 222, 230], warm: false, rough: [0.52, 0.08], side: 0xcfd4dc, sideRough: 0.28, env: 1.15 },
+  gold: { rgb: [240, 190, 80], warm: true, rough: [0.62, 0.12], side: 0xe0b04a, sideRough: 0.35, env: 1.0 },
+};
+
 // 從高度圖做出一面的材質
-function faceMaterial(hmap) {
+function faceMaterial(hmap, metal = 'gold') {
+  const M = METALS[metal];
   const color = makeCanvas(SIZE, SIZE);
   const rough = makeCanvas(SIZE, SIZE);
   const cctx = color.getContext('2d');
@@ -188,12 +198,12 @@ function faceMaterial(hmap) {
     const h = hmap[i];
     // 凸的地方亮、凹的地方暗，遠看也認得出圖案
     const k = 0.62 + 0.5 * h;
-    cimg.data[i * 4] = Math.min(255, 240 * k);
-    cimg.data[i * 4 + 1] = Math.min(255, 190 * k);
-    cimg.data[i * 4 + 2] = Math.min(255, 80 * k * k);
+    cimg.data[i * 4] = Math.min(255, M.rgb[0] * k);
+    cimg.data[i * 4 + 1] = Math.min(255, M.rgb[1] * k);
+    cimg.data[i * 4 + 2] = Math.min(255, M.rgb[2] * (M.warm ? k * k : k));
     cimg.data[i * 4 + 3] = 255;
     // 凸的地方被摸得很亮（光滑），凹的地方霧霧的
-    const r = Math.max(0.12, 0.62 - 0.5 * h) * 255;
+    const r = Math.max(M.rough[1], M.rough[0] - 0.5 * h) * 255;
     rimg.data[i * 4] = r;
     rimg.data[i * 4 + 1] = r;
     rimg.data[i * 4 + 2] = r;
@@ -208,6 +218,7 @@ function faceMaterial(hmap) {
     roughnessMap: maps[2],
     roughness: 1,
     metalness: 0.85,
+    envMapIntensity: M.env,
   }) };
 }
 
@@ -316,13 +327,15 @@ function patternHeightMap(kind) {
 }
 export const COIN_FACES = Object.keys(FACE_DRAW);
 // 回傳正面要用的三張貼圖（顏色、凹凸、粗糙度），方向跟原本的正面一樣
-export function makeFaceMaps(kind) {
-  const f = faceMaterial(patternHeightMap(kind));
+const patternCache = {};
+export function makeFaceMaps(kind, metal = 'gold') {
+  const f = faceMaterial(patternCache[kind] ||= patternHeightMap(kind), metal);
   orient(f.maps, FRONT_ROT, FRONT_FLIP);
   return { map: f.maps[0], normalMap: f.maps[1], roughnessMap: f.maps[2] };
 }
 
-export function makeCoinMaterials(backText = '1') {
+export function makeCoinMaterials(backText = '1', metal = 'gold') {
+  const M = METALS[metal];
   // 正面：史萊姆
   const hmap = new Float32Array(SIZE * SIZE);
   for (let py = 0; py < SIZE; py++) {
@@ -332,8 +345,8 @@ export function makeCoinMaterials(backText = '1') {
       hmap[py * SIZE + px] = faceHeight(x, y);
     }
   }
-  const front = faceMaterial(hmap);
-  const back = faceMaterial(backHeightMap(backText));
+  const front = faceMaterial(hmap, metal);
+  const back = faceMaterial(backHeightMap(backText), metal);
   orient(front.maps, FRONT_ROT, FRONT_FLIP);
   orient(back.maps, BACK_ROT, BACK_FLIP);
 
@@ -345,10 +358,11 @@ export function makeCoinMaterials(backText = '1') {
     for (let x = 0; x < SW; x++) smap[y * SW + x] = 0.5 + 0.5 * Math.sin((x / SW) * Math.PI * 2 * 64);
   }
   const side = new THREE.MeshStandardMaterial({
-    color: 0xe0b04a,
+    color: M.side,
     normalMap: texture(normalFromHeight(smap, SW, SH, 1.6, true)),
-    roughness: 0.35,
+    roughness: M.sideRough,
     metalness: 0.85,
+    envMapIntensity: M.env,
   });
 
   // CylinderGeometry 的順序：側面、上面、下面
