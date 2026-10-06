@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Pretty Drop! 史萊姆推幣機</title>
+  <link rel="stylesheet" href="style.css?v=0.0.107">
+  <!-- 先把要用的檔案一起開始下載，不用等前一個下載完才發現下一個 -->
+  <link rel="modulepreload" href="../lib/three.core.js">
+  <link rel="modulepreload" href="../lib/three.module.js">
+  <link rel="modulepreload" href="../lib/rapier.mjs">
+  <link rel="modulepreload" href="../lib/RoomEnvironment.js">
+  <link rel="modulepreload" href="coin.js?v=0.0.107">
+  <link rel="modulepreload" href="digits.js?v=0.0.107">
+  <link rel="modulepreload" href="start-layout.js?v=0.0.107">
+  <link rel="modulepreload" href="slime.js?v=0.0.107">
+  <link rel="modulepreload" href="achievements.js?v=0.0.107">
+  <link rel="modulepreload" href="treasure.js?v=0.0.107">
+  <link rel="preload" href="../lib/rapier_wasm3d_bg.wasm.gz" as="fetch" crossorigin>
+</head>
+<body>
+  <div id="hud">
+    <div class="title"><span class="tEn">Pretty Drop!</span> <span class="tZh">史萊姆推幣機</span> <span class="ver">v0.0.107 測試版</span></div>
+    <div class="money">
+      <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
+      <div id="feverBar"><span>狂熱</span><i><b id="feverFill"></b></i></div>
+    </div>
+    <div class="btns">
+      <button id="autoBtn" class="hudBtn" type="button">自動</button>
+      <button id="shopBtn" class="hudBtn" type="button">商店</button>
+      <button id="bookBtn" class="hudBtn" type="button">圖鑑</button>
+      <button id="lotteryBtn" class="hudBtn" type="button">彩券</button>
+      <button id="achBtn" class="hudBtn" type="button">成就</button>
+      <button id="settingsBtn" class="hudBtn" type="button">設定</button>
+    </div>
+    <div id="refill" class="refill"></div>
+    <div id="settings">
+      <div class="tabs">
+        <button type="button" class="tab on" data-tab="quality">畫質</button>
+        <button type="button" class="tab" data-tab="sound">音效</button>
+        <button type="button" class="tab" data-tab="save">存檔</button>
+        <button type="button" class="tab" data-tab="other">其他</button>
+      </div>
+      <div class="pane" data-pane="quality">
+        <div class="row">
+          <button type="button" data-q="high">高</button>
+          <button type="button" data-q="mid">中</button>
+          <button type="button" data-q="low">低</button>
+        </div>
+        <div class="note">高：全部效果<br>中：關陰影<br>低：關陰影、反射、幣面圖案</div>
+      </div>
+      <div class="pane" data-pane="sound" hidden>
+        <div id="soundList"></div>
+      </div>
+      <div class="pane" data-pane="save" hidden>
+        <div class="row">
+          <button type="button" id="exportBtn">匯出</button>
+          <button type="button" id="importBtn">匯入</button>
+          <button type="button" id="resetBtn">重新開始</button>
+        </div>
+        <div class="note">遊戲會自動存檔。匯出可以把存檔存成檔案備份。</div>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <div class="pane" data-pane="other" hidden>
+        <details class="grp">
+        <summary><span class="grpTitle">作弊（測試用）</span><span class="grpSum">9 個</span></summary>
+        <div class="cheats">
+          <button type="button" data-cheat="coin100">手上 +100 枚</button>
+          <button type="button" data-cheat="coin1000">手上 +1000 枚</button>
+          <button type="button" data-cheat="doll">放一隻娃娃</button>
+          <button type="button" data-cheat="legend">放一隻傳說娃娃</button>
+          <button type="button" data-cheat="rain">下一場金幣雨</button>
+          <button type="button" data-cheat="sets">解鎖全部娃娃套</button>
+          <button type="button" data-cheat="ach">成就點數 +10</button>
+          <button type="button" data-cheat="ticket">放一張彩券</button>
+          <button type="button" data-cheat="item">放一個道具</button>
+        </div>
+        </details>
+        <div class="note">作弊不會關掉，會照常存檔。</div>
+        <div class="row"><button type="button" id="tutorReset">重看新手提示</button></div>
+      </div>
+    </div>
+  </div>
+  <div id="shop">
+    <div class="shopHead">
+      <div class="shopTitle">商店</div>
+      <div class="shopWallet">手上 <span id="shopWallet">0</span> 枚</div>
+      <button type="button" id="shopClose" aria-label="關閉">✕</button>
+    </div>
+    <div id="shopList"></div>
+  </div>
+  <div id="book">
+    <div class="shopHead">
+      <div class="shopTitle">圖鑑</div>
+      <div class="shopWallet">收集 <span id="bookCount">0</span></div>
+      <button type="button" id="bookClose" aria-label="關閉">✕</button>
+    </div>
+    <div class="bookNote">把史萊姆娃娃推下前緣就能收集，還會噴幣，掉進側溝就沒了。每套 10 隻，同一個位置每套的價值都一樣。</div>
+    <div id="bookList"></div>
+  </div>
+  <div id="ach">
+    <div class="shopHead">
+      <div class="shopTitle">成就</div>
+      <div class="shopWallet">成就點數 <span id="achPoints">0</span></div>
+      <button type="button" id="achClose" aria-label="關閉">✕</button>
+    </div>
+    <div id="achList"></div>
+  </div>
+  <div id="previewBar">
+    <div class="pvInfo"><div id="previewName"></div><div id="previewPrice"></div></div>
+    <button type="button" id="previewAct">購買</button>
+    <button type="button" id="previewBack">返回</button>
+  </div>
+  <div id="viewer">
+    <div class="viewerBox">
+      <button type="button" id="viewerClose" aria-label="關閉">✕</button>
+      <canvas id="viewerCanvas"></canvas>
+      <div id="viewerName"></div>
+      <div id="viewerInfo"></div>
+      <button type="button" id="shelfBtn" hidden>擺上展示架</button>
+      <div class="viewerTip">左右拖曳可以轉</div>
+    </div>
+  </div>
+  <div id="wheel">
+    <div class="viewerBox">
+      <button type="button" id="wheelClose" aria-label="關閉">✕</button>
+      <div class="shopTitle">彩券</div>
+      <canvas id="wheelCanvas" width="600" height="600"></canvas>
+      <div id="wheelResult"></div>
+      <div id="wheelCost" class="viewerTip"></div>
+      <div class="spinRow">
+        <button type="button" id="freeSpinBtn" class="spinBtn"></button>
+        <button type="button" id="paySpinBtn" class="spinBtn"></button>
+      </div>
+      <div class="viewerTip">把檯面上的彩券推下前緣，可以免費抽一次</div>
+    </div>
+  </div>
+  <div id="flash"></div>
+  <div id="combo"></div>
+  <div id="celebrate">
+    <canvas id="confetti"></canvas>
+    <div class="celebCard">
+      <canvas id="celebIcon"></canvas>
+      <div class="celebText">
+        <div id="celebRarity"></div>
+        <div id="celebName"></div>
+        <div id="celebValue"></div>
+        <div id="celebExtra"></div>
+      </div>
+    </div>
+  </div>
+  <div id="reborn">
+    <canvas id="rebornCanvas"></canvas>
+    <div class="rebornText"><span class="hc">轉生中<span class="hr">……</span></span></div>
+  </div>
+  <div id="toast"></div>
+  <div id="rainBanner"><span class="hc">金幣雨<span class="hr">！</span></span></div>
+  <div id="skills">
+    <button id="rainBtn" class="skillBtn" type="button" hidden>金幣雨</button>
+    <button id="skillBtn" class="skillBtn" type="button" hidden>甩一甩</button>
+    <button id="summonBtn" class="skillBtn" type="button" hidden>召喚</button>
+  </div>
+  <div id="feverBanner"><span class="hc">狂熱時間<span class="hr">！</span></span></div>
+  <div id="tutor"><span id="tutorText"></span><button type="button" id="tutorClose" aria-label="關掉提示">×</button></div>
+  <div id="loading">機台準備中……</div>
+  <div id="qualityPick">
+    <div class="viewerBox">
+      <div class="shopTitle">選擇畫質</div>
+      <div class="viewerTip">預設是高畫質。手機比較舊、容易發燙或開不起來，再選中或低。之後可以在「設定」改</div>
+      <button type="button" data-pick="high" class="rec"><b>高</b><span>最漂亮：陰影、真的透光，比較耗電</span></button>
+      <button type="button" data-pick="mid"><b>中</b><span>關掉陰影、解析度低一點</span></button>
+      <button type="button" data-pick="low"><b>低</b><span>最省：適合比較舊或容易發燙的手機</span></button>
+    </div>
+  </div>
+  <canvas id="view"></canvas>
+  <script>
+    // ===== 錯誤碼 =====
+    // 載入失敗或玩到一半出錯時，畫面會顯示「錯誤碼＋可能原因＋這台裝置的資訊」，
+    // 可以分辨是網路、瀏覽器太舊、手機效能不夠，還是程式本身的問題。
+    var ERRORS = {
+      E01: ['瀏覽器太舊', '這個瀏覽器不支援遊戲用到的新功能。請把瀏覽器更新到最新版，或改用 Chrome／Safari。'],
+      E02: ['不支援 WebAssembly', '瀏覽器不支援物理引擎需要的功能（WebAssembly）。請更新瀏覽器；有些「省流量模式」或公司設定會關掉它。'],
+      E03: ['3D 畫面開不起來', '瀏覽器沒辦法開 3D 畫面（WebGL）。可能是手機或顯示卡太舊、瀏覽器把硬體加速關掉了，或同時開太多分頁。'],
+      E04: ['檔案下載失敗', '有遊戲檔案沒下載到，通常是網路不穩。請重新整理再試一次。'],
+      E05: ['物理引擎啟動失敗', '物理引擎下載或啟動失敗。可能是網路中斷，或手機記憶體不夠。'],
+      E06: ['載入時程式出錯', '載入時程式出錯了，這通常是遊戲本身的問題。請把下面的訊息傳給開發者。'],
+      E07: ['載入很久', '已經等超過 40 秒還沒好。可能網路很慢，或手機比較吃力，可以再等一下。'],
+      E08: ['遊戲中途出錯', '玩到一半程式出錯了，這是遊戲本身的問題。遊戲可能還能繼續；請把訊息傳給開發者。'],
+      E09: ['3D 畫面被系統關掉', '手機記憶體不夠，系統把 3D 畫面關掉了（手機比較吃力時會發生）。已經自動改成低畫質，重新整理就好。'],
+    };
+    var errorShown = {};
+    function deviceInfo() {
+      var n = navigator;
+      var parts = [];
+      if (n.deviceMemory) parts.push('記憶體約 ' + n.deviceMemory + ' GB');
+      if (n.hardwareConcurrency) parts.push('處理器 ' + n.hardwareConcurrency + ' 核');
+      parts.push('畫面 ' + screen.width + '×' + screen.height + ' @' + (window.devicePixelRatio || 1));
+      return parts.join('，') + '\n' + n.userAgent;
+    }
+    function errorText(code, detail) {
+      return '錯誤碼 ' + code + '：' + ERRORS[code][0] + (detail ? '\n' + String(detail).slice(0, 300) : '') + '\n' + deviceInfo();
+    }
+    // 做一個可以複製錯誤訊息的區塊（不靠 style.css，樣式壞掉也看得到）
+    function errorBox(code, detail, onClose) {
+      var box = document.createElement('div');
+      box.style.cssText = 'max-width:520px;margin:0 auto;padding:14px 16px;border-radius:12px;background:#2a2433;color:#f3eee2;font:14px/1.6 sans-serif;text-align:left;box-shadow:0 4px 20px rgba(0,0,0,.5)';
+      var title = document.createElement('div');
+      title.style.cssText = 'font-weight:700;font-size:16px;color:#f4c95d';
+      title.textContent = '錯誤碼 ' + code + '：' + ERRORS[code][0];
+      var hint = document.createElement('div');
+      hint.textContent = ERRORS[code][1];
+      var info = document.createElement('div');
+      info.style.cssText = 'margin-top:8px;font-size:12px;opacity:.65;white-space:pre-wrap;word-break:break-all';
+      info.textContent = (detail ? String(detail).slice(0, 300) + '\n' : '') + deviceInfo();
+      var row = document.createElement('div');
+      row.style.cssText = 'margin-top:10px;display:flex;gap:8px';
+      function btn(label, fn) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.style.cssText = 'padding:6px 12px;border-radius:8px;border:1px solid #f4c95d;background:transparent;color:#f4c95d;font:inherit;cursor:pointer';
+        b.onclick = fn;
+        row.appendChild(b);
+        return b;
+      }
+      var copy = btn('複製錯誤訊息', function () {
+        var text = errorText(code, detail);
+        var done = function () { copy.textContent = '已複製'; };
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () { window.prompt('複製下面的文字', text); });
+        else window.prompt('複製下面的文字', text);
+      });
+      btn('重新整理', function () { location.reload(); });
+      if (onClose) btn('關掉', onClose);
+      box.appendChild(title);
+      box.appendChild(hint);
+      box.appendChild(info);
+      box.appendChild(row);
+      return box;
+    }
+    // 載入時出錯：整個載入畫面換成錯誤說明（一次只顯示第一個錯誤，後面的通常是連帶的）
+    var loadFailed = false;
+    window.__fail = function (code, detail) {
+      if (window.__game) return window.__warn(code, detail);
+      if (loadFailed) return;
+      loadFailed = true;
+      var el = document.getElementById('loading');
+      if (!el) return;
+      el.classList.remove('hide');
+      el.style.cssText = 'position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px;background:#14121c;overflow:auto';
+      el.innerHTML = '';
+      el.appendChild(errorBox(code, detail));
+    };
+    // 玩到一半出錯：畫面下方跳一個可以關掉的提示，不打斷遊戲（同一個錯誤只跳一次）
+    window.__warn = function (code, detail) {
+      var key = code + String(detail);
+      if (errorShown[key]) return;
+      errorShown[key] = true;
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:50';
+      wrap.appendChild(errorBox(code, detail, function () { wrap.remove(); }));
+      document.body.appendChild(wrap);
+    };
+    // 載入前先檢查瀏覽器夠不夠新
+    if (typeof WebAssembly === 'undefined') {
+      window.addEventListener('DOMContentLoaded', function () { window.__fail('E02'); });
+    } else {
+      try {
+        var tc = document.createElement('canvas');
+        if (!(tc.getContext('webgl2') || tc.getContext('webgl'))) throw new Error('getContext 拿不到 WebGL');
+      } catch (e) {
+        window.addEventListener('DOMContentLoaded', function () { window.__fail('E03', e.message); });
+      }
+    }
+    // 檔案下載失敗（圖片、程式檔）、程式出錯
+    window.addEventListener('error', function (e) {
+      var t = e.target;
+      if (t && t !== window && (t.src || t.href)) {
+        window.__fail('E04', (t.src || t.href).split('/').pop());
+        return;
+      }
+      if (/ResizeObserver loop/.test(e.message || '')) return; // 瀏覽器自己的無害警告
+      var where = e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '';
+      if (window.__game) window.__warn('E08', (e.message || '未知錯誤') + where);
+      else window.__fail('E06', (e.message || '未知錯誤') + where);
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      var msg = r && r.message ? r.message : String(r);
+      // 程式檔下載失敗會變成這種錯誤（不同瀏覽器說法不同）
+      if (/Failed to fetch|Importing a module script failed|error loading dynamically imported module|Load failed|NetworkError/i.test(msg)) {
+        if (!window.__game) return window.__fail('E04', msg);
+      }
+      if (window.__game) window.__warn('E08', msg);
+      else window.__fail('E06', msg);
+    });
+    // 等太久：在載入畫面下面加一行說明（不算失敗，繼續等）
+    setTimeout(function () {
+      if (window.__game || loadFailed || window.__picking) return; // 正在選畫質不算等太久
+      var el = document.getElementById('loading');
+      if (!el) return;
+      el.style.flexDirection = 'column';
+      el.style.textAlign = 'center';
+      el.style.padding = '16px';
+      var p = document.createElement('div');
+      p.style.cssText = 'margin-top:12px;font-size:13px;opacity:.75;max-width:420px';
+      p.textContent = '（錯誤碼 E07：' + ERRORS.E07[1] + '）';
+      el.appendChild(p);
+    }, 40000);
+  </script>
+  <!-- 瀏覽器太舊、不認得新式程式檔時才會跑這段 -->
+  <script nomodule>window.addEventListener('DOMContentLoaded', function () { window.__fail('E01'); });</script>
+  <script type="module" src="app.js?v=0.0.107"></script>
+</body>
+</html>

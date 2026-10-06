@@ -1,0 +1,722 @@
+:root {
+  --bg: #14121c;
+  --panel: rgba(20, 18, 28, 0.78);
+  --gold: #f4c95d;
+  --text: #f3eee2;
+  --dim: #a9a2b8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+#view {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+#hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.title { font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+.tEn { letter-spacing: 0.5px; color: var(--gold); }
+.tZh { font-size: 14px; letter-spacing: 1px; }
+/* 窄的畫面（手機）：中文名字換到第二行 */
+@media (max-width: 600px) { .title { line-height: 1.3; } .tEn { display: block; } }
+.ver { font-size: 12px; color: var(--dim); font-weight: 400; letter-spacing: 0; }
+
+.money { display: flex; gap: 8px; }
+.box {
+  background: var(--panel);
+  border: 1px solid rgba(244, 201, 93, 0.35);
+  border-radius: 10px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.box .label { font-size: 12px; color: var(--dim); }
+.box span:nth-child(2) {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  min-width: 2ch;
+  text-align: right;
+}
+.box .unit { font-size: 12px; color: var(--dim); }
+
+.pop { animation: pop 0.35s ease-out; }
+@keyframes pop {
+  0% { transform: scale(1.5); }
+  100% { transform: scale(1); }
+}
+
+.refill {
+  width: 100%;
+  text-align: right;
+  font-size: 12px;
+  color: var(--dim);
+  min-height: 1em;
+}
+
+/* 新手提示：下面中間一個小框，不擋操作，只有 × 可以按 */
+#tutor {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translate(-50%, 8px);
+  width: max-content;
+  max-width: min(440px, calc(100% - 150px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(20, 18, 28, 0.9);
+  border: 1px solid rgba(244, 201, 93, 0.55);
+  border-radius: 12px;
+  padding: 8px 8px 8px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s, transform 0.4s;
+}
+#tutor.show { opacity: 1; transform: translate(-50%, 0); }
+#tutorText { flex: 1 1 auto; min-width: 0; }
+#tutorClose { pointer-events: auto; flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.08); color: var(--dim); font-size: 16px; line-height: 26px; cursor: pointer; }
+
+
+/* 主動技能按鈕：右下角的圓鈕，一顆一顆往上疊，冷卻時顯示倒數 */
+#skills { position: fixed; right: 16px; bottom: 44px; z-index: 3; display: flex; flex-direction: column; gap: 10px; }
+.skillBtn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: rgba(30, 23, 36, 0.85);
+  color: var(--gold);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.skillBtn[hidden] { display: none; }
+.skillBtn:disabled { border-color: #4a4458; color: var(--dim); cursor: default; }
+.skillBtn:not(:disabled):active { transform: scale(0.94); }
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--dim);
+  z-index: 3;
+  background: var(--bg);
+}
+#loading.hide { display: none; }
+
+.float {
+  position: fixed;
+  translate: -50% 0; /* 以字的中間對準位置 */
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 20px;
+  pointer-events: none;
+  z-index: 4;
+  animation: floatUp 0.9s ease-out forwards;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-40px); }
+}
+
+#hud .btns { display: flex; gap: 8px; }
+.hudBtn.on { background: var(--gold); color: #1a1408; border-color: var(--gold); font-weight: 700; }
+.hudBtn {
+  pointer-events: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+#settings {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 16px;
+  pointer-events: auto;
+  background: rgba(20, 18, 28, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 14px;
+}
+#settings.show { display: block; }
+#settings .row { display: flex; gap: 8px; margin-bottom: 8px; }
+#settings button {
+  flex: 1;
+  min-width: 44px;
+  padding: 8px 0;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+#settings button.on { background: var(--gold); color: #1a1408; border-color: var(--gold); font-weight: 700; }
+#settings .note { font-size: 12px; color: var(--dim); line-height: 1.6; max-width: 220px; }
+#settings .sep { margin-top: 12px; }
+
+#shop, #book, #ach {
+  display: none;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  z-index: 5;
+  background: rgba(20, 18, 28, 0.97);
+  border: 1px solid rgba(244, 201, 93, 0.4);
+  border-radius: 14px;
+  padding: 16px;
+}
+#shop.show, #book.show, #ach.show { display: block; }
+.shopHead { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.shopTitle { font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+.shopWallet { flex: 1; color: var(--dim); font-size: 14px; }
+.shopWallet span { color: var(--gold); font-weight: 700; font-size: 18px; }
+#shopClose, #bookClose, #achClose {
+  background: transparent;
+  color: var(--text);
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.item .info { flex: 1; }
+.item .name { font-weight: 700; font-size: 15px; }
+.item .lv { color: var(--gold); font-size: 12px; margin-left: 8px; font-weight: 400; }
+.item .desc { color: var(--dim); font-size: 12px; margin-top: 4px; line-height: 1.5; }
+.item button {
+  width: 72px;
+  flex: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--gold);
+  background: var(--gold);
+  color: #1a1408;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.item button:disabled {
+  background: transparent;
+  color: var(--dim);
+  border-color: rgba(255, 255, 255, 0.2);
+  cursor: default;
+}
+
+/* 商店有買得起的東西時，按鈕右上角亮一個小點 */
+#shopBtn { position: relative; }
+#shopBtn.ready::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+}
+.item.locked .desc { font-style: normal; text-align: center; width: 100%; }
+
+#rainBanner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 30%;
+  text-align: center;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: var(--gold);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 0 24px rgba(244, 201, 93, 0.6);
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+}
+#rainBanner.show { animation: rainIn 2.2s ease-out forwards; }
+@keyframes rainIn {
+  0% { opacity: 0; transform: scale(0.6); }
+  15% { opacity: 1; transform: scale(1.1); }
+  25% { transform: scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+
+#settings { width: 240px; }
+#settings .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+#settings .tabs .tab { flex: 1; padding: 6px 0; font-size: 13px; }
+#settings .tabs .tab.on { background: rgba(244, 201, 93, 0.18); color: var(--gold); border-color: var(--gold); font-weight: 700; }
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.toggleRow.master { border-top: none; font-weight: 700; padding-bottom: 10px; }
+.toggleRow.dim span { opacity: 0.45; }
+#settings .toggleRow button { flex: none; min-width: 52px; padding: 4px 0; }
+
+.bookNote { font-size: 12px; color: var(--dim); margin-bottom: 12px; line-height: 1.5; }
+.bookGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bookTabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.bookTab {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.bookTab.on { border-color: var(--gold); color: var(--gold); background: rgba(244, 201, 93, 0.14); font-weight: 700; }
+.bookTab.locked { opacity: 0.45; }
+.bookLock, .bookUse { font-size: 13px; color: var(--dim); margin-bottom: 6px; line-height: 1.6; }
+.bookTip { font-size: 12px; color: var(--dim); margin-bottom: 12px; line-height: 1.5; opacity: 0.8; }
+.useSet.off { background: transparent; color: var(--text); border-color: rgba(255, 255, 255, 0.3); margin-left: 8px; }
+.useSet {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--gold);
+  background: var(--gold);
+  color: #1a1408;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.bookCell {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 8px 4px;
+  text-align: center;
+}
+.bookCell canvas { width: 72px; height: 60px; }
+.bookName { font-size: 12px; font-weight: 700; margin-top: 4px; line-height: 1.3; }
+.bookInfo { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+#toast {
+  position: fixed;
+  left: 50%;
+  top: 22%;
+  transform: translate(-50%, -10px);
+  max-width: calc(100% - 32px);
+  background: rgba(20, 18, 28, 0.92);
+  border: 1px solid rgba(244, 201, 93, 0.5);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 15px;
+  text-align: center;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+.newTag { color: #ff8fa8; }
+
+.volRow { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; font-weight: 700; }
+.volRow input[type=range] { flex: 1; accent-color: var(--gold); }
+.volRow b { min-width: 2ch; text-align: right; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+.achItem .name, .achItem .desc { color: var(--dim); }
+.achItem.done .name { color: var(--gold); }
+.achItem.done .desc { color: var(--text); opacity: 0.75; }
+/* 成就圖標：沒達成是灰色（形狀看得到，當提示），達成是金色 */
+.achIcon { width: 36px; height: 36px; flex: none; color: #6d6680; }
+.achItem.done .achIcon { color: var(--gold); }
+.achPts { font-size: 13px; color: var(--dim); white-space: nowrap; }
+
+/* 手機上按鈕多，縮小一點才排得下 */
+@media (max-width: 480px) {
+  #hud .btns { gap: 6px; }
+  .hudBtn { padding: 7px 9px; font-size: 13px; }
+}
+
+#settings .cheats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+#settings .cheats button { padding: 8px 4px; font-size: 12px; }
+#settings .tabs .tab { font-size: 12px; }
+
+#viewer, #wheel {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  background: rgba(10, 8, 16, 0.6);
+  align-items: center;
+  justify-content: center;
+}
+#viewer.show, #wheel.show { display: flex; }
+.viewerBox {
+  position: relative;
+  width: min(360px, calc(100% - 32px));
+  background: rgba(20, 18, 28, 0.97);
+  border: 1px solid rgba(244, 201, 93, 0.4);
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+}
+#viewerCanvas { width: 100%; aspect-ratio: 1; display: block; touch-action: none; cursor: grab; }
+#viewerName { font-size: 18px; font-weight: 700; margin-top: 8px; }
+#viewerInfo { font-size: 13px; color: var(--dim); margin-top: 4px; }
+.viewerTip { font-size: 12px; color: var(--dim); margin-top: 8px; opacity: 0.7; }
+#viewerClose, #wheelClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 1;
+}
+.bookCell.owned { cursor: pointer; }
+
+#wheelCanvas { width: 100%; aspect-ratio: 1; display: block; margin-top: 8px; }
+#wheelResult { min-height: 1.4em; font-size: 22px; font-weight: 900; color: var(--gold); margin-top: 4px; text-align: center; }
+/* 兩顆按鈕並排、一樣大 */
+.spinRow { display: flex; gap: 8px; margin-top: 8px; }
+#wheel .spinBtn {
+  flex: 1;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--gold);
+  background: var(--gold);
+  color: #1a1408;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+#wheel .spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
+#wheel .spinBtn[hidden] { display: none; }
+#wheel #freeSpinBtn { background: transparent; border-color: var(--gold); color: var(--gold); }
+#wheel #freeSpinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); }
+
+
+
+.float.big { font-size: 34px; color: #ffe08a; text-shadow: 0 0 12px rgba(244, 201, 93, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
+
+#flash { position: fixed; inset: 0; pointer-events: none; z-index: 5; opacity: 0; }
+#flash.go { animation: flashGo 0.7s ease-out; }
+@keyframes flashGo { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+#combo {
+  position: fixed;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  color: var(--gold);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7), 0 0 18px rgba(244, 201, 93, 0.5);
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+#combo.show { opacity: 1; }
+#combo.pop { animation: comboPop 0.25s ease-out; }
+@keyframes comboPop { 0% { transform: translateX(-50%) scale(1.35); } 100% { transform: translateX(-50%) scale(1); } }
+
+/* 娃娃慶祝：不擋畫面、點不到（點擊會穿過去繼續投幣），時間到自己淡掉 */
+#celebrate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  pointer-events: none;
+}
+#celebrate.show { display: flex; }
+#celebrate.warm { opacity: 0; }
+#celebrate.warm .celebCard, #celebrate.warm #celebIcon { animation: none; }
+.celebCard {
+  position: relative;
+  text-align: center;
+  padding: 20px 28px 22px;
+  background: rgba(20, 18, 28, 0.96);
+  border: 2px solid rgba(244, 201, 93, 0.6);
+  border-radius: 18px;
+  animation: celebIn 0.5s cubic-bezier(0.2, 1.4, 0.4, 1);
+  min-width: 220px;
+}
+#celebrate[data-rarity="legend"] .celebCard { border-color: #f4c95d; box-shadow: 0 0 40px rgba(244, 201, 93, 0.6); }
+#celebrate[data-rarity="rare"] .celebCard { border-color: #7ec8ff; box-shadow: 0 0 28px rgba(126, 200, 255, 0.4); }
+@keyframes celebIn { 0% { transform: scale(0.4) translateY(40px); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+#celebIcon { width: 150px; height: 128px; animation: celebBob 1.6s ease-in-out infinite; }
+@keyframes celebBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+#celebRarity { font-size: 14px; margin-top: 4px; }
+#celebName { font-size: 22px; font-weight: 800; margin-top: 4px; }
+#celebValue { font-size: 40px; font-weight: 900; color: var(--gold); margin-top: 6px; font-variant-numeric: tabular-nums; }
+#celebExtra { font-size: 13px; color: #8fd3ff; margin-top: 6px; min-height: 1em; }
+#confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.hudBtn .badge {
+  display: inline-block;
+  margin-left: 4px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #e0454f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.celebCard { transform-origin: top center; }
+
+/* 慶祝卡片：橫的小卡，放在按鈕下面、後牆那一帶，不蓋到檯面 */
+#celebrate { padding-top: 0; align-items: flex-start; }
+.celebCard {
+  margin-top: 96px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 10px 18px 10px 12px;
+  min-width: 0;
+  max-width: calc(100% - 32px);
+  background: rgba(20, 18, 28, 0.9);
+}
+#celebIcon { width: 84px; height: 84px; flex: none; }
+#celebRarity { font-size: 12px; margin-top: 0; }
+#celebName { font-size: 16px; margin-top: 2px; }
+#celebValue { font-size: 26px; margin-top: 0; line-height: 1.1; }
+#celebExtra { font-size: 12px; margin-top: 2px; min-height: 0; }
+@media (max-width: 480px) { .celebCard { margin-top: 118px; } }
+
+/* 輪迴分頁 */
+.rebirthBox {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(244, 201, 93, 0.4);
+  border-radius: 10px;
+  background: rgba(244, 201, 93, 0.06);
+  line-height: 1.7;
+  font-size: 14px;
+}
+.rebirthBox b, .rebirthHead b { color: var(--gold); }
+.rebirthBox .bookNote { margin: 6px 0 10px; }
+#rebirthGo { width: 100%; padding: 10px 0; font-size: 15px; font-weight: 700; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); background: var(--gold); color: #1a1408; cursor: pointer; }
+#rebirthGo:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
+.rebirthHead { margin: 4px 0 8px; font-weight: 700; }
+/* 輪迴中：機台和其他按鈕都蓋掉，只剩輪迴點商店（納可定） */
+body.rebirthing::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: radial-gradient(circle at 50% 30%, #3a2c58 0%, #1a1426 70%, #0e0b16 100%);
+}
+body.rebirthing #shop { z-index: 26; }
+body.rebirthing #shopClose, body.rebirthing .shopWallet { visibility: hidden; }
+.rebirthLine { font-size: 17px; font-weight: 800; color: var(--gold); margin-bottom: 4px; }
+.perkList { margin-bottom: 12px; }
+#rebornGo { width: 100%; padding: 12px 0; font-size: 17px; font-weight: 800; letter-spacing: 4px; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); background: var(--gold); color: #1a1408; cursor: pointer; }
+
+/* 轉生動畫：整個畫面蓋上一層，中間天使史萊姆跳來跳去 */
+#reborn {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 27;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 45%, #fff6dc 0%, #e9dcff 38%, #2a2140 100%);
+  animation: rebornIn 0.5s ease-out;
+}
+#reborn.show { display: flex; }
+#reborn.out { opacity: 0; transition: opacity 0.6s ease-in; }
+@keyframes rebornIn { from { opacity: 0; } to { opacity: 1; } }
+#rebornCanvas { width: min(300px, 70vw); height: min(300px, 70vw); }
+.rebornText {
+  margin-top: 6px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #3a2c58;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
+  animation: rebornGlow 1.2s ease-in-out infinite;
+}
+@keyframes rebornGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+/* 可以收合的分類（納可定：東西多的時候分類收合） */
+.grp { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.grp > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 2px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  font-size: 15px;
+}
+.grp > summary::-webkit-details-marker { display: none; }
+.grp > summary::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 6px solid var(--gold);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.grp[open] > summary::before { transform: rotate(90deg); }
+.grpTitle { flex: 1; }
+.grpSum { font-size: 12px; font-weight: 400; color: var(--dim); }
+.grp > .item { padding-left: 14px; }
+.grp > .item:first-of-type { border-top: none; }
+/* 價錢寫在那一行裡；買不起是灰的 */
+.item .price { font-size: 13px; color: var(--gold); margin-top: 4px; font-weight: 700; }
+.item .price.short { color: var(--dim); font-weight: 400; }
+#settings .grp > .cheats { padding-bottom: 8px; }
+
+/* 商店「一鍵買到能買的最高」勾選 */
+.buyMax { display: flex; align-items: center; gap: 8px; padding: 4px 2px 10px; font-size: 13px; color: var(--dim); cursor: pointer; }
+.buyMax input { width: 18px; height: 18px; accent-color: var(--gold); }
+
+/* 第一次打開：選畫質（蓋在載入畫面上面） */
+#qualityPick { display: none; position: fixed; inset: 0; z-index: 30; align-items: center; justify-content: center; padding: 16px; background: rgba(10, 8, 16, 0.75); }
+#qualityPick.show { display: flex; }
+#qualityPick .viewerBox { width: min(360px, 100%); }
+#qualityPick button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; margin-top: 10px; padding: 12px 14px;
+  border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.2); background: transparent;
+  color: var(--text); font-family: inherit; text-align: left; cursor: pointer;
+}
+#qualityPick button b { font-size: 17px; }
+#qualityPick button span { font-size: 12px; color: var(--dim); }
+#qualityPick button.rec { border-color: var(--gold); background: rgba(244, 201, 93, 0.12); }
+#qualityPick button.rec b::after { content: '　預設'; font-size: 12px; color: var(--gold); font-weight: 700; }
+
+/* 狂熱條：錢的框框下面一條細細的條 */
+.money { flex-direction: column; align-items: stretch; gap: 4px; }
+#feverBar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); padding: 0 2px; }
+#feverBar i { flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+#feverBar b { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--gold), #ff8fab); transition: width 0.3s; }
+body.fever #feverBar span { color: #ff8fab; font-weight: 700; }
+body.fever #feverBar b { box-shadow: 0 0 8px #ff8fab; }
+/* 狂熱時間的大字 */
+#feverBanner {
+  position: fixed; left: 0; right: 0; top: 17%; text-align: center;
+  font-size: 44px; font-weight: 900; letter-spacing: 6px; color: #ffb8d6;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 0 28px rgba(255, 143, 171, 0.8);
+  pointer-events: none; z-index: 4; opacity: 0;
+}
+#feverBanner.show { animation: rainIn 2.4s ease-out forwards; }
+
+/* 置中時首尾符號不算寬度：掛在字的外面（hangHtml 產生） */
+.hc { position: relative; display: inline-block; white-space: nowrap; }
+.hc .hl { position: absolute; right: 100%; top: 0; }
+.hc .hr { position: absolute; left: 100%; top: 0; }
+/* 有字距的大字：最後一個字後面也會多一段字距，左邊補一樣的寬度才會真的置中 */
+#rainBanner .hc, #feverBanner .hc { padding-left: 6px; }
+.rebornText .hc { padding-left: 4px; }
+
+/* 小寶物推下去跳出的數字：各自的顏色（2026-10-05 納可定） */
+.float.gem { font-size: 26px; font-weight: 900; }
+.float.gem-blue { color: #8fbcff; text-shadow: 0 0 10px rgba(80, 140, 255, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
+.float.gem-pink { color: #ffa3cc; text-shadow: 0 0 10px rgba(255, 110, 175, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); }
+.float.gem-pearl { color: #fff3e2; text-shadow: 0 0 10px rgba(255, 220, 235, 0.95), 0 0 18px rgba(180, 220, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.6); }
+
+/* 成就商店的預覽：面板收起來，下面一條顯示名字和價錢，可以直接買或返回 */
+.item .info[data-preview] { cursor: pointer; }
+.pvTag { font-size: 11px; font-weight: 400; color: var(--dim); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; padding: 0 5px; margin-left: 8px; vertical-align: 1px; }
+#previewBar {
+  display: none;
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  z-index: 6;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(20, 18, 28, 0.95);
+  border: 1px solid rgba(244, 201, 93, 0.5);
+  border-radius: 14px;
+}
+#previewBar.show { display: flex; }
+.pvInfo { flex: 1; min-width: 0; }
+#previewName { font-weight: 700; font-size: 15px; }
+#previewPrice { color: var(--gold); font-size: 12px; margin-top: 2px; }
+#previewBar button { width: 72px; padding: 9px 0; font-size: 14px; font-weight: 700; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); cursor: pointer; }
+#previewAct { background: var(--gold); color: #1a1408; }
+#previewAct:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
+#previewBack { background: transparent; color: var(--text); }
+
+
+/* 圖鑑放大展示：擺上展示架 */
+#shelfBtn { display: block; margin: 10px auto 0; width: 160px; padding: 8px 0; font-size: 14px; font-weight: 700; font-family: inherit; border-radius: 10px; border: 1px solid var(--gold); background: var(--gold); color: #1a1408; cursor: pointer; }
+#shelfBtn.on { background: transparent; color: var(--text); }
+#shelfBtn[hidden] { display: none; }

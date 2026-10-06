@@ -5,7 +5,7 @@ const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swi
 for (const cfg of JSON.parse(process.argv[2])) {
 const page = await (await browser.newContext({ viewport: { width: 400, height: 300 } })).newPage();
 page.on('pageerror', e => console.log('ERR', e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const r = await page.evaluate((cfg) => {
   const g = __game; g.applyQuality('low');

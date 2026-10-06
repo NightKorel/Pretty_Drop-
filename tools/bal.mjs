@@ -8,7 +8,7 @@ for (const cfg of configs) {
   const ctx = await browser.newContext({ viewport: { width: 400, height: 300 } });
   const page = await ctx.newPage();
   page.on('pageerror', e => console.log('ERR', e.message));
-  await page.goto('http://localhost:8765/');
+  await page.goto((process.env.BASE || 'http://localhost:8765/'));
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
   const r = await page.evaluate(([cfg, spread]) => {
     const g = __game; g.applyQuality('low'); g.setWallet(100000);

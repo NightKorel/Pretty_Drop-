@@ -5,7 +5,7 @@ const { chromium } = require(process.env.NPMG + '/playwright');
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const page = await (await browser.newContext({ viewport: { width: 1000, height: 560 } })).newPage();
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const out = {};
 for (const [id, which] of [['animal.0', 0], ['animal.6', 0], ['animal.8', 2], ['animal.9', 4]]) {

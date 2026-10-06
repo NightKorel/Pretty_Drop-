@@ -8,7 +8,7 @@ for (const [name, vp] of [['pc', { width: 1000, height: 650 }], ['phone', { widt
   const page = await ctx.newPage();
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
-  await page.goto('http://localhost:8765/');
+  await page.goto((process.env.BASE || 'http://localhost:8765/'));
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
   await page.evaluate(() => { const g = __game; g.earned = g.rebirthNeed(8); g.enterRebirthShop(); g.buyPerk('startMoney'); g.buyPerk('startMoney'); g.doRebirth(); g.earned = g.rebirthNeed(2); });
   await page.click('#shopBtn');

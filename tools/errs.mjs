@@ -6,7 +6,7 @@ async function run(name, setup, after) {
   const ctx = await browser.newContext({ viewport: { width: 420, height: 800 } });
   const page = await ctx.newPage();
   if (setup) await setup(page);
-  await page.goto('http://localhost:8765/');
+  await page.goto((process.env.BASE || 'http://localhost:8765/'));
   await page.waitForTimeout(name === 'ok' || after ? 0 : 8000);
   if (name === 'ok' || after) await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
   if (after) { await page.evaluate(after); await page.waitForTimeout(1500); }

@@ -7,7 +7,7 @@ const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swi
 const ctx = await browser.newContext({ viewport: { width: 900, height: 600 } });
 const page = await ctx.newPage();
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const get = () => page.evaluate(() => ({ auto: __game.auto, quality: __game.quality, volume: __game.soundOn.volume, autoBtn: document.getElementById('autoBtn').textContent, aim: Math.round(__game.saveData().settings.aimX * 10) / 10 }));
 await page.click('#autoBtn');
@@ -24,7 +24,7 @@ await ctx.close();
 const ctx2 = await browser.newContext({ viewport: { width: 900, height: 600 } });
 const p2 = await ctx2.newPage();
 p2.on('pageerror', (e) => errs.push(e.message));
-await p2.goto('http://localhost:8765/');
+await p2.goto((process.env.BASE || 'http://localhost:8765/'));
 await p2.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const fresh = await p2.evaluate(() => ({ auto: __game.auto, quality: __game.quality, volume: __game.soundOn.volume, wallet: __game.wallet }));
 await p2.setInputFiles('#importFile', file);

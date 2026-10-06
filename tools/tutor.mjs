@@ -6,7 +6,7 @@ const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swi
 const ctx = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
 const page = await ctx.newPage();
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
@@ -34,7 +34,7 @@ await page.close();
 const p2 = await ctx.newPage();
 p2.on('pageerror', (e) => errs.push('p2: ' + e.message));
 await p2.addInitScript((o) => { if (!sessionStorage.done) { for (const k in o) localStorage[k] = o[k]; sessionStorage.done = 1; } }, saves);
-await p2.goto('http://localhost:8765/');
+await p2.goto((process.env.BASE || 'http://localhost:8765/'));
 await p2.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const old = await p2.evaluate(() => { __game.play(5); return { now: __game.tutorNow, seen: __game.tutorSeen.size }; });
 const pickTip = await p2.evaluate(() => document.querySelector('#qualityPick .viewerTip').textContent + ' / rec=' + document.querySelector('#qualityPick .rec').dataset.pick);

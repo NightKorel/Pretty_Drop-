@@ -6,7 +6,7 @@ const { chromium } = require(process.env.NPMG + '/playwright');
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const page = await (await browser.newContext({ viewport: { width: 390, height: 780 } })).newPage();
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const r = await page.evaluate(() => {
   // 找某個元素裡第 n 個字（不含掛出去的符號）的中心 x

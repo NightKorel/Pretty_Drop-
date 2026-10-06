@@ -8,7 +8,7 @@ for (const kind of ['none', 'wind', 'reach', 'quake']) {
   const res = [];
   for (let t = 0; t < 3; t++) {
     const page = await (await browser.newContext({ viewport: { width: 300, height: 200 } })).newPage();
-    await page.goto('http://localhost:8765/');
+    await page.goto((process.env.BASE || 'http://localhost:8765/'));
     await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
     res.push(await page.evaluate((kind) => {
       const g = __game; g.applyQuality('low');

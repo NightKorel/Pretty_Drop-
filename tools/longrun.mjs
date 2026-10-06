@@ -11,7 +11,7 @@ const perks = JSON.parse(process.argv[3] || '{}');
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const page = await (await browser.newContext({ viewport: { width: 300, height: 200 } })).newPage();
 page.on('pageerror', (e) => console.log('ERR', e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 await page.evaluate((perks) => {
   const g = __game;

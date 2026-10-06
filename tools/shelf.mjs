@@ -6,7 +6,7 @@ const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swi
 for (const [name, vp] of [['pc', { width: 1000, height: 650 }], ['phone', { width: 390, height: 780 }]]) {
   const page = await (await browser.newContext({ viewport: vp, isMobile: name === 'phone', hasTouch: name === 'phone' })).newPage();
   const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-  await page.goto('http://localhost:8765/');
+  await page.goto((process.env.BASE || 'http://localhost:8765/'));
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
   const ids = ['animal.0', 'ice.7', 'gem.9', 'drink.6', 'jelly.9', 'metal.9', 'sweets.0'];
   const r = await page.evaluate((ids) => {

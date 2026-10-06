@@ -9,7 +9,7 @@ for (const [name, ctxOpts] of [['pc', { viewport: { width: 1280, height: 800 } }
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await page.goto('http://localhost:8765/');
+  await page.goto((process.env.BASE || 'http://localhost:8765/'));
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
   if (name === 'phone') { await page.evaluate(() => __game.applyQuality('low')); }
   const s0 = await page.evaluate(() => ({ n: __game.coins.length, w: __game.wallet, won: __game.won, ys: __game.coins.map(c=>+c.body.translation().y.toFixed(2)).slice(0,5) }));

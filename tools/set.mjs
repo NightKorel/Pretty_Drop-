@@ -4,7 +4,7 @@ const { chromium, devices } = require(process.env.NPMG + '/playwright');
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const page = await (await browser.newContext(devices['iPhone 13'])).newPage();
 const errs = []; page.on('pageerror', e => errs.push(e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 const bigs = await page.evaluate(() => { __game.applyQuality('low'); __game.setWallet(1000); let b = 0; for (let i = 0; i < 300; i++) { __game.dropAt(0); const c = __game.coins[__game.coins.length-1]; if (c && c.value > 1) b++; } return { b, count: __game.bigChance.count }; });
 await page.tap('#settingsBtn');

@@ -8,7 +8,7 @@ async function run(save) {
   if (save) await ctx.addInitScript((json) => { if (!sessionStorage.getItem('t')) { localStorage.setItem('pretty_drop_save', json); sessionStorage.setItem('t', '1'); } }, save);
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-  await page.goto('http://localhost:8765/');
+  await page.goto((process.env.BASE || 'http://localhost:8765/'));
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
   await page.click('#bookBtn');
   await page.waitForTimeout(300);
@@ -30,6 +30,6 @@ const a = await run(JSON.stringify(d1));
 const d2 = { ...fresh.base, collection: Object.fromEntries([...[0, 1, 2, 3, 4, 5].map((i) => [`jelly.${i}`, 1]), ...[0, 1, 2, 3, 4, 5].map((i) => [`sweets.${i}`, 1])]), activeSets: ['sweets'] };
 delete d2.unlockedSets;
 const b = await run(JSON.stringify(d2));
-const prices = await (async () => { const ctx = await browser.newContext(); const p = await ctx.newPage(); await p.goto('http://localhost:8765/'); const r = await p.evaluate(async () => { const m = await import('./achievements.js'); const o = {}; for (const d of m.DECORATIONS) (o[d.slot] = o[d.slot] || new Set()).add(d.price); return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, [...v]])); }); await ctx.close(); return r; })();
+const prices = await (async () => { const ctx = await browser.newContext(); const p = await ctx.newPage(); await p.goto((process.env.BASE || 'http://localhost:8765/')); const r = await p.evaluate(async () => { const m = await import('./achievements.js'); const o = {}; for (const d of m.DECORATIONS) (o[d.slot] = o[d.slot] || new Set()).add(d.price); return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, [...v]])); }); await ctx.close(); return r; })();
 console.log(JSON.stringify({ 全新: fresh.r, 果凍6種: a.r, 舊存檔甜點已解鎖: b.r, 裝飾品價錢: prices, errs: [...fresh.errs, ...a.errs, ...b.errs] }));
 await browser.close();

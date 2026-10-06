@@ -8,7 +8,7 @@ for (const [name, vp] of [['pc', { width: 1000, height: 650 }], ['phone', { widt
   const page = await ctx.newPage();
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
-  await page.goto('http://localhost:8765/');
+  await page.goto((process.env.BASE || 'http://localhost:8765/'));
   await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
   await page.evaluate(() => __game.applyQuality('low'));
   const table = await page.evaluate(() => [1, 2, 3, 5, 10, 20].map((n) => `${n}點:${__game.rebirthNeed(n)}`).join(' '));

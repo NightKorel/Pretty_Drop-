@@ -7,7 +7,7 @@ const q = process.argv[2] || 'low';
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const page = await (await browser.newContext({ viewport: { width: 390, height: 700 } })).newPage();
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 await page.evaluate((q) => {
   __game.applyQuality(q);

@@ -5,7 +5,7 @@ const { chromium } = require(process.env.NPMG + '/playwright');
 const browser = await chromium.launch({ args: ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const page = await (await browser.newContext({ viewport: { width: 900, height: 650 } })).newPage();
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-await page.goto('http://localhost:8765/');
+await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
 await page.evaluate(() => { __game.applyQuality('high'); const b = document.querySelector('button[data-cheat="ach"]'); for (let i = 0; i < 120; i++) b.click(); });
 await page.click('#achBtn'); await page.click('button[data-achtab="shop"]');
