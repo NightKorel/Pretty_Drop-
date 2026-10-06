@@ -9,7 +9,7 @@ const page = await (await browser.newContext({ viewport: vp, isMobile: tag === '
 const errs = []; page.on('pageerror', (e) => errs.push(e.message));
 await page.goto((process.env.BASE || 'http://localhost:8765/'));
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
-await page.evaluate(() => { const g = __game; g.applyQuality('low'); g.setWallet(3000); for (const k of ['refill', 'dropRate', 'speed', 'guard', 'lucky', 'rain']) g.buy(k); g.setWallet(150); g.earned = g.rebirthNeed(3); });
+await page.evaluate(() => { const g = __game; g.applyQuality('low'); g.setWallet(3000); for (const k of ['refill', 'dropRate', 'speed', 'guard', 'silver', 'rain']) g.buy(k); g.setWallet(150); g.earned = g.rebirthNeed(3); });
 await page.click('#shopBtn');
 await page.waitForTimeout(300);
 await page.screenshot({ path: `/tmp/pd-shots/ui-${tag}-shop.png` });

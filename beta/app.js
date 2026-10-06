@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.107';
-import { drawDigits } from './digits.js?v=0.0.107';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.107';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.107';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.108';
+import { drawDigits } from './digits.js?v=0.0.108';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.108';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.108';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.107';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.0.107';
+} from './slime.js?v=0.0.108';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.0.108';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -71,6 +71,8 @@ const MOM_GIVE = 10;         // 媽媽每次給幾枚
 // 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項。
 // 順序照常識：越無感的越前面、越便宜；越有感的越後面、越貴（2026-10-05 納可定）。
 // 例外：媽媽十元永遠排第一個（納可：比較好笑）；一次多投永遠排最後一個（2026-10-05 納可：天價，本來就該最後）。
+// 銀幣排第三（2026-10-06 Claude 提，等納可看）：只有銅幣時投一枚推回一枚，幾乎不賺；銀幣早點出來，一開始才不會賺得很慢。
+// 價錢（2026-10-06 重排）：收入靠銀幣、金幣一路變多來長大，價錢跟著收入一起往上漲，每一兩分鐘就有東西能買。
 // 每升一級價錢乘上 growth。levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
   refill: {
@@ -85,53 +87,53 @@ const UPGRADES = {
     levels: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2],   // 擋板長度
     base: 10, growth: 1.45,
   },
+  silver: {
+    name: '銀幣',
+    desc: '解鎖銀幣（推下去值 5 枚，投一枚一樣花 1 枚）。升級讓銀幣變多',
+    levels: [0, 4, 6, 8, 10, 12, 14],                 // 每 20 枚裡有幾枚銀幣（沒買就沒有）
+    base: 20, growth: 1.75, // 2026-10-06 價格曲線重排
+  },
   speed: {
     name: '推板加速',
     desc: '推板來回得更快，幣推得更勤',
     levels: [4.4, 4.25, 4.1, 3.95, 3.8, 3.65, 3.5, 3.4], // 推板來回一次幾秒（一開始慢；滿級和每級幅度都收小，2026-10-05 納可：最快太快，滿級再從 3.0 放慢到 3.4）
-    base: 20, growth: 1.5,
+    base: 30, growth: 1.5, // 2026-10-06 價格曲線重排
   },
   dropRate: {
     name: '投幣速度',
     desc: '手變快，一秒能投更多枚（一開始一秒一枚）',
     levels: [1.0, 0.9, 0.82, 0.75, 0.69, 0.64, 0.6],  // 兩次投幣之間至少隔幾秒（2026-10-05 納可：滿級太快，整體調慢，一開始的 1 秒不動；原本滿級 0.35）
-    base: 30, growth: 1.5,
-  },
-  silver: {
-    name: '銀幣',
-    desc: '解鎖銀幣（推下去值 5 枚，投一枚一樣花 1 枚）。升級讓銀幣變多',
-    levels: [0, 3, 4, 5, 6, 7, 8, 9],                 // 每 20 枚裡有幾枚銀幣（沒買就沒有）
-    base: 60, growth: 1.55,
+    base: 40, growth: 1.5, // 2026-10-06 價格曲線重排
   },
   rain: {
     name: '金幣雨',
     desc: '解鎖技能「金幣雨」：按一下，天上掉下一場金幣雨。升級讓冷卻變短',
     levels: [0, 240, 210, 180, 160, 140, 120, 105, 90], // 冷卻幾秒（沒買就不能用）。2026-10-05 納可：改成主動技能，不再隨機
-    base: 120, growth: 1.5,
+    base: 150, growth: 1.5, // 2026-10-06 價格曲線重排
   },
   rainSize: {
     name: '金幣雨變大',
     desc: '每場金幣雨撒下來的幣變多',
     levels: [30, 40, 50, 60, 70, 80, 100, 150],        // 一場金幣雨幾枚
-    base: 200, growth: 1.4,  // 2026-10-05 漲幅收小（原本 1.5），40 到 60 分那段才有東西可以買
+    base: 300, growth: 1.45, // 2026-10-06 價格曲線重排
   },
   gold: {
     name: '金幣',
     desc: '解鎖金幣（推下去值 10 枚，投一枚一樣花 1 枚）。升級讓金幣變多',
-    levels: [0, 1, 2, 3, 4, 5, 6],                    // 每 20 枚裡有幾枚金幣（沒買就沒有）
-    base: 400, growth: 1.5,
+    levels: [0, 1, 2, 3, 4, 6],                       // 每 20 枚裡有幾枚金幣（沒買就沒有）。銀、金滿級加起來 20 枚，就沒有銅幣了
+    base: 400, growth: 1.75, // 2026-10-06 價格曲線重排
   },
   shake: {
     name: '甩一甩',
     desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩下去。升級讓冷卻變短',
     levels: [0, 300, 270, 240, 210, 180, 150],         // 冷卻幾秒（沒買就不能用）
-    base: 300, growth: 1.35, // 2026-10-05 漲幅收小（原本 1.6）
+    base: 600, growth: 1.4, // 2026-10-06 價格曲線重排
   },
   summon: {
     name: '召喚史萊姆',
     desc: '解鎖技能「召喚」：按一下，馬上放一隻史萊姆娃娃到推板上。升級讓冷卻變短',
     levels: [0, 240, 210, 180, 150, 120, 100],         // 冷卻幾秒（沒買就不能用）。2026-10-05 納可要的
-    base: 600, growth: 1.35, // 2026-10-05 便宜一點、漲幅收小（原本 800、1.6）
+    base: 1000, growth: 1.4, // 2026-10-06 價格曲線重排
   },
   multi: {
     name: '一次多投',
@@ -3436,6 +3438,7 @@ const TUTOR = [
   { id: 'auto', when: () => stats.coinsDropped >= 20 && !autoDrop, text: '懶得一直點？右鍵或按「自動」會自己連續投', done: () => autoDrop, dur: 12 },
   { id: 'mom', when: () => wallet < 5, text: '沒錢不用怕，每隔一段時間會補 10 枚，看右上角的倒數', dur: 9 },
   { id: 'shop', when: () => stats.coinsDropped >= 10 && upgrades[UPGRADE_KEYS[0]] === 0 && wallet >= upPrice(UPGRADE_KEYS[0]), text: '錢夠了！打開「商店」買升級', done: () => shopEl.classList.contains('show') || upgrades[UPGRADE_KEYS[0]] > 0, dur: 20 },
+  { id: 'silver', when: () => coins.some((c) => c.kind !== 'copper'), text: '銀幣推下去值 5 枚、金幣值 10 枚，投出去一樣只花 1 枚', dur: 9 },
   { id: 'ticket', when: () => freeSpins > 0, text: '拿到免費彩券了，按「彩券」轉一次', done: () => freeSpins === 0, dur: 12 },
   { id: 'item', when: () => props.some((p) => p.type !== 'ticket'), text: '道具推下前緣會馬上發動', dur: 8 },
   { id: 'fever', when: () => feverGauge >= 300, text: '推下東西會累積狂熱值（錢下面那一條），滿了就是狂熱時間', dur: 9 },
