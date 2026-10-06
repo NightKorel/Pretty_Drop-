@@ -12,7 +12,7 @@ const page = await (await browser.newContext({ viewport: { width: 300, height: 2
 page.on('pageerror', (e) => console.log('ERR', e.message));
 await page.goto(process.env.BASE || 'http://localhost:8765/');
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
-await page.evaluate(() => { const g = __game; g.applyQuality('low'); g.setAuto(true); window.__t = 0; window.__buys = []; });
+await page.evaluate(() => { const g = __game; g.applyQuality('low'); g.setAuto(true); window.__t = 0; window.__buys = []; window.__spent = 0; });
 async function playMinute() {
   return page.evaluate(() => {
     const g = __game;
@@ -24,6 +24,7 @@ async function playMinute() {
           let best = null;
           for (const k of g.UPGRADE_KEYS) if (g.canBuy(k)) { const p = g.upPrice(k); if (!best || p < best[1]) best = [k, p]; }
           if (!best) break;
+          __spent += best[1];
           g.buy(best[0]);
           __buys.push([+(now / 60).toFixed(1), g.UPGRADES[best[0]].name, g.upgrades[best[0]]]);
         }
@@ -34,7 +35,7 @@ async function playMinute() {
     });
     __t += 60;
     const lv = g.UPGRADE_KEYS.reduce((n, k) => n + g.upgrades[k], 0);
-    return { earned: Math.round(g.earned), pts: g.rebirthPending(), wallet: g.wallet, lv };
+    return { earned: Math.round(g.earned), pts: g.rebirthPending(), wallet: g.wallet, lv, spent: __spent, dropped: g.stats.coinsDropped };
   });
 }
 function report(name, rows) {
@@ -73,7 +74,7 @@ const perks = await page.evaluate(() => {
   }
   g.doRebirth();
   g.setAuto(true);
-  window.__t = 0; window.__buys = [];
+  window.__t = 0; window.__buys = []; window.__spent = 0;
   return { got, perks: { ...g.rebirth.perks }, wallet: g.wallet };
 });
 console.log(`輪迴：拿到 ${perks.got} 點，買了 ${JSON.stringify(perks.perks)}，開局手上 ${perks.wallet}`);
@@ -84,4 +85,6 @@ report('第二輪', run2);
 const goal = run1[run1.length - 1].earned;
 const reach = run2.findIndex((r) => r.earned >= goal);
 console.log(`第一輪 ${N1} 分鐘賺 ${goal}；第二輪${reach >= 0 ? ` ${reach + 1} 分鐘就賺到` : ` ${N2} 分鐘還沒賺到（賺 ${run2[run2.length - 1].earned}）`}`);
+// 每分鐘的數字存成 JSON（tools/curve.py 用來算價錢）
+if (process.env.OUTJSON) require('fs').writeFileSync(process.env.OUTJSON, JSON.stringify({ run1, run2 }));
 await browser.close();
