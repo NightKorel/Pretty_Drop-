@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.0.108';
-import { drawDigits } from './digits.js?v=0.0.108';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.0.108';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.0.108';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.0';
+import { drawDigits } from './digits.js?v=0.1.0';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.0';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.0';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.0.108';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.0.108';
+} from './slime.js?v=0.1.0';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.0';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
