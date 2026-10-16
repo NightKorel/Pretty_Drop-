@@ -4,7 +4,7 @@ import * as THREE from '../lib/three.module.js';
 
 // 稀有度
 export const RARITY = {
-  common: { name: '普通', color: '#c9c2d6' },
+  common: { name: '常見', color: '#c9c2d6' },
   rare: { name: '稀有', color: '#7ec8ff' },
   legend: { name: '傳說', color: '#f4c95d' },
 };

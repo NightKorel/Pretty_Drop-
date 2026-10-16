@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.0';
-import { drawDigits } from './digits.js?v=0.1.0';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.0';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.0';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.1';
+import { drawDigits } from './digits.js?v=0.1.1';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.1';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.1';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.0';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.0';
+} from './slime.js?v=0.1.1';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.1';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -776,7 +776,7 @@ function prefill() {
     const coin = spawnCoin(c[0], c[1], c[2]);
     if (coin) coin.body.setRotation({ x: c[3], y: c[4], z: c[5], w: c[6] }, true);
   }
-  // 開局先放一隻普通的娃娃在檯面中間，讓玩家一眼看到目標
+  // 開局先放一隻常見的娃娃在檯面中間，讓玩家一眼看到目標
   spawnDoll('jelly.0', 1, { x: 0.3, y: 1.6, z: -0.6 });
 }
 
@@ -1915,7 +1915,7 @@ function startSummon() {
 }
 
 // ===== 狂熱時間（2026-10-05 納可定）=====
-// 推下一枚幣 +1，推下娃娃 普通 +10、稀有 +30、傳說 +50；滿 1000 進入狂熱 20 秒：推板變快、一直下金幣雨。
+// 推下一枚幣 +1，推下娃娃 常見 +10、稀有 +30、傳說 +50；滿 1000 進入狂熱 20 秒：推板變快、一直下金幣雨。
 // 狂熱的時候推下的不算（免得一次接一次停不下來）
 const FEVER_MAX = 800;          // 2026-10-05 納可：原本 1000 有點長，改短一點
 const FEVER_TIME = 20;
