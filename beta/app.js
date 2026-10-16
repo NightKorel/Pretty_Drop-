@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.5';
-import { drawDigits } from './digits.js?v=0.1.5';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.5';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.5';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.6';
+import { drawDigits } from './digits.js?v=0.1.6';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.6';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.6';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.5';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.5';
+} from './slime.js?v=0.1.6';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.6';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -730,11 +730,148 @@ function placeQueuedDolls() {
       o.body.setTranslation({ x: best + dx * k, y: t.y + 0.05, z: z + dz * k }, true);
       o.body.setLinvel({ x: dx * k * 0.5, y: 0, z: dz * k * 0.5 }, true);
     }
-    spawnDoll(q.id, q.scale, { x: best, y: PUSHER_H + 0.2, z }, q.rot);
+    dollSpawnFx(spawnDoll(q.id, q.scale, { x: best, y: PUSHER_H + 0.2, z }, q.rot));
     dollQueue.shift();
     beep(700, 0.12, 0.05, 'triangle', 'doll');
     setTimeout(() => beep(1050, 0.16, 0.05, 'triangle', 'doll'), 110);
   }
+}
+
+// ===== 出現時的光效（2026-10-16 納可定）=====
+// 常見史萊姆：落點閃一下小光點，一秒內消失。稀有：一圈彩色光環。超級稀有（傳說）：一道光柱打下來，加音效。
+// 道具、彩券、寶石：照各自的顏色閃一下，大小跟常見史萊姆差不多。
+// 光效跟著那個東西走（掉下來的途中也跟著）；只有新出現的才放，讀存檔放回去的不放。
+const spawnFx = [];
+const fxTex = {};
+function fxTexture(name, w, h, draw) {
+  if (fxTex[name]) return fxTex[name];
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return (fxTex[name] = t);
+}
+// 圓形的光點：中間白、往外淡掉
+const glowTexture = () => fxTexture('glow', 64, 64, (ctx, w) => {
+  const g = ctx.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.3, 'rgba(255,255,255,0.7)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, w);
+});
+// 彩色光環：一圈彩虹
+const ringTexture = () => fxTexture('ring', 128, 128, (ctx, w) => {
+  const c = w / 2;
+  ctx.lineWidth = w * 0.07;
+  ctx.shadowBlur = w * 0.05;
+  for (let i = 0; i < 72; i++) {
+    const a0 = (i / 72) * Math.PI * 2;
+    const col = `hsl(${i * 5}, 100%, 58%)`;
+    ctx.strokeStyle = col;
+    ctx.shadowColor = col;
+    ctx.beginPath();
+    ctx.arc(c, c, w * 0.4, a0, a0 + (Math.PI * 2) / 72 + 0.02);
+    ctx.stroke();
+  }
+});
+// 光柱：中間亮、左右淡；底下亮、往上淡
+const pillarTexture = () => fxTexture('pillar', 64, 256, (ctx, w, h) => {
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = Math.abs(x / (w - 1) * 2 - 1);
+      const a = Math.pow(1 - dx, 1.6) * Math.pow(y / (h - 1), 0.7);
+      const i = (y * w + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 255;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+});
+function fxSprite(tex, color) {
+  const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+  m.renderOrder = 10;
+  scene.add(m);
+  return m;
+}
+// obj 是 doll／treasure／prop（有 body），list 是它所在的陣列（被推下去之後就不再跟著走）
+function addSpawnFx(kind, obj, list, color = '#ffffff') {
+  const f = { kind, obj, list, t: 0, pos: obj.body.translation(), meshes: [] };
+  const col = new THREE.Color(color);
+  if (kind === 'flash') {
+    f.dur = 0.8;
+    f.glow = fxSprite(glowTexture(), col);
+    f.meshes.push(f.glow);
+  } else if (kind === 'ring') {
+    f.dur = 1.3;
+    f.glow = fxSprite(glowTexture(), new THREE.Color('#ffffff'));
+    f.ring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: ringTexture(), transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    f.ring.rotation.x = -Math.PI / 2;
+    f.ring.renderOrder = 10;
+    scene.add(f.ring);
+    f.meshes.push(f.glow, f.ring);
+  } else {
+    f.dur = 2;
+    f.glow = fxSprite(glowTexture(), new THREE.Color('#fff4c9'));
+    f.beam = fxSprite(pillarTexture(), new THREE.Color('#ffe9a8'));
+    f.beam.center.set(0.5, 0); // 光柱的底在東西的位置，往上延伸
+    f.meshes.push(f.glow, f.beam);
+    [784, 1047, 1319, 1568, 2093].forEach((fq, k) => setTimeout(() => beep(fq, 0.25, 0.05, 'sine', 'doll'), k * 110));
+  }
+  spawnFx.push(f);
+  updateSpawnFx(0);
+}
+function updateSpawnFx(dt) {
+  for (let i = spawnFx.length - 1; i >= 0; i--) {
+    const f = spawnFx[i];
+    f.t += dt;
+    const k = f.t / f.dur;
+    if (k >= 1) {
+      for (const m of f.meshes) { scene.remove(m); m.material.dispose(); if (m.isMesh) m.geometry.dispose(); }
+      spawnFx.splice(i, 1);
+      continue;
+    }
+    if (f.list.includes(f.obj)) f.pos = f.obj.body.translation();
+    const { x, y, z } = f.pos;
+    const up = k < 0.15 ? k / 0.15 : 1;
+    const fade = k < 0.15 ? 1 : 1 - (k - 0.15) / 0.85;
+    if (f.kind === 'flash') {
+      const s = 2.2 * up * (1 - 0.4 * (1 - fade));
+      f.glow.position.set(x, y, z);
+      f.glow.scale.set(s, s, 1);
+      f.glow.material.opacity = fade;
+    } else if (f.kind === 'ring') {
+      const s = 1.2 + 2.6 * (1 - Math.pow(1 - k, 3));
+      f.ring.position.set(x, y - 0.2, z);
+      f.ring.scale.set(s, s, 1);
+      f.ring.material.opacity = 1 - k;
+      const g = 2.4 * up;
+      f.glow.position.set(x, y, z);
+      f.glow.scale.set(g, g, 1);
+      f.glow.material.opacity = fade * 0.8;
+    } else {
+      // 光柱：很快打下來（變寬），停一下，再慢慢變細、變淡
+      const w = k < 0.1 ? k / 0.1 : k < 0.5 ? 1 : 1 - (k - 0.5) / 0.5;
+      f.beam.position.set(x, y - 0.3, z);
+      f.beam.scale.set(1.6 * w, 16, 1);
+      f.beam.material.opacity = Math.min(1, w * 1.2);
+      const g = 3.2 * up;
+      f.glow.position.set(x, y, z);
+      f.glow.scale.set(g, g, 1);
+      f.glow.material.opacity = fade;
+    }
+  }
+}
+// 史萊姆出現：照稀有度
+function dollSpawnFx(d) {
+  if (!d) return;
+  const r = slimeInfo(d.id)?.rarity;
+  addSpawnFx(r === 'legend' ? 'pillar' : r === 'rare' ? 'ring' : 'flash', d, dolls);
 }
 
 // ===== 推板移動 =====
@@ -1870,35 +2007,42 @@ const TREASURE_CHANCE = 0.05; // 每秒放一個小寶物的機率（保底式�
 const treasures = [];        // 檯面上的小寶物
 let treasureTimer = 0;
 // 彩券轉盤：推下檯面上的彩券免費轉一次；也可以花錢轉。
-// 一圈的順序照納可給的（2026-10-05）：500 10 100 200 20 50 200 50 20 200 100 10，從正上方順時針排。
-// 500 是紅色大獎、三格 200 是金色（格子比較寬，剛好在上下左右），其他都是黑色小格。
-// weight 是抽到的機會（跟格子寬度無關）。平均一次大約拿回 95 枚（價錢 100）
+// 一圈的順序照納可給的（2026-10-05）：大獎 10 100 200 20 50 200 50 20 200 100 10，從正上方順時針排。
+// 2026-10-16 納可定：轉盤看起來要跟實際一樣，每一格的大小＝抽到它的平均機率（p）。
+// 大獎是累計獎池（JACKPOT_*），格子佔 16 分之 1，用保底式機率（越久沒中越容易中），長期平均剛好 16 抽中一次。
+// 其他格子的大小和獎金是第二段排價錢時配的：只花錢抽的話，平均拿回大約九成五（含大獎）。tools/wheel_ev.py 算的。
 const WHEEL = [
-  { coins: 500, big: true, jackpot: true, weight: 0 }, // 上：大獎，用保底式機率
-  { coins: 10, weight: 9.18 }, { coins: 100, weight: 9.18 },
-  { coins: 200, big: true, weight: 7.85 },             // 右
-  { coins: 20, weight: 9.18 }, { coins: 50, weight: 9.18 },
-  { coins: 200, big: true, weight: 7.85 },             // 下
-  { coins: 50, weight: 9.18 }, { coins: 20, weight: 9.18 },
-  { coins: 200, big: true, weight: 7.85 },             // 左
-  { coins: 100, weight: 9.18 }, { coins: 10, weight: 9.18 },
+  { coins: 0, jackpot: true, p: 1 / 16 },              // 上：大獎（獎金是獎池，盤面畫星星）
+  { coins: 10, p: 0.22375 }, { coins: 100, p: 0.035 },
+  { coins: 200, big: true, p: 0.02 },
+  { coins: 20, p: 0.125 }, { coins: 50, p: 0.055 },
+  { coins: 200, big: true, p: 0.02 },
+  { coins: 50, p: 0.055 }, { coins: 20, p: 0.125 },
+  { coins: 200, big: true, p: 0.02 },
+  { coins: 100, p: 0.035 }, { coins: 10, p: 0.22375 },
 ];
-const WHEEL_UNIT = (Math.PI * 2) / WHEEL.reduce((n, w) => n + (w.big ? 2 : 1), 0);
 // 每一格的中心角度（從正上方開始順時針算）和半寬
 {
+  const total = WHEEL.reduce((n, w) => n + w.p, 0);
   let cum = 0;
   for (const w of WHEEL) {
-    const span = (w.big ? 2 : 1) * WHEEL_UNIT;
-    w.mid = cum + span / 2 - WHEEL_UNIT; // 第一格（大獎）的中心在正上方
+    const span = (w.p / total) * Math.PI * 2;
+    w.mid = cum + span / 2 - (WHEEL[0].p / total) * Math.PI; // 第一格（大獎）的中心在正上方
     w.half = span / 2;
     cum += span;
   }
 }
 const WHEEL_BASE_PRICE = 100; // 花錢轉一次的價錢（納可定）
-// 彩票升級（2026-10-16 納可定）：轉盤獎金和花錢抽的價錢一起乘上倍數
+// 彩票升級（2026-10-16 納可定）：轉盤獎金、花錢抽的價錢、獎池（起始和每次加的）一起乘上倍數
 const wheelPrice = () => WHEEL_BASE_PRICE * upValue('lottery');
-const wheelPrize = (w) => w.coins * upValue('lottery');
-const JACKPOT_CHANCE = 0.03; // 每轉一次中大獎的機率（保底式）
+const wheelPrize = (w) => (w.jackpot ? jackpotBase : w.coins) * upValue('lottery');
+const JACKPOT_CHANCE = 1 / 16; // 每轉一次中大獎的平均機率（保底式）＝大獎那格的大小
+// 累計獎池（2026-10-16 納可定）：只靠彩票自己長。起始 500，每花錢抽一次加 30、免費抽一次加 10；中大獎拿走整個獎池再從頭累計。
+// 存的是乘倍數之前的數字，彩票升級時整個獎池跟著變大
+const JACKPOT_START = 500;
+const JACKPOT_ADD_PAY = 30;
+const JACKPOT_ADD_FREE = 10;
+let jackpotBase = JACKPOT_START;
 let freeSpins = 0;           // 推下彩券拿到的免費次數
 const props = [];            // 檯面上的道具和彩券
 let propTimer = 0;
@@ -1966,7 +2110,7 @@ function startSummon() {
     // 檯面中段：左右分開，前後在推板前緣和檯面前緣中間一帶
     const x = n > 1 ? -lim + (2 * lim) * (k + 0.5) / n + (Math.random() - 0.5) * 0.4 : (Math.random() * 2 - 1) * lim * 0.6;
     const z = -0.5 + Math.random() * 1.5;
-    spawnDoll(id, scale, { x, y: 2 + k * 0.3, z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+    dollSpawnFx(spawnDoll(id, scale, { x, y: 2 + k * 0.3, z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }));
   }
   summonCd = SUMMON_CD;
   toast(n > 1 ? `召喚史萊姆 ×${n}！` : '召喚史萊姆！');
@@ -2309,7 +2453,8 @@ function dropTreasure(kind) {
   if (!kind) kind = open[Math.floor(Math.random() * open.length)];
   if (!kind) return;
   const yaw = Math.random() * Math.PI * 2;
-  spawnTreasure(kind, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+  const t = spawnTreasure(kind, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+  if (t) addSpawnFx('flash', t, treasures, TREASURES[kind].color);
   beep(1320, 0.08, 0.04, 'sine', 'item');
   setTimeout(() => beep(1760, 0.1, 0.035, 'sine', 'item'), 70);
 }
@@ -2328,7 +2473,8 @@ function dropProp(type) {
   if (type !== 'ticket' && !kinds.length) return;
   const kind = type === 'ticket' ? 'ticket' : kinds[Math.floor(Math.random() * kinds.length)];
   const yaw = (Math.random() - 0.5) * 0.8;
-  spawnProp(type, kind, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+  const pr = spawnProp(type, kind, { x: (Math.random() - 0.5) * 4, y: 3.2, z: DROP_Z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
+  if (pr) addSpawnFx('flash', pr, props, type === 'ticket' ? '#f4c95d' : ITEMS[kind].color);
   beep(820, 0.1, 0.04, 'triangle', type === 'ticket' ? 'wheel' : 'item');
 }
 
@@ -2462,6 +2608,22 @@ function wheelGold(ctx, cx, cy, r1) {
   g.addColorStop(1, '#a87522');
   return g;
 }
+// 五角星（大獎那格）
+function drawStar(ctx, x, y, r, color) {
+  ctx.save();
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rr = i % 2 ? r * 0.45 : r;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.shadowColor = 'rgba(247, 227, 161, 0.8)';
+  ctx.shadowBlur = r * 0.5;
+  ctx.fill();
+  ctx.restore();
+}
 function makeWheelDisk() {
   const R = WHEEL_R;
   const S = Math.ceil(R * 2 + 6);
@@ -2494,13 +2656,31 @@ function makeWheelDisk() {
     ctx.stroke();
     // 數字黏在盤子上跟著轉（納可定），字的上方朝外
     const am = w.mid - Math.PI / 2;
-    const tr = w.big ? R * 0.64 : R * 0.73;
-    const x = cx + Math.cos(am) * tr;
-    const y = cy + Math.sin(am) * tr;
-    const rot = am + Math.PI / 2;
-    if (w.jackpot) drawDigits(ctx, String(wheelPrize(w)), x, y, WHEEL_W * 0.085, '#f7e3a1', rot);
-    else if (w.big) drawDigits(ctx, String(wheelPrize(w)), x, y, WHEEL_W * 0.08, '#3a2608', rot);
-    else drawDigits(ctx, String(wheelPrize(w)), x, y, WHEEL_W * 0.05, '#d9a842', rot);
+    const color = w.big ? '#3a2608' : '#d9a842';
+    if (w.jackpot) {
+      // 大獎那格不寫數字，畫一顆星星（2026-10-16 納可定；獎池金額寫在轉盤上面）
+      const tr = R * 0.74;
+      drawStar(ctx, cx + Math.cos(am) * tr, cy + Math.sin(am) * tr, Math.min(WHEEL_W * 0.05, w.half * tr * 0.9), '#f7e3a1');
+    } else {
+      // 寬的格子橫著寫；窄的格子（格子比數字窄）改成順著半徑直著寫，字的高度跟著格子寬度縮
+      const text = String(wheelPrize(w));
+      const tr = R * 0.7;
+      const arc = w.half * 2 * tr;
+      const h = WHEEL_W * 0.05;
+      if (text.length * h * 0.75 < arc * 0.9) {
+        drawDigits(ctx, text, cx + Math.cos(am) * tr, cy + Math.sin(am) * tr, h, color, am + Math.PI / 2);
+      } else {
+        // 直著寫：字的外端貼近外圈，字的粗細不超過字的內端那裡的格子寬度
+        const outer = R * 0.9;
+        let hh = h;
+        for (let k = 0; k < 8; k++) {
+          const inner = outer - text.length * hh * 0.75;
+          hh = Math.min(h, w.half * 2 * inner * 0.7);
+        }
+        const rr = outer - (text.length * hh * 0.75) / 2;
+        drawDigits(ctx, text, cx + Math.cos(am) * rr, cy + Math.sin(am) * rr, hh, color, am);
+      }
+    }
   }
   // 格子邊上的小金釘（撥指針的就是它）
   for (const e of WHEEL_EDGES) {
@@ -2599,14 +2779,14 @@ function drawWheel(now = performance.now()) {
 }
 
 function renderWheelInfo() {
+  // 2026-10-16 納可定：永遠是左右兩個按鈕，不會不見。左邊用彩券抽、右邊花錢抽，按鈕上寫剩幾張、要花多少
   const freeBtn = document.getElementById('freeSpinBtn');
-  freeBtn.textContent = '免費抽一次';
+  freeBtn.innerHTML = `抽一次<span class="sub">彩券 × ${freeSpins}</span>`;
   freeBtn.disabled = freeSpins <= 0 || wheelSpinning;
-  freeBtn.hidden = freeSpins <= 0;
   const payBtn = document.getElementById('paySpinBtn');
-  payBtn.textContent = '花錢抽一次';
+  payBtn.innerHTML = `抽一次<span class="sub">${wheelPrice()} 枚</span>`;
   payBtn.disabled = wallet < wheelPrice() || wheelSpinning;
-  document.getElementById('wheelCost').textContent = `${freeSpins > 0 ? `免費還有 ${freeSpins} 次　・　` : ''}花錢抽一次 ${wheelPrice()} 枚`;
+  document.getElementById('jackpotPool').innerHTML = `大獎獎池　<b>${wheelPrize(WHEEL[0])}</b> 枚`;
 }
 
 function openWheel() {
@@ -2619,10 +2799,11 @@ function openWheel() {
 // 先決定結果，再讓轉盤轉到那一格
 function pickWheel() {
   if (jackpotChance.roll()) return WHEEL.findIndex((w) => w.jackpot);
-  const total = WHEEL.reduce((n, w) => n + w.weight, 0);
+  const total = WHEEL.reduce((n, w) => n + (w.jackpot ? 0 : w.p), 0);
   let r = Math.random() * total;
   for (let i = 0; i < WHEEL.length; i++) {
-    r -= WHEEL[i].weight;
+    if (WHEEL[i].jackpot) continue;
+    r -= WHEEL[i].p;
     if (r < 0) return i;
   }
   return 0;
@@ -2639,6 +2820,7 @@ function spinWheel(free) {
     bump(walletEl);
   }
   stats.spins++;
+  jackpotBase += free ? JACKPOT_ADD_FREE : JACKPOT_ADD_PAY;
   updateLotteryBadge();
   wheelSpinning = true;
   renderWheelInfo();
@@ -2699,6 +2881,7 @@ function finishSpin(idx) {
   const w = WHEEL[idx];
   const prize = wheelPrize(w);
   earn(prize);
+  if (w.jackpot) { jackpotBase = JACKPOT_START; jackpotCelebrate(prize); }
   bump(walletEl);
   document.getElementById('wheelResult').innerHTML = hangHtml(w.jackpot ? `大獎！+${prize} 枚` : w.big ? `中了！+${prize} 枚` : `+${prize} 枚`);
   const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : w.big ? [990, 1320, 1760] : [990, 1320];
@@ -2706,6 +2889,26 @@ function finishSpin(idx) {
   notes.forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'wheel'), k * 90));
   renderWheelInfo();
   saveGame();
+}
+
+// 中大獎的大慶祝畫面（2026-10-16 納可定）：整個畫面一顆大星星、金色碎片灑下來、獎金數字跳出來，配一段長一點的音樂
+function jackpotCelebrate(prize) {
+  const fx = document.getElementById('jackpotFx');
+  fx.querySelector('.amt').innerHTML = hangHtml(`+${prize} 枚`);
+  const bits = fx.querySelector('.bits');
+  bits.innerHTML = '';
+  for (let i = 0; i < 40; i++) {
+    const b = document.createElement('i');
+    b.style.left = `${Math.random() * 100}%`;
+    b.style.animationDelay = `${Math.random() * 0.8}s`;
+    b.style.animationDuration = `${1.6 + Math.random() * 1.2}s`;
+    b.style.setProperty('--spin', `${Math.random() * 720 - 360}deg`);
+    bits.appendChild(b);
+  }
+  fx.classList.remove('show');
+  void fx.offsetWidth;
+  fx.classList.add('show');
+  [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach((f, k) => setTimeout(() => beep(f, 0.22, 0.07, 'triangle', 'wheel'), 300 + k * 120));
 }
 
 document.getElementById('freeSpinBtn').addEventListener('click', () => spinWheel(true));
@@ -2884,6 +3087,7 @@ function saveData() {
     feverGauge,
     dollCount: dollChance.count,
     jackpotCount: jackpotChance.count,
+    jackpotBase,
     freeSpins,
     itemQueue: [...itemQueue],
     itemCount: itemChance.count,
@@ -3006,6 +3210,7 @@ function applySave(d) {
   jackpotChance.count = Math.max(0, Math.floor(Number(d.jackpotCount) || 0));
   // 舊版的轉盤券換成免費抽獎次數
   freeSpins = Math.max(0, Math.floor(Number(d.freeSpins ?? d.tickets) || 0));
+  jackpotBase = Math.max(JACKPOT_START, Math.floor(Number(d.jackpotBase) || 0));
   itemQueue.length = 0;
   for (const k of (Array.isArray(d.itemQueue) ? d.itemQueue : []).slice(0, 6)) if (ITEMS[k]) itemQueue.push(k);
   if (itemQueue.length) itemGap = ITEM_GAP;
@@ -3358,6 +3563,7 @@ function tick(now) {
     updateSlimeEffects(d.mesh, now / 1000);
   }
   for (const it of shelfItems) updateSlimeEffects(it.userData.slime, now / 1000);
+  updateSpawnFx(frame);
   aimGhost.position.x = aimX;
   aimGhost.rotation.y += frame * 2;
 
@@ -3452,8 +3658,8 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, excludedSets, syncActiveSets, get dollBags() { return dollBags; }, setDone, pickDollId, SLIME_SETS, setUnlocked, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, useItem, get itemQueue() { return [...itemQueue]; }, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, get coinBag() { return coinBag; }, nextCoinKind, refillCoinBag, COIN_KINDS, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, excludedSets, syncActiveSets, get dollBags() { return dollBags; }, setDone, pickDollId, SLIME_SETS, setUnlocked, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, useItem, get itemQueue() { return [...itemQueue]; }, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); if (wheelEl.classList.contains('show')) renderWheelInfo(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, get spawnFx() { return spawnFx; }, dollSpawnFx, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, get coinBag() { return coinBag; }, nextCoinKind, refillCoinBag, COIN_KINDS, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
-  setAim(x) { aimX = x; }, upValue, tutorSeen, get tutorNow() { return tutorNow && tutorNow.id; }, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
+  setAim(x) { aimX = x; }, setUpgrades(o) { Object.assign(upgrades, o); buildGuards(); }, instantSpin() { if (freeSpins <= 0 || wheelSpinning) return; freeSpins--; stats.spins++; jackpotBase += JACKPOT_ADD_FREE; const w = WHEEL[pickWheel()]; earn(wheelPrize(w)); if (w.jackpot) jackpotBase = JACKPOT_START; }, get jackpotBase() { return jackpotBase; }, pickWheel, jackpotCelebrate, upValue, tutorSeen, get tutorNow() { return tutorNow && tutorNow.id; }, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
 requestAnimationFrame((t) => { lastT = t; tick(t); });

@@ -3,6 +3,7 @@
 //      node tools/longrun.mjs 40 '{"headStart":1,"mult":1,"startMoney":1}'
 // 給了輪迴點商店等級，就先照那個等級輪迴一次再開始算（初始資金、起跑都會生效）。
 // 每 5 分鐘印一行：這一輪累計賺多少、現在輪迴能拿幾點、手上多少、升級總級數、收集幾隻娃娃。
+// 2026-10-16：測試版沒有輪迴了也能跑（沒有輪迴就不印點數）；有免費抽就去抽；加 OUTJSON=檔名 存每分鐘的數字給 tools/curve.py 用。
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NPMG + '/playwright');
@@ -25,6 +26,7 @@ await page.evaluate((perks) => {
   g.setAuto(true);
   window.__t = 0;
   window.__buys = [];
+  window.__spent = 0;
 }, perks);
 const rows = [];
 for (let m = 1; m <= minutes; m++) {
@@ -40,22 +42,26 @@ for (let m = 1; m <= minutes; m++) {
           for (const k of g.UPGRADE_KEYS) if (g.canBuy(k)) { const p = g.upPrice(k); if (!best || p < best[1]) best = [k, p]; }
           if (!best) break;
           g.buy(best[0]);
+          __spent += best[1];
           __buys.push([+(now / 60).toFixed(1), g.UPGRADES[best[0]].name, g.upgrades[best[0]]]);
         }
         if (g.upValue('shake') > 0 && g.shakeCd <= 0) g.startShake();
         if (g.upValue('rain') > 0 && g.rainCd <= 0) g.startRainSkill();
         if (g.upValue('summon') > 0 && g.summonCd <= 0) g.startSummon();
+        if (g.freeSpins > 0 && g.instantSpin) g.instantSpin();
       }
     });
     __t += 60;
     const lv = g.UPGRADE_KEYS.reduce((n, k) => n + g.upgrades[k], 0);
     const maxLv = g.UPGRADE_KEYS.reduce((n, k) => n + g.UPGRADES[k].prices.length, 0);
-    return { earned: Math.round(g.earned), pts: g.rebirthPending(), wallet: g.wallet, lv, maxLv, dolls: g.stats.dollsCollected };
+    return { earned: Math.round(g.earned), pts: g.rebirthPending ? g.rebirthPending() : null, wallet: g.wallet, spent: __spent, lv, maxLv, dolls: g.stats.dollsCollected };
   });
   rows.push(r);
-  if (m % 5 === 0 || m === minutes) console.log(`${String(m).padStart(3)} 分：累計賺 ${r.earned}，輪迴可拿 ${r.pts} 點，手上 ${r.wallet}，升級 ${r.lv}/${r.maxLv} 級，收集娃娃 ${r.dolls} 隻`);
+  if (m % 5 === 0 || m === minutes) console.log(`${String(m).padStart(3)} 分：累計賺 ${r.earned}，${r.pts === null ? '' : `輪迴可拿 ${r.pts} 點，`}手上 ${r.wallet}，升級 ${r.lv}/${r.maxLv} 級，收集娃娃 ${r.dolls} 隻`);
+  if (r.lv === r.maxLv && process.env.STOP_AT_MAX) break;
 }
 const buys = await page.evaluate(() => __buys);
+if (process.env.OUTJSON) require('fs').writeFileSync(process.env.OUTJSON, JSON.stringify({ run1: rows, buys }));
 // 各升級第一次買到、買滿的時間
 const first = {}, last = {};
 for (const [t, name, lv] of buys) { if (!(name in first)) first[name] = t; last[name] = [t, lv]; }

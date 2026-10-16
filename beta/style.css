@@ -445,6 +445,21 @@ html, body {
 .bookCell.owned { cursor: pointer; }
 
 #wheelCanvas { width: 100%; aspect-ratio: 1; display: block; margin-top: 8px; }
+/* 累計獎池：寫在轉盤上面（2026-10-16 納可定） */
+#jackpotPool { margin-top: 6px; font-size: 14px; color: var(--dim); }
+#jackpotPool b { font-size: 22px; font-weight: 900; color: #f7e3a1; text-shadow: 0 0 10px rgba(201, 55, 79, 0.7); font-variant-numeric: tabular-nums; }
+/* 中大獎的慶祝畫面 */
+#jackpotFx { position: fixed; inset: 0; z-index: 8; pointer-events: none; display: none; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; background: radial-gradient(circle, rgba(201, 55, 79, 0.45), rgba(10, 8, 16, 0.75) 70%); }
+#jackpotFx.show { display: flex; animation: jpFade 3.6s ease-out forwards; }
+#jackpotFx .star { font-size: 140px; line-height: 1; color: #f7e3a1; text-shadow: 0 0 30px rgba(247, 227, 161, 0.9), 0 0 60px rgba(244, 201, 93, 0.7); animation: jpStar 3.6s ease-out forwards; }
+#jackpotFx .word { font-size: 46px; font-weight: 900; letter-spacing: 8px; color: var(--gold); text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 0 24px rgba(244, 201, 93, 0.7); margin-top: 6px; }
+#jackpotFx .word .hc { padding-left: 8px; }
+#jackpotFx .amt { font-size: 34px; font-weight: 900; color: #ffe08a; text-shadow: 0 0 14px rgba(244, 201, 93, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6); margin-top: 6px; font-variant-numeric: tabular-nums; }
+#jackpotFx .bits { position: absolute; inset: 0; }
+#jackpotFx .bits i { position: absolute; top: -20px; width: 10px; height: 14px; border-radius: 2px; background: linear-gradient(135deg, #fff1bf, #d9a842 60%, #a87522); animation-name: jpBit; animation-timing-function: linear; animation-fill-mode: forwards; }
+@keyframes jpFade { 0% { opacity: 0; } 8% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes jpStar { 0% { transform: scale(0.2) rotate(-90deg); } 18% { transform: scale(1.15) rotate(10deg); } 28% { transform: scale(1) rotate(0deg); } 100% { transform: scale(1.05) rotate(0deg); } }
+@keyframes jpBit { 0% { transform: translateY(0) rotate(0deg); } 100% { transform: translateY(110vh) rotate(var(--spin)); } }
 #wheelResult { min-height: 1.4em; font-size: 22px; font-weight: 900; color: var(--gold); margin-top: 4px; text-align: center; }
 /* 兩顆按鈕並排、一樣大 */
 .spinRow { display: flex; gap: 8px; margin-top: 8px; }
@@ -461,7 +476,7 @@ html, body {
   cursor: pointer;
 }
 #wheel .spinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); cursor: default; }
-#wheel .spinBtn[hidden] { display: none; }
+#wheel .spinBtn .sub { display: block; font-size: 12px; font-weight: 400; opacity: 0.85; margin-top: 2px; }
 #wheel #freeSpinBtn { background: transparent; border-color: var(--gold); color: var(--gold); }
 #wheel #freeSpinBtn:disabled { background: transparent; color: var(--dim); border-color: rgba(255, 255, 255, 0.2); }
 
