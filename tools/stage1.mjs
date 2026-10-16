@@ -24,6 +24,13 @@ for (const vp of [{ width: 1000, height: 700 }, { width: 390, height: 780 }]) {
   });
   await page.waitForTimeout(500);
   r.skillRows = await page.evaluate(() => [...document.querySelectorAll('.skillRow')].map((x) => !x.hidden).join(','));
+  // 道具排隊：一次推下 3 個，看每個在第幾秒發動
+  r.items = await page.evaluate(() => {
+    const g = __game; const used = []; let n0 = g.stats.itemsUsed;
+    g.useItem('wind'); g.useItem('quake'); g.useItem('reach');
+    g.play(25, (t) => { if (g.stats.itemsUsed > n0) { n0 = g.stats.itemsUsed; used.push(t.toFixed(1)); } });
+    return `發動時間：${used.join("、")} 秒；剩 ${g.itemQueue.length}`;
+  });
   // 商店：快速購買、最便宜 3 個、舊存檔換算
   r.shop = await page.evaluate(() => {
     const g = __game; const o = {};

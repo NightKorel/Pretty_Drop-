@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.2';
-import { drawDigits } from './digits.js?v=0.1.2';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.2';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.2';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.3';
+import { drawDigits } from './digits.js?v=0.1.3';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.3';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.3';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.2';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.2';
+} from './slime.js?v=0.1.3';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.3';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -2351,6 +2351,27 @@ function triggerItem(kind) {
   setTimeout(() => beep(780, 0.2, 0.05, 'triangle', 'item'), 120);
 }
 
+// 道具排隊（2026-10-16 納可定）：前一個道具的效果還在跑、或結束還不到 ITEM_GAP 秒，
+// 新推下的道具先排隊，等前一個結束再隔 ITEM_GAP 秒才發動。排隊的不會消失。
+// （不然陣風把別的道具一起吹下去，後面那些馬上發動，吹的是已經空掉的檯面）
+const ITEM_GAP = 5;
+const itemQueue = [];
+let itemGap = 0;
+const itemBusy = () => windTime > 0 || quakeTime > 0 || reachQueued || reachExtra > 0;
+function useItem(kind) {
+  if (itemBusy() || itemGap > 0 || itemQueue.length) {
+    itemQueue.push(kind);
+    toast(`下一個：${ITEMS[kind].name}`);
+  } else {
+    triggerItem(kind);
+  }
+}
+function tickItemQueue() {
+  if (itemBusy()) { itemGap = ITEM_GAP; return; }
+  if (itemGap > 0) itemGap -= STEP;
+  if (itemGap <= 0 && itemQueue.length) triggerItem(itemQueue.shift());
+}
+
 // 甩一甩（主動技能）
 function startShake() {
   if (upValue('shake') <= 0 || shakeCd > 0) return;
@@ -2362,6 +2383,7 @@ function startShake() {
 }
 // 每一步：陣風往前推、地震亂抖、長推板倒數、甩一甩
 function applyEffects() {
+  tickItemQueue();
   if (shakeTime > 0) {
     shakeTime -= STEP;
     shakeTick += STEP;
@@ -2918,6 +2940,8 @@ function doRebirth() {
   refillTimer = 0;
   windTime = quakeTime = reachExtra = 0;
   reachQueued = false;
+  itemQueue.length = 0;
+  itemGap = 0;
   shakeTime = shakeCd = 0;
   rainCd = 0;
   summonCd = 0;
@@ -3087,6 +3111,7 @@ function saveData() {
     dollCount: dollChance.count,
     jackpotCount: jackpotChance.count,
     freeSpins,
+    itemQueue: [...itemQueue],
     itemCount: itemChance.count,
     ticketCount: ticketChance.count,
     treasureCount: treasureChance.count,
@@ -3208,6 +3233,9 @@ function applySave(d) {
   jackpotChance.count = Math.max(0, Math.floor(Number(d.jackpotCount) || 0));
   // 舊版的轉盤券換成免費抽獎次數
   freeSpins = Math.max(0, Math.floor(Number(d.freeSpins ?? d.tickets) || 0));
+  itemQueue.length = 0;
+  for (const k of (Array.isArray(d.itemQueue) ? d.itemQueue : []).slice(0, 6)) if (ITEMS[k]) itemQueue.push(k);
+  if (itemQueue.length) itemGap = ITEM_GAP;
   itemChance.count = Math.max(0, Math.floor(Number(d.itemCount) || 0));
   ticketChance.count = Math.max(0, Math.floor(Number(d.ticketCount) || 0));
   treasureChance.count = Math.max(0, Math.floor(Number(d.treasureCount) || 0));
@@ -3398,7 +3426,7 @@ function stepSim() {
         toast('彩券掉進側溝了……');
       }
     } else if (front) {
-      triggerItem(pr.kind);
+      useItem(pr.kind);
     } else {
       toast(`「${ITEMS[pr.kind].name}」掉進側溝了……`); // 道具名字加引號（2026-10-05 納可定）
     }
@@ -3649,7 +3677,7 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, get coinBag() { return coinBag; }, nextCoinKind, refillCoinBag, COIN_KINDS, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, useItem, get itemQueue() { return [...itemQueue]; }, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, get coinBag() { return coinBag; }, nextCoinKind, refillCoinBag, COIN_KINDS, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
   PERKS, PERK_KEYS, perkLv,
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
