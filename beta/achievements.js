@@ -8,7 +8,7 @@ export const STAT_NAMES = {
   coinsWon: '推下來的幣',
   bigWon: '推下來的金幣',
   dollsCollected: '收集到的娃娃',
-  rains: '遇到的金幣雨',
+  rains: '遇到的錢幣雨',
   upgradesBought: '買過的升級',
   spins: '轉過的轉盤',
   itemsUsed: '用過的道具',
@@ -52,7 +52,7 @@ export function achIconSvg(name) {
 }
 
 // 成就分類（畫面上分組、可以收合）
-export const ACH_CATS = { coin: '投幣與推幣', slime: '史萊姆', machine: '金幣雨、轉盤、道具', upgrade: '升級' };
+export const ACH_CATS = { coin: '投幣與推幣', slime: '史萊姆', machine: '錢幣雨、轉盤、道具', upgrade: '升級' };
 export const ACHIEVEMENTS = [
   { id: 'firstDrop', icon: 'coinDrop', cat: 'coin', name: '第一枚', desc: '投出第一枚幣', points: 10, check: (g) => g.stats.coinsDropped >= 1 },
   { id: 'drop1000', icon: 'coinStack', cat: 'coin', name: '手停不下來', desc: '總共投出 1000 枚幣', points: 20, check: (g) => g.stats.coinsDropped >= 1000 },
@@ -66,8 +66,8 @@ export const ACHIEVEMENTS = [
   { id: 'legend', icon: 'sparkle', cat: 'slime', name: '閃閃發亮', desc: '收集到一隻傳說娃娃', points: 30, check: (g) => g.legend },
   { id: 'set1', icon: 'book', cat: 'slime', name: '一整套', desc: '收集完一整套娃娃（10 種）', points: 50, check: (g) => g.setsDone >= 1 },
   { id: 'setAll', icon: 'crown', cat: 'slime', name: '圖鑑全開', desc: '收集完所有娃娃', points: 100, check: (g) => g.kinds >= g.totalKinds },
-  { id: 'rain1', icon: 'cloudRain', cat: 'machine', name: '下雨了', desc: '遇到第一場金幣雨', points: 10, check: (g) => g.stats.rains >= 1 },
-  { id: 'rain20', icon: 'umbrella', cat: 'machine', name: '雨季', desc: '總共遇到 20 場金幣雨', points: 30, check: (g) => g.stats.rains >= 20 },
+  { id: 'rain1', icon: 'cloudRain', cat: 'machine', name: '下雨了', desc: '遇到第一場錢幣雨', points: 10, check: (g) => g.stats.rains >= 1 },
+  { id: 'rain20', icon: 'umbrella', cat: 'machine', name: '雨季', desc: '總共遇到 20 場錢幣雨', points: 30, check: (g) => g.stats.rains >= 20 },
   { id: 'firstUpgrade', icon: 'arrowUp', cat: 'upgrade', name: '小小投資', desc: '在商店買第一個升級', points: 10, check: (g) => g.stats.upgradesBought >= 1 },
   { id: 'maxOne', icon: 'maxBar', cat: 'upgrade', name: '升好升滿', desc: '把一項升級升到滿級', points: 30, check: (g) => g.maxed >= 1 },
   { id: 'maxAll', icon: 'trophy', cat: 'upgrade', name: '終極機台', desc: '把所有升級升到滿級', points: 100, check: (g) => g.maxed >= g.upgradeCount },

@@ -130,6 +130,11 @@ html, body {
   cursor: pointer;
 }
 .skillBtn[hidden] { display: none; }
+/* 技能旁邊的小「自動」鈕（2026-10-16） */
+.skillRow { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.skillRow[hidden] { display: none; }
+.skillAuto { padding: 4px 6px; border-radius: 8px; border: 1px solid #4a4458; background: rgba(30, 23, 36, 0.85); color: var(--dim); font-size: 11px; font-family: inherit; cursor: pointer; }
+.skillAuto.on { border-color: var(--gold); color: var(--gold); }
 .skillBtn:disabled { border-color: #4a4458; color: var(--dim); cursor: default; }
 .skillBtn:not(:disabled):active { transform: scale(0.94); }
 
@@ -279,6 +284,9 @@ html, body {
   box-shadow: 0 0 8px var(--gold);
 }
 .item.locked .desc { font-style: normal; text-align: center; width: 100%; }
+/* 快速購買：釘在商店最上面，現在最便宜的那一項（2026-10-16 納可定） */
+.quickBuy { margin: 6px 0 4px; padding: 0 10px; border: 1px solid rgba(255, 210, 120, 0.45); border-radius: 10px; background: rgba(255, 210, 120, 0.06); }
+.quickBuy .item { border-top: none; }
 
 #rainBanner {
   position: fixed;

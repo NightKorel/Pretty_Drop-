@@ -13,16 +13,38 @@ for (const vp of [{ width: 1000, height: 700 }, { width: 390, height: 780 }]) {
     const g = __game; g.applyQuality('low'); const out = {};
     g.upgrades.coinMix = 10; g.refillCoinBag(); const bag = g.coinBag.join(',');
     out.bag = ['copper', 'silver', 'gold'].map((k) => bag.split(k).length - 1).join('/');
-    g.upgrades.rain = 3; g.startRainSkill(); out.rainCd = Math.round(g.rainCd); g.simulate(4);
+    g.upgrades.rain = 3; g.startRainSkill(); out.rainCd = Math.round(g.rainCd); g.play(4);
     out.goldOnTable = g.coins.filter((c) => c.kind === 'gold').length;
     const d0 = g.dolls.length; g.upgrades.summon = 3; g.startSummon(); out.summoned = g.dolls.length - d0; out.summonCd = Math.round(g.summonCd);
-    g.upgrades.shake = 3; g.startShake(); out.shakeCd = Math.round(g.shakeCd); g.simulate(2);
+    g.upgrades.shake = 3; g.startShake(); out.shakeCd = Math.round(g.shakeCd); g.play(2);
     g.upgrades.lottery = 2; out.wheelPrice = document.getElementById('wheelCost') ? 'ok' : 'none';
-    g.clearTable(); g.simulate(4); out.refillCoins = g.coins.length; out.refills = g.refills;
+    g.clearTable(); g.play(8); out.refillCoins = g.coins.length; out.refills = g.refills;
     document.querySelectorAll('.skillAuto')[0].click(); const cd0 = g.rainCd; out.autoRainOn = document.querySelectorAll('.skillAuto')[0].classList.contains('on');
-    out.skillRows = [...document.querySelectorAll('.skillRow')].map((x) => !x.hidden).join(',');
     return out;
   });
-  console.log(vp.width, JSON.stringify(r), errs);
+  await page.waitForTimeout(500);
+  r.skillRows = await page.evaluate(() => [...document.querySelectorAll('.skillRow')].map((x) => !x.hidden).join(','));
+  // 商店：快速購買、最便宜 3 個、舊存檔換算
+  r.shop = await page.evaluate(() => {
+    const g = __game; const o = {};
+    for (const k of Object.keys(g.upgrades)) g.upgrades[k] = 0;
+    g.setWallet(0); document.getElementById('shopBtn').click();
+    o.rows = [...document.querySelectorAll('#shopList .item .name')].map((x) => x.textContent).join('|');
+    o.quick = document.querySelector('.quickBuy .desc')?.textContent;
+    g.upgrades.coinMix = 6; g.setWallet(1); document.getElementById('shopBtn').click(); document.getElementById('shopBtn').click();
+    o.mixText = [...document.querySelectorAll('#shopList .desc')].map((x) => x.textContent).find((t) => t.includes('現在：'));
+    g.setWallet(100000); g.buy('refill'); o.afterBuy = [...document.querySelectorAll('#shopList .item .name')].map((x) => x.textContent).join('|');
+    document.getElementById('shopClose').click();
+    const old = { upgrades: { refill: 7, guard: 3, speed: 7, dropRate: 6, silver: 6, gold: 10, rain: 8, rainSize: 7, shake: 2, summon: 1, multi: 1 } };
+    const d = g.saveData(); d.upgrades = old.upgrades; o.save = d;
+    return o;
+  });
+  // 重新整理時遊戲會先存檔，所以舊存檔要在新頁面開始前才放進去
+  await page.addInitScript((d) => { if (!sessionStorage.getItem('oldSave')) { sessionStorage.setItem('oldSave', '1'); localStorage.setItem('pretty_drop_beta_save', JSON.stringify(d)); } }, r.shop.save);
+  delete r.shop.save;
+  await page.reload(); await page.waitForFunction(() => window.__game, null, { timeout: 240000 });
+  r.converted = await page.evaluate(() => JSON.stringify(__game.upgrades));
+  await page.evaluate(() => localStorage.clear());
+  console.log(vp.width, JSON.stringify(r, null, 1), errs);
 }
 await browser.close();

@@ -4,23 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Pretty Drop! 史萊姆推幣機</title>
-  <link rel="stylesheet" href="style.css?v=0.1.1">
+  <link rel="stylesheet" href="style.css?v=0.1.2">
   <!-- 先把要用的檔案一起開始下載，不用等前一個下載完才發現下一個 -->
   <link rel="modulepreload" href="../lib/three.core.js">
   <link rel="modulepreload" href="../lib/three.module.js">
   <link rel="modulepreload" href="../lib/rapier.mjs">
   <link rel="modulepreload" href="../lib/RoomEnvironment.js">
-  <link rel="modulepreload" href="coin.js?v=0.1.1">
-  <link rel="modulepreload" href="digits.js?v=0.1.1">
-  <link rel="modulepreload" href="start-layout.js?v=0.1.1">
-  <link rel="modulepreload" href="slime.js?v=0.1.1">
-  <link rel="modulepreload" href="achievements.js?v=0.1.1">
-  <link rel="modulepreload" href="treasure.js?v=0.1.1">
+  <link rel="modulepreload" href="coin.js?v=0.1.2">
+  <link rel="modulepreload" href="digits.js?v=0.1.2">
+  <link rel="modulepreload" href="start-layout.js?v=0.1.2">
+  <link rel="modulepreload" href="slime.js?v=0.1.2">
+  <link rel="modulepreload" href="achievements.js?v=0.1.2">
+  <link rel="modulepreload" href="treasure.js?v=0.1.2">
   <link rel="preload" href="../lib/rapier_wasm3d_bg.wasm.gz" as="fetch" crossorigin>
 </head>
 <body>
   <div id="hud">
-    <div class="title"><span class="tEn">Pretty Drop!</span> <span class="tZh">史萊姆推幣機</span> <span class="ver">v0.1.1 測試版</span></div>
+    <div class="title"><span class="tEn">Pretty Drop!</span> <span class="tZh">史萊姆推幣機</span> <span class="ver">v0.1.2 測試版</span></div>
     <div class="money">
       <div class="box"><span class="label">手上</span><span id="wallet">0</span><span class="unit">枚</span></div>
       <div id="feverBar"><span>狂熱</span><i><b id="feverFill"></b></i></div>
@@ -69,7 +69,7 @@
           <button type="button" data-cheat="coin1000">手上 +1000 枚</button>
           <button type="button" data-cheat="doll">放一隻娃娃</button>
           <button type="button" data-cheat="legend">放一隻傳說娃娃</button>
-          <button type="button" data-cheat="rain">下一場金幣雨</button>
+          <button type="button" data-cheat="rain">下一場錢幣雨</button>
           <button type="button" data-cheat="sets">解鎖全部娃娃套</button>
           <button type="button" data-cheat="ach">成就點數 +10</button>
           <button type="button" data-cheat="ticket">放一張彩券</button>
@@ -154,11 +154,11 @@
     <div class="rebornText"><span class="hc">轉生中<span class="hr">……</span></span></div>
   </div>
   <div id="toast"></div>
-  <div id="rainBanner"><span class="hc">金幣雨<span class="hr">！</span></span></div>
+  <div id="rainBanner"><span class="hc">錢幣雨<span class="hr">！</span></span></div>
   <div id="skills">
-    <button id="rainBtn" class="skillBtn" type="button" hidden>金幣雨</button>
-    <button id="skillBtn" class="skillBtn" type="button" hidden>甩一甩</button>
-    <button id="summonBtn" class="skillBtn" type="button" hidden>召喚</button>
+    <div class="skillRow" hidden><button type="button" class="skillAuto">自動</button><button id="rainBtn" class="skillBtn" type="button">錢幣雨</button></div>
+    <div class="skillRow" hidden><button type="button" class="skillAuto">自動</button><button id="skillBtn" class="skillBtn" type="button">甩一甩</button></div>
+    <div class="skillRow" hidden><button type="button" class="skillAuto">自動</button><button id="summonBtn" class="skillBtn" type="button">召喚</button></div>
   </div>
   <div id="feverBanner"><span class="hc">狂熱時間<span class="hr">！</span></span></div>
   <div id="tutor"><span id="tutorText"></span><button type="button" id="tutorClose" aria-label="關掉提示">×</button></div>
@@ -309,6 +309,6 @@
   </script>
   <!-- 瀏覽器太舊、不認得新式程式檔時才會跑這段 -->
   <script nomodule>window.addEventListener('DOMContentLoaded', function () { window.__fail('E01'); });</script>
-  <script type="module" src="app.js?v=0.1.1"></script>
+  <script type="module" src="app.js?v=0.1.2"></script>
 </body>
 </html>
