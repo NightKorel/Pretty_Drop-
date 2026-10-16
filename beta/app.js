@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.6';
-import { drawDigits } from './digits.js?v=0.1.6';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.6';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.6';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.7';
+import { drawDigits } from './digits.js?v=0.1.7';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.7';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.7';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.6';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.6';
+} from './slime.js?v=0.1.7';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.7';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -2002,7 +2002,7 @@ const ITEMS = {
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
 const TICKET_CHANCE = 0.006; // 每秒放一張彩券的機率（保底式，平均大約 3 分鐘一張），檯面上同時最多 1 張
 const MAX_PROPS = 3;         // 檯面上道具加彩券最多幾個
-const MAX_TREASURES = 2;     // 檯面上小寶物一開始最多幾個（商店「寶物上限」再加）
+const MAX_TREASURES = 5;     // 檯面上小寶物一開始最多幾個（商店「寶物上限」再加）。2026-10-16 第一批 3（納可定）：2 → 5
 const TREASURE_CHANCE = 0.05; // 每秒放一個小寶物的機率（保底式，平均大約 20 秒一個）
 const treasures = [];        // 檯面上的小寶物
 let treasureTimer = 0;
@@ -2123,7 +2123,7 @@ function startSummon() {
 const FEVER_MAX = 800;          // 2026-10-05 納可：原本 1000 有點長，改短一點
 const FEVER_TIME = 20;
 const FEVER_SPEED = 1.6;     // 狂熱時推板快幾倍
-const FEVER_RAIN = 6;        // 狂熱時每秒掉幾枚金幣
+const FEVER_RAIN = 10;       // 狂熱時每秒掉幾枚幣。2026-10-16 第一批 5（納可：不夠嗨，雨下大一點）：6 → 10
 const FEVER_DOLL = { common: 10, rare: 30, legend: 50 };
 const FEVER_BIG = 2;         // 金幣 +2（原本是大金幣 +2，納可定）
 const FEVER_GEM = 5;         // 小寶物都 +5（納可定）

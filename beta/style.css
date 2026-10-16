@@ -632,6 +632,10 @@ html, body {
 #feverBar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); padding: 0 2px; }
 #feverBar i { flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 #feverBar b { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--gold), #ff8fab); transition: width 0.3s; }
+/* 狂熱時間的畫面效果（2026-10-16 第一批 5，納可：不夠嗨）：畫面四周一圈粉金色的光，一閃一閃 */
+#feverGlow { position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 0.6s; box-shadow: inset 0 0 45px 8px rgba(255, 143, 171, 0.5), inset 0 0 100px 14px rgba(244, 201, 93, 0.2); }
+body.fever #feverGlow { opacity: 1; animation: feverPulse 0.9s ease-in-out infinite alternate; }
+@keyframes feverPulse { 0% { box-shadow: inset 0 0 30px 4px rgba(255, 143, 171, 0.4), inset 0 0 80px 10px rgba(244, 201, 93, 0.12); } 100% { box-shadow: inset 0 0 55px 12px rgba(255, 143, 171, 0.65), inset 0 0 110px 18px rgba(244, 201, 93, 0.28); } }
 body.fever #feverBar span { color: #ff8fab; font-weight: 700; }
 body.fever #feverBar b { box-shadow: 0 0 8px #ff8fab; }
 /* 狂熱時間的大字 */
