@@ -1,0 +1,4 @@
+2026-10-16 晚上 第二段價錢曲線（做到一半）
+- 價錢.patch：tools/curve2.py 算出來的新價錢（全部買滿大約 3 小時），還沒驗證完，所以先不放進 beta。
+- 做到哪：用 tools/rate.mjs 量了一路上 19 個升級組合的收入，curve2.py 排好價錢；正在用 tools/longrun.mjs 從頭玩兩輪驗證。
+- 怎麼接回去：在 repo 根目錄 `git apply 暫存區/2026-10-16_第二段價錢/價錢.patch`，再跑 longrun.mjs 看多久買滿。
