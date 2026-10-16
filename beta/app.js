@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.7';
-import { drawDigits } from './digits.js?v=0.1.7';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.7';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.7';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.8';
+import { drawDigits } from './digits.js?v=0.1.8';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.8';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.8';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.7';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.7';
+} from './slime.js?v=0.1.8';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.8';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -70,105 +70,105 @@ const MOM_GIVE = 10;         // 媽媽每次給幾枚
 // ===== 商店升級 =====
 // 2026-10-16 第一段大改（納可定）：級數變少、每一級都要有感；開頭和滿級的數值照舊，只合併中間的級數。
 // 商店清單照這裡的順序排、位置不動；還沒買過的只露出最便宜的 3 個（看 shopVisible）。
-// 價錢是暫定的（照舊價錢挑的），第二段重排價錢曲線、跑模擬時再定。
+// 價錢：2026-10-16 第二段用 tools/curve2.py 排的；從頭模擬玩兩輪，157、162 分鐘全部買滿（目標 2 到 4 小時）。
 // levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
   refill: {
     name: '媽媽十元',
     desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
     levels: [30, 20, 14, 10],                          // 媽媽幾秒給一次
-    prices: [10, 60, 150],
+    prices: [30, 150, 650],
   },
   guard: {
     name: '側溝擋板',
     desc: '從前緣往後裝矮矮的擋板，幣比較不會掉進兩側溝',
     levels: [0, 1.4, 2.8, 4.2],                        // 擋板長度
-    prices: [10, 100, 200],
+    prices: [70, 200, 650],
   },
   coinMix: {
     name: '硬幣比例',
     desc: '投下去的幣，銀幣（值 5 枚）、金幣（值 10 枚）變多。投一枚一樣花 1 枚',
     // 每 20 枚裡有幾枚 [銀, 金]（納可定的表）：1 到 4 級銀 +1、5 級金 +1、6 到 9 級銀 +1、10 級金 +1
     levels: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [8, 2]],
-    prices: [20, 60, 100, 150, 300, 450, 700, 1000, 1500, 2200],
+    prices: [100, 150, 250, 550, 800, 2600, 3100, 6600, 8000, 13000],
   },
   speed: {
     name: '推板加速',
     desc: '推板來回得更快，幣推得更勤',
     levels: [4.4, 3.9, 3.4],                           // 推板來回一次幾秒（2 級：全程只快兩成多，切 3 級每級沒感覺）
-    prices: [90, 250],
+    prices: [350, 2700],
   },
   dropRate: {
     name: '投幣速度',
     desc: '手變快，一秒能投更多枚',
     levels: [1.0, 0.83, 0.71, 0.6],                    // 兩次投幣之間至少隔幾秒（一秒 1 → 1.2 → 1.4 → 1.7 枚）
-    prices: [100, 200, 350],
+    prices: [300, 950, 3600],
   },
   rain: {
     name: '錢幣雨',
     desc: '解鎖技能「錢幣雨」：按一下，天上掉下一場錢幣雨。Lv 1 銅幣雨、Lv 2 銀幣雨、Lv 3 金幣雨',
     levels: [0, 1, 2, 3],                              // 下哪種幣（看 RAIN_KIND；0 是還不能用）
-    prices: [200, 800, 2500],
+    prices: [450, 3400, 9000],
   },
   rainSize: {
     name: '錢幣雨變大',
     desc: '每場錢幣雨撒下來的幣變多',
     levels: [30, 60, 100, 150],                        // 一場幾枚
-    prices: [300, 600, 1100],
+    prices: [700, 3900, 11000],
   },
   rainCool: {
     name: '錢幣雨冷卻',
     desc: '錢幣雨的等待時間變短',
     levels: [90, 60, 45, 30],                          // 冷卻幾秒（一開始最久 90 秒，納可定）
-    prices: [350, 700, 1200],
+    prices: [1500, 5700, 17000],
   },
   gems: {
     name: '珠寶',
     desc: '偶爾會掉落珠寶，推下去值不少錢。升級讓珠寶的種類變多',
     levels: [0, 1, 2, 3],                              // 開幾種（照 TREASURE_ORDER）。2026-10-06 納可：從輪迴點商店搬來一般商店
-    prices: [150, 500, 1200],
+    prices: [300, 2500, 6700],
   },
   gemCap: {
     name: '寶物上限',
     desc: '檯面上同時可以有更多珠寶',
     levels: [0, 1, 2, 3],                              // 比一開始多幾個（2026-10-16 拿掉輪迴，從輪迴點商店搬來）
-    prices: [400, 900, 1600],
+    prices: [2600, 7300, 17000],
   },
   shake: {
     name: '甩一甩',
     desc: '解鎖技能「甩一甩」：抓著機台甩，把卡住的東西甩下去。升級讓力道變大',
     levels: [0, 1, 1.3, 1.6],                          // 力道倍數（0 是還不能用）
-    prices: [300, 850, 1400],
+    prices: [600, 2700, 6900],
   },
   shakeCool: {
     name: '甩一甩冷卻',
     desc: '甩一甩的等待時間變短',
     levels: [90, 60, 45, 30],                          // 冷卻幾秒
-    prices: [450, 900, 1500],
+    prices: [2500, 6800, 15000],
   },
   summon: {
     name: '召喚史萊姆',
     desc: '解鎖技能「召喚」：從解鎖過的史萊姆裡隨機召喚，直接掉在檯面上，不受檯面上限限制。升級讓一次召喚的隻數變多',
     levels: [0, 1, 2, 'cap'],                          // 一次幾隻（'cap' 是目前上限那麼多隻）；冷卻固定 SUMMON_CD
-    prices: [450, 1100, 1600],
+    prices: [1100, 4800, 9900],
   },
   dollCap: {
     name: '娃娃上限',
     desc: '檯面上同時可以有更多史萊姆。召喚滿級時一次召喚的隻數也跟著變多',
     levels: [0, 1, 2],                                 // 比一開始多幾隻（2026-10-16 拿掉輪迴，從輪迴點商店搬來）
-    prices: [700, 2000],
+    prices: [2800, 17000],
   },
   lottery: {
     name: '彩票',
     desc: '轉盤上的獎金變多。花錢抽一次的價錢也一起變貴，推下彩券拿到的免費抽最划算',
-    levels: [1, 3, 10, 30],                            // 轉盤獎金、花錢抽的價錢一起乘幾倍（倍數第二段再對）
-    prices: [500, 2000, 6000],
+    levels: [1, 3, 10, 30],                            // 轉盤獎金、花錢抽的價錢、獎池一起乘幾倍（第二段看過，維持納可給的 ×1、×3、×10、×30）
+    prices: [2000, 7700, 18000],
   },
   multi: {
     name: '一次多投',
     desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
     levels: [1, 2, 3],                                 // 一次丟幾枚。納可：太強，兩級間距要拉非常開（第 1 級放一輪中段，第 2 級全表最貴、至少 10 倍）
-    prices: [1500, 15000],
+    prices: [3000, 57000],
   },
 };
 const RAIN_KIND = [null, 'copper', 'silver', 'gold'];  // 錢幣雨每一級下的幣
