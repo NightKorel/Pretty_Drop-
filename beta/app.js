@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.8';
-import { drawDigits } from './digits.js?v=0.1.8';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.8';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.8';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.9';
+import { drawDigits } from './digits.js?v=0.1.9';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.9';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.9';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.8';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.8';
+} from './slime.js?v=0.1.9';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.9';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -2010,16 +2010,18 @@ let treasureTimer = 0;
 // 一圈的順序照納可給的（2026-10-05）：大獎 10 100 200 20 50 200 50 20 200 100 10，從正上方順時針排。
 // 2026-10-16 納可定：轉盤看起來要跟實際一樣，每一格的大小＝抽到它的平均機率（p）。
 // 大獎是累計獎池（JACKPOT_*），格子佔 16 分之 1，用保底式機率（越久沒中越容易中），長期平均剛好 16 抽中一次。
-// 其他格子的大小和獎金是第二段排價錢時配的：只花錢抽的話，平均拿回大約九成五（含大獎）。tools/wheel_ev.py 算的。
+// 2026-10-17 納可：原本為了九成五回本把格子大小拉得差很多（10 枚佔快半圈、200 枚只剩細線），很難看。
+// 改成其他 11 格一樣大、獎金照納可給的；回本改用「花錢抽的價錢」調（納可：把花錢抽的價錢提高）。tools/wheel_ev.py 算。
+const P_CELL = (1 - 1 / 16) / 11; // 一般格子每一格的大小
 const WHEEL = [
   { coins: 0, jackpot: true, p: 1 / 16 },              // 上：大獎（獎金是獎池，盤面畫星星）
-  { coins: 10, p: 0.22375 }, { coins: 100, p: 0.035 },
-  { coins: 200, big: true, p: 0.02 },
-  { coins: 20, p: 0.125 }, { coins: 50, p: 0.055 },
-  { coins: 200, big: true, p: 0.02 },
-  { coins: 50, p: 0.055 }, { coins: 20, p: 0.125 },
-  { coins: 200, big: true, p: 0.02 },
-  { coins: 100, p: 0.035 }, { coins: 10, p: 0.22375 },
+  { coins: 10, p: P_CELL }, { coins: 100, p: P_CELL },
+  { coins: 200, big: true, p: P_CELL },
+  { coins: 20, p: P_CELL }, { coins: 50, p: P_CELL },
+  { coins: 200, big: true, p: P_CELL },
+  { coins: 50, p: P_CELL }, { coins: 20, p: P_CELL },
+  { coins: 200, big: true, p: P_CELL },
+  { coins: 100, p: P_CELL }, { coins: 10, p: P_CELL },
 ];
 // 每一格的中心角度（從正上方開始順時針算）和半寬
 {
@@ -2032,7 +2034,7 @@ const WHEEL = [
     cum += span;
   }
 }
-const WHEEL_BASE_PRICE = 100; // 花錢轉一次的價錢（納可定）
+const WHEEL_BASE_PRICE = 150; // 花錢轉一次的價錢（納可定 100；2026-10-17 納可：提高花錢抽的價錢，配一樣大的格子，平均回本九成五）
 // 彩票升級（2026-10-16 納可定）：轉盤獎金、花錢抽的價錢、獎池（起始和每次加的）一起乘上倍數
 const wheelPrice = () => WHEEL_BASE_PRICE * upValue('lottery');
 const wheelPrize = (w) => (w.jackpot ? jackpotBase : w.coins) * upValue('lottery');
@@ -2668,7 +2670,9 @@ function makeWheelDisk() {
       const arc = w.half * 2 * tr;
       const h = WHEEL_W * 0.05;
       if (text.length * h * 0.75 < arc * 0.9) {
-        drawDigits(ctx, text, cx + Math.cos(am) * tr, cy + Math.sin(am) * tr, h, color, am + Math.PI / 2);
+        // 字的上方朝外；在下半圈的翻過來，轉盤停著的時候每個數字都是正的（2026-10-17 納可：下面的字倒過來很怪）
+        const lower = Math.sin(am) > 0.01;
+        drawDigits(ctx, text, cx + Math.cos(am) * tr, cy + Math.sin(am) * tr, h, color, am + Math.PI / 2 + (lower ? Math.PI : 0));
       } else {
         // 直著寫：字的外端貼近外圈，字的粗細不超過字的內端那裡的格子寬度
         const outer = R * 0.9;

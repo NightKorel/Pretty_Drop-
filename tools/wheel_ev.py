@@ -6,8 +6,11 @@ import re, sys
 src = open(sys.argv[1] if len(sys.argv) > 1 else 'beta/app.js', encoding='utf-8').read()
 block = src[src.index('const WHEEL = ['):src.index('];', src.index('const WHEEL = ['))]
 cells = []
-for m in re.finditer(r'\{ coins: (\d+),(?: big: true,)?(?: jackpot: true,)? p: ([0-9./ ]+) \}', block):
+pc = re.search(r'const P_CELL = ([^;]+);', src)
+P_CELL = eval(pc.group(1)) if pc else None
+for m in re.finditer(r'\{ coins: (\d+),(?: big: true,)?(?: jackpot: true,)? p: ([0-9./ ]+|P_CELL) \}', block):
     cells.append((int(m.group(1)), eval(m.group(2)), 'jackpot' in m.group(0)))
+PRICE = int(re.search(r'WHEEL_BASE_PRICE = (\d+)', src).group(1))
 START = int(re.search(r'JACKPOT_START = (\d+)', src).group(1))
 ADD_PAY = int(re.search(r'JACKPOT_ADD_PAY = (\d+)', src).group(1))
 ADD_FREE = int(re.search(r'JACKPOT_ADD_FREE = (\d+)', src).group(1))
@@ -37,4 +40,4 @@ print(f'格子機率加起來 {total_p:.4f}（要是 1）')
 print(f'大獎平均 {e_pool_spins:.2f} 抽中一次（要是 {1 / pj:.0f}）')
 for name, add in (('只花錢抽', ADD_PAY), ('只用免費抽', ADD_FREE)):
     jack = (START + add * e_pool_spins) / e_pool_spins
-    print(f'{name}：一般格子平均 {others:.1f} 枚＋大獎平均 {jack:.1f} 枚＝一次平均 {others + jack:.1f} 枚（中大獎時獎池平均 {START + add * e_pool_spins:.0f}）')
+    print(f'{name}：一般格子平均 {others:.1f} 枚＋大獎平均 {jack:.1f} 枚＝一次平均 {others + jack:.1f} 枚，是花錢抽價錢 {PRICE} 的 {(others + jack) / PRICE:.0%}（中大獎時獎池平均 {START + add * e_pool_spins:.0f}）')
