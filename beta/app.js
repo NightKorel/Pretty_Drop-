@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.1';
-import { drawDigits } from './digits.js?v=0.1.1';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.1';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.1';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.2';
+import { drawDigits } from './digits.js?v=0.1.2';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.2';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.2';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.1';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.1';
+} from './slime.js?v=0.1.2';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.2';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -68,80 +68,99 @@ const GUARD_H = 0.1;          // 側溝擋板的高度（一枚幣厚 0.14，擋
 const MOM_GIVE = 10;         // 媽媽每次給幾枚
 
 // ===== 商店升級 =====
-// 增量遊戲的節奏：一開始只有一項、很便宜；買過一次才會出現下一項。
-// 順序照常識：越無感的越前面、越便宜；越有感的越後面、越貴（2026-10-05 納可定）。
-// 例外：媽媽十元永遠排第一個（納可：比較好笑）；一次多投永遠排最後一個（2026-10-05 納可：天價，本來就該最後）。
-// 銀幣排第三（2026-10-06 Claude 提，等納可看）：只有銅幣時投一枚推回一枚，幾乎不賺；銀幣早點出來，一開始才不會賺得很慢。
-// 價錢（2026-10-06 重排）：收入靠銀幣、金幣一路變多來長大，價錢跟著收入一起往上漲，每一兩分鐘就有東西能買。
-// 每升一級價錢乘上 growth。levels 第 0 格是還沒升級時的數值。
+// 2026-10-16 第一段大改（納可定）：級數變少、每一級都要有感；開頭和滿級的數值照舊，只合併中間的級數。
+// 商店清單照這裡的順序排、位置不動；還沒買過的只露出最便宜的 3 個（看 shopVisible）。
+// 價錢是暫定的（照舊價錢挑的），第二段重排價錢曲線、跑模擬時再定。
+// levels 第 0 格是還沒升級時的數值。
 const UPGRADES = {
   refill: {
     name: '媽媽十元',
     desc: '冒著被打的風險……再投一點錢……升級以增加課金的勇氣。',
-    levels: [30, 26, 22, 19, 16, 14, 12, 10],          // 媽媽幾秒給一次
-    prices: [10, 20, 60, 100, 150, 150, 250], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    levels: [30, 20, 14, 10],                          // 媽媽幾秒給一次
+    prices: [10, 60, 150],
   },
   guard: {
     name: '側溝擋板',
     desc: '從前緣往後裝矮矮的擋板，幣比較不會掉進兩側溝',
-    levels: [0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2],   // 擋板長度
-    prices: [10, 30, 100, 100, 150, 200, 250], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    levels: [0, 1.4, 2.8, 4.2],                        // 擋板長度
+    prices: [10, 100, 200],
   },
-  silver: {
-    name: '銀幣',
-    desc: '解鎖銀幣（推下去值 5 枚，投一枚一樣花 1 枚）。升級讓銀幣變多',
-    levels: [0, 4, 6, 8, 10, 12, 14],                 // 每 20 枚裡有幾枚銀幣（沒買就沒有）
-    prices: [20, 100, 150, 300, 350, 450], // tools/curve.py 照模擬的收入算的（2026-10-06）
+  coinMix: {
+    name: '硬幣比例',
+    desc: '投下去的幣，銀幣（值 5 枚）、金幣（值 10 枚）變多。投一枚一樣花 1 枚',
+    // 每 20 枚裡有幾枚 [銀, 金]（納可定的表）：1 到 4 級銀 +1、5 級金 +1、6 到 9 級銀 +1、10 級金 +1
+    levels: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [8, 2]],
+    prices: [20, 60, 100, 150, 300, 450, 700, 1000, 1500, 2200],
   },
   speed: {
     name: '推板加速',
     desc: '推板來回得更快，幣推得更勤',
-    levels: [4.4, 4.25, 4.1, 3.95, 3.8, 3.65, 3.5, 3.4], // 推板來回一次幾秒（一開始慢；滿級和每級幅度都收小，2026-10-05 納可：最快太快，滿級再從 3.0 放慢到 3.4）
-    prices: [90, 100, 150, 150, 250, 300, 350], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    levels: [4.4, 3.9, 3.4],                           // 推板來回一次幾秒（2 級：全程只快兩成多，切 3 級每級沒感覺）
+    prices: [90, 250],
   },
   dropRate: {
     name: '投幣速度',
-    desc: '手變快，一秒能投更多枚（一開始一秒一枚）',
-    levels: [1.0, 0.9, 0.82, 0.75, 0.69, 0.64, 0.6],  // 兩次投幣之間至少隔幾秒（2026-10-05 納可：滿級太快，整體調慢，一開始的 1 秒不動；原本滿級 0.35）
-    prices: [100, 150, 150, 250, 300, 350], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    desc: '手變快，一秒能投更多枚',
+    levels: [1.0, 0.83, 0.71, 0.6],                    // 兩次投幣之間至少隔幾秒（一秒 1 → 1.2 → 1.4 → 1.7 枚）
+    prices: [100, 200, 350],
   },
   rain: {
-    name: '金幣雨',
-    desc: '解鎖技能「金幣雨」：按一下，天上掉下一場金幣雨。升級讓冷卻變短',
-    levels: [0, 240, 210, 180, 160, 140, 120, 105, 90], // 冷卻幾秒（沒買就不能用）。2026-10-05 納可：改成主動技能，不再隨機
-    prices: [200, 300, 350, 400, 500, 800, 900, 1100], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    name: '錢幣雨',
+    desc: '解鎖技能「錢幣雨」：按一下，天上掉下一場錢幣雨。Lv 1 銅幣雨、Lv 2 銀幣雨、Lv 3 金幣雨',
+    levels: [0, 1, 2, 3],                              // 下哪種幣（看 RAIN_KIND；0 是還不能用）
+    prices: [200, 800, 2500],
   },
   rainSize: {
-    name: '金幣雨變大',
-    desc: '每場金幣雨撒下來的幣變多',
-    levels: [30, 40, 50, 60, 70, 80, 100, 150],        // 一場金幣雨幾枚
-    prices: [300, 350, 400, 600, 850, 1100, 1300], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    name: '錢幣雨變大',
+    desc: '每場錢幣雨撒下來的幣變多',
+    levels: [30, 60, 100, 150],                        // 一場幾枚
+    prices: [300, 600, 1100],
   },
-  gold: {
-    name: '金幣',
-    desc: '解鎖金幣（推下去值 10 枚，投一枚一樣花 1 枚）。升級讓金幣變多',
-    levels: [0, 1, 2, 3, 4, 6, 8, 10, 13, 16, 20],    // 每 20 枚裡有幾枚金幣（沒買就沒有）。銅幣先被換掉，銅幣沒了再換銀幣；滿級全部是金幣（長尾，2026-10-06）
-    prices: [300, 350, 600, 850, 1200, 1600, 2200, 3000, 4100, 5700], // tools/curve.py 照模擬的收入算的（2026-10-06）
+  rainCool: {
+    name: '錢幣雨冷卻',
+    desc: '錢幣雨的等待時間變短',
+    levels: [90, 60, 45, 30],                          // 冷卻幾秒（一開始最久 90 秒，納可定）
+    prices: [350, 700, 1200],
+  },
+  gems: {
+    name: '珠寶',
+    desc: '偶爾會掉落珠寶，推下去值不少錢。升級讓珠寶的種類變多',
+    levels: [0, 1, 2, 3],                              // 開幾種（照 TREASURE_ORDER）。2026-10-06 納可：從輪迴點商店搬來一般商店
+    prices: [150, 500, 1200],
   },
   shake: {
     name: '甩一甩',
-    desc: '解鎖技能「甩一甩」：抓著機台左右甩，把卡住的東西甩下去。升級讓冷卻變短',
-    levels: [0, 300, 270, 240, 210, 180, 150],         // 冷卻幾秒（沒買就不能用）
-    prices: [300, 450, 750, 850, 1100, 1400], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    desc: '解鎖技能「甩一甩」：抓著機台甩，把卡住的東西甩下去。升級讓力道變大',
+    levels: [0, 1, 1.3, 1.6],                          // 力道倍數（0 是還不能用）
+    prices: [300, 850, 1400],
+  },
+  shakeCool: {
+    name: '甩一甩冷卻',
+    desc: '甩一甩的等待時間變短',
+    levels: [90, 60, 45, 30],                          // 冷卻幾秒
+    prices: [450, 900, 1500],
   },
   summon: {
     name: '召喚史萊姆',
-    desc: '解鎖技能「召喚」：按一下，馬上放一隻史萊姆娃娃到推板上。升級讓冷卻變短',
-    levels: [0, 240, 210, 180, 150, 120, 100],         // 冷卻幾秒（沒買就不能用）。2026-10-05 納可要的
-    prices: [450, 650, 850, 1100, 1300, 1600], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    desc: '解鎖技能「召喚」：從解鎖過的史萊姆裡隨機召喚，直接掉在檯面上，不受檯面上限限制。升級讓一次召喚的隻數變多',
+    levels: [0, 1, 2, 'cap'],                          // 一次幾隻（'cap' 是目前上限那麼多隻）；冷卻固定 SUMMON_CD
+    prices: [450, 1100, 1600],
+  },
+  lottery: {
+    name: '彩票',
+    desc: '轉盤上的獎金變多。花錢抽一次的價錢也一起變貴，推下彩券拿到的免費抽最划算',
+    levels: [1, 3, 10, 30],                            // 轉盤獎金、花錢抽的價錢一起乘幾倍（倍數第二段再對）
+    prices: [500, 2000, 6000],
   },
   multi: {
     name: '一次多投',
     desc: '每投一次，一起丟出好幾枚（每枚一樣要花 1 枚）',
-    levels: [1, 2, 3],                                  // 一次丟幾枚（2026-10-05 納可：最多一次 3 枚，升到 3 枚是天價）
-    prices: [800, 8000], // tools/curve.py 照模擬的收入算的（2026-10-06）
+    levels: [1, 2, 3],                                 // 一次丟幾枚。納可：太強，兩級間距要拉非常開（第 1 級放一輪中段，第 2 級全表最貴、至少 10 倍）
+    prices: [1500, 15000],
   },
 };
+const RAIN_KIND = [null, 'copper', 'silver', 'gold'];  // 錢幣雨每一級下的幣
+const SUMMON_CD = 90;                                    // 召喚的冷卻固定 90 秒（納可定）
 // 遊戲裡的錢：100 以內取 10 的倍數，超過 100 取 50 的倍數，看起來比較乾脆
 function niceMoney(x) {
   return x <= 100 ? Math.max(10, Math.round(x / 10) * 10) : Math.round(x / 50) * 50;
@@ -188,8 +207,7 @@ const PERKS = {
   headStart: { name: '起跑', costs: [1, 1, 1], eff: (lv) => `輪迴後「媽媽十元」「投幣速度」「推板加速」直接從 Lv ${lv} 開始` },
   discount: { name: '商店打折', costs: [1, 1, 1, 1], eff: (lv) => `商店升級便宜 ${Math.round((1 - perkOff(lv)) * 100)}%` },
   dollCap: { name: '娃娃上限', costs: [1, 1], eff: (lv) => `檯面上同時最多 ${MAX_DOLLS + lv} 隻娃娃` },
-  // 小寶物（2026-10-05 納可定：可以解鎖和增加上限）：照價值順序一級開一種
-  gems: { name: '小寶物', costs: [1, 1, 1], eff: (lv) => `機台會放${TREASURE_ORDER.slice(0, lv).map((k) => `${TREASURES[k].name}（${TREASURES[k].value} 枚）`).join('、')}` },
+  // 小寶物的種類 2026-10-16 搬到一般商店的「珠寶」（納可定）；上限還留在這裡
   gemCap: { name: '寶物上限', costs: [1, 1, 1], eff: (lv) => `檯面上同時最多 ${MAX_TREASURES + lv} 個小寶物` },
 };
 const PERK_KEYS = Object.keys(PERKS);
@@ -834,18 +852,39 @@ let shopShownWallet = -1;
 // 主動技能的圓鈕（右下角，一顆一顆往上疊）：解鎖了才出現，冷卻時顯示倒數
 const SKILLS = [
   { el: document.getElementById('skillBtn'), key: 'shake', name: '甩一甩', cd: () => shakeCd, use: () => startShake() },
-  { el: document.getElementById('rainBtn'), key: 'rain', name: '金幣雨', cd: () => rainCd, use: () => startRainSkill() },
+  { el: document.getElementById('rainBtn'), key: 'rain', name: '錢幣雨', cd: () => rainCd, use: () => startRainSkill() },
   { el: document.getElementById('summonBtn'), key: 'summon', name: '召喚', cd: () => summonCd, use: () => startSummon() },
 ];
-for (const sk of SKILLS) { sk.el.addEventListener('click', sk.use); sk.shown = null; }
+// 每顆技能旁邊一個小「自動」鈕（2026-10-16 納可定）：開著的話，冷卻一好就自己發動
+for (const sk of SKILLS) {
+  sk.el.addEventListener('click', sk.use);
+  sk.shown = null;
+  sk.auto = false;
+  sk.row = sk.el.parentElement;
+  sk.autoEl = sk.row.querySelector('.skillAuto');
+  sk.autoEl.addEventListener('click', () => { setSkillAuto(sk, !sk.auto); if (gameReady) saveGame(); });
+}
+function setSkillAuto(sk, on) {
+  sk.auto = on;
+  sk.autoEl.classList.toggle('on', on);
+  sk.autoEl.textContent = on ? '自動中' : '自動';
+}
+function skillName(sk) {
+  return sk.key === 'rain' ? `${COIN_KINDS[RAIN_KIND[upValue('rain')]].name[0]}幣雨` : sk.name;
+}
+// 自動的技能：冷卻好了就發動（輪迴動畫、輪迴商店裡不發動）
+function autoSkills() {
+  if (rebornBusy || rebirth.shopping) return;
+  for (const sk of SKILLS) if (sk.auto && upValue(sk.key) > 0 && sk.cd() <= 0) sk.use();
+}
 function updateSkillBtn() {
   for (const sk of SKILLS) {
     const unlocked = upValue(sk.key) > 0;
     const left = Math.ceil(sk.cd());
-    const text = !unlocked ? '' : left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : sk.name;
+    const text = !unlocked ? '' : left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : skillName(sk);
     if (text === sk.shown) continue;
     sk.shown = text;
-    sk.el.hidden = !unlocked;
+    sk.row.hidden = !unlocked;
     sk.el.textContent = text;
     sk.el.disabled = left > 0;
   }
@@ -979,13 +1018,12 @@ function aimFromEvent(e) {
 }
 
 // 掉落袋子（2026-10-06 納可定）：三袋混在一起抽，每袋 20 枚、比例固定，三袋抽完才補三袋。
-// 銀幣、金幣的等級變了（買升級、輪迴、讀檔），袋子馬上照新比例重裝
+// 硬幣比例變了（買升級、輪迴、讀檔），袋子馬上照新比例重裝
 const BAG_SIZE = 20;
 let coinBag = [];
 let coinBagMix = '';
 function bagCounts() {
-  const gold = upValue('gold');
-  const silver = Math.min(upValue('silver'), BAG_SIZE - gold); // 金幣多到放不下時，換掉銀幣
+  const [silver, gold] = upValue('coinMix');
   return { gold, silver, copper: BAG_SIZE - silver - gold };
 }
 function refillCoinBag() {
@@ -1857,7 +1895,10 @@ const WHEEL_UNIT = (Math.PI * 2) / WHEEL.reduce((n, w) => n + (w.big ? 2 : 1), 0
     cum += span;
   }
 }
-const WHEEL_PRICE = 100;     // 花錢轉一次的價錢（納可定）
+const WHEEL_BASE_PRICE = 100; // 花錢轉一次的價錢（納可定）
+// 彩票升級（2026-10-16 納可定）：轉盤獎金和花錢抽的價錢一起乘上倍數
+const wheelPrice = () => WHEEL_BASE_PRICE * upValue('lottery');
+const wheelPrize = (w) => w.coins * upValue('lottery');
 const JACKPOT_CHANCE = 0.03; // 每轉一次中大獎的機率（保底式）
 let freeSpins = 0;           // 推下彩券拿到的免費次數
 const props = [];            // 檯面上的道具和彩券
@@ -1876,9 +1917,9 @@ let reachExtra = 0;          // 長推板：這一趟推板多伸出去多少
 const REACH_EXTRA = 3.0;     // 多伸 3 格。推板尾巴會離開擋牆，掉到推板後面的東西由 rescueBehind() 放回來
 
 // 從畫面上方翻轉著掉下一枚幣（金幣雨、狂熱時間共用）
-function dropRainCoin() {
+function dropRainCoin(kind = randomCoinKind()) {
   const x = (Math.random() * 2 - 1) * (halfW - COIN_R - 0.2);
-  const c = spawnCoin(x, 9 + Math.random() * 3, -5.5 + Math.random() * 6, Math.PI, randomCoinKind());
+  const c = spawnCoin(x, 9 + Math.random() * 3, -5.5 + Math.random() * 6, Math.PI, kind);
   if (!c) return false;
   c.body.setLinvel({ x: 0, y: -2 - Math.random() * 2, z: 0 }, true);
   c.body.setAngvel({ x: (Math.random() - 0.5) * 16, y: 0, z: (Math.random() - 0.5) * 16 }, true);
@@ -1890,27 +1931,46 @@ function dropRainCoin() {
 let rainCd = 0;
 function startRainSkill() {
   if (upValue('rain') <= 0 || rainCd > 0 || rainQueue > 0) return;
-  rainCd = upValue('rain');
+  rainCd = upValue('rainCool');
   startRain();
 }
 
-// 召喚史萊姆（主動技能，2026-10-05 納可要的）：馬上從袋子抽一隻放到推板上。
-// 檯面上的娃娃已經滿了就不放、也不算冷卻（Claude 定）
+// 召喚史萊姆（主動技能，2026-10-16 納可定）：一次召喚 1 隻、2 隻、滿級是「目前上限」那麼多隻。
+// 不受檯面上限限制；從所有解鎖過的史萊姆隨機挑（不只選進掉落的那幾套），最近 3 隻不重複；
+// 直接掉在檯面中段（不是推板上），很快會被推下去。冷卻固定 SUMMON_CD 秒。
+// 自然掉落照樣看上限：檯面上超過上限時，自然掉落先暫停（dropNewDoll 那邊本來就這樣算）
 let summonCd = 0;
+const recentSummons = [];
+function summonCount() {
+  const v = upValue('summon');
+  return v === 'cap' ? maxDolls() : v;
+}
+function pickSummonId() {
+  const onTable = new Set(dolls.map((d) => d.id));
+  const all = SLIME_SETS.filter((st) => setUnlocked(st)).flatMap((st) => SLOTS.map((_, i) => `${st.id}.${i}`));
+  let ok = all.filter((x) => !onTable.has(x) && !recentSummons.includes(x));
+  if (!ok.length) ok = all.filter((x) => !recentSummons.includes(x));
+  if (!ok.length) ok = all;
+  const id = ok[Math.floor(Math.random() * ok.length)];
+  recentSummons.push(id);
+  while (recentSummons.length > 3) recentSummons.shift();
+  return id;
+}
 function startSummon() {
   if (upValue('summon') <= 0 || summonCd > 0) return;
-  if (dolls.length + dollQueue.length >= maxDolls()) {
-    toast('檯面上的史萊姆滿了，先推下去一隻吧');
-    return;
+  const n = summonCount();
+  const lim = halfW - SLIME_R - 0.3;
+  for (let k = 0; k < n; k++) {
+    const id = pickSummonId();
+    const scale = 0.85 + Math.random() * 0.35;
+    const yaw = (Math.random() - 0.5) * 0.8;
+    // 檯面中段：左右分開，前後在推板前緣和檯面前緣中間一帶
+    const x = n > 1 ? -lim + (2 * lim) * (k + 0.5) / n + (Math.random() - 0.5) * 0.4 : (Math.random() * 2 - 1) * lim * 0.6;
+    const z = -0.5 + Math.random() * 1.5;
+    spawnDoll(id, scale, { x, y: 2 + k * 0.3, z }, { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
   }
-  const before = dollQueue.length + dolls.length;
-  dropNewDoll();
-  if (dollQueue.length + dolls.length === before) {
-    toast('現在召喚不出來，等一下再試');
-    return;
-  }
-  summonCd = upValue('summon');
-  toast('召喚史萊姆！');
+  summonCd = SUMMON_CD;
+  toast(n > 1 ? `召喚史萊姆 ×${n}！` : '召喚史萊姆！');
   [660, 880, 1320].forEach((f, k) => setTimeout(() => beep(f, 0.14, 0.05, 'sine', 'item'), k * 90));
 }
 
@@ -1949,8 +2009,12 @@ function endFever() {
   toast('狂熱時間結束');
 }
 
+// 錢幣雨（2026-10-16 納可定）：Lv 1 銅幣雨、Lv 2 銀幣雨、Lv 3 金幣雨，整場都下那種幣
+let rainKind = 'copper';
 function startRain() {
   stats.rains++;
+  rainKind = RAIN_KIND[upValue('rain')] || 'copper';
+  rainBanner.innerHTML = hangHtml(`${COIN_KINDS[rainKind].name[0]}幣雨！`);
   rainQueue = upValue('rainSize');
   rainRate = rainQueue / 2.5;
   rainSpawn = 0;
@@ -1960,16 +2024,18 @@ function startRain() {
   [880, 1100, 1320, 1760].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'rain'), k * 90));
 }
 
-// 補充金幣（Claude 定）：檯面上少於 25 枚，就下一場 30 枚的雨；下完等 3 秒再看，還不夠就再一場。
-// 不算玩家的錢、不算「金幣雨」次數，畫面上只跳一個小提示
-const REFILL_MIN = 25;          // 一般玩最少會掉到 40 枚左右，設低一點才不會誤觸發
-const REFILL_SIZE = 30;
+// 補充硬幣（2026-10-16 納可定：門檻高、一旦觸發就補到滿；少量慢慢補很醜）：
+// 檯面上少於 REFILL_MIN 枚，就一場雨補回開局的量。補銅幣；錢幣雨升到銀幣雨、金幣雨後就補那種幣。
+// 不算玩家的錢、不算錢幣雨次數，畫面上只跳一個小提示；下雨途中不會再觸發
+const REFILL_MIN = 100;         // 開局 156 枚的六成左右
+const REFILL_FULL = START_LAYOUT.length; // 補回開局的量
 let refillCheck = 0;
 let refills = 0;              // 這次開遊戲補了幾次（測試用）
 function startRefill() {
   refills++;
-  rainQueue = REFILL_SIZE;
-  rainRate = REFILL_SIZE / 2.5;
+  rainKind = RAIN_KIND[upValue('rain')] || 'copper';
+  rainQueue = Math.max(0, REFILL_FULL - coins.length);
+  rainRate = rainQueue / 3;
   rainSpawn = 0;
   toast('檯面上的幣不多了，補充一些');
   [660, 880].forEach((f, k) => setTimeout(() => beep(f, 0.14, 0.05, 'triangle', 'rain'), k * 90));
@@ -2240,7 +2306,7 @@ function removeTreasure(i) {
 const maxTreasures = () => MAX_TREASURES + perkLv('gemCap');
 // 機台放一個小寶物（照解鎖了哪幾種隨機挑）
 function dropTreasure(kind) {
-  const open = TREASURE_ORDER.slice(0, perkLv('gems'));
+  const open = TREASURE_ORDER.slice(0, upValue('gems'));
   if (!kind) kind = open[Math.floor(Math.random() * open.length)];
   if (!kind) return;
   const yaw = Math.random() * Math.PI * 2;
@@ -2289,7 +2355,7 @@ function triggerItem(kind) {
 function startShake() {
   if (upValue('shake') <= 0 || shakeCd > 0) return;
   shakeTime = SHAKE_TIME;
-  shakeCd = upValue('shake');
+  shakeCd = upValue('shakeCool');
   stats.shakes++;
   toast('甩一甩！');
   for (let k = 0; k < 6; k++) setTimeout(() => beep(k % 2 ? 180 : 140, 0.09, 0.07, 'square', 'item'), k * 100);
@@ -2305,7 +2371,7 @@ function applyEffects() {
       // 整台甩：每樣東西往上彈、往前送一點
       const kick = (b, side, up) => {
         if (b.translation().y < -0.5) return;
-        const m = b.mass();
+        const m = b.mass() * upValue('shake'); // 力道升級：往上彈、往前送都乘上倍數（左右一起乘，比例不變）
         // 兩側沒有牆了，左右只輕輕晃（不然都甩進側溝），主要往上彈、往前送
         b.applyImpulse({ x: shakeDir * m * side * 0.2 * (0.7 + Math.random() * 0.6), y: m * up * (0.6 + Math.random() * 0.8), z: m * side * (0.05 + Math.random() * 0.07) }, true);
       };
@@ -2364,6 +2430,7 @@ const WHEEL_R = WHEEL_W / 2 - 36; // 格子的半徑
 const WHEEL_RIM = 20;             // 外圈的厚度
 const WHEEL_EDGES = WHEEL.map((w) => w.mid - w.half); // 每一格的邊（釘子的位置）
 let wheelDisk = null;             // 存好的盤面
+let wheelDiskLv = -1;             // 盤面是照哪一級彩票畫的（升級後重畫數字）
 const wheelRims = {};             // 存好的外圈（燈全亮、單數亮、雙數亮）
 let wheelSpeed = 0;               // 現在每秒轉幾弧度（殘影用）
 let pointerKick = 0;              // 指針被撥開的角度
@@ -2410,9 +2477,9 @@ function makeWheelDisk() {
     const x = cx + Math.cos(am) * tr;
     const y = cy + Math.sin(am) * tr;
     const rot = am + Math.PI / 2;
-    if (w.jackpot) drawDigits(ctx, String(w.coins), x, y, WHEEL_W * 0.085, '#f7e3a1', rot);
-    else if (w.big) drawDigits(ctx, String(w.coins), x, y, WHEEL_W * 0.08, '#3a2608', rot);
-    else drawDigits(ctx, String(w.coins), x, y, WHEEL_W * 0.05, '#d9a842', rot);
+    if (w.jackpot) drawDigits(ctx, String(wheelPrize(w)), x, y, WHEEL_W * 0.085, '#f7e3a1', rot);
+    else if (w.big) drawDigits(ctx, String(wheelPrize(w)), x, y, WHEEL_W * 0.08, '#3a2608', rot);
+    else drawDigits(ctx, String(wheelPrize(w)), x, y, WHEEL_W * 0.05, '#d9a842', rot);
   }
   // 格子邊上的小金釘（撥指針的就是它）
   for (const e of WHEEL_EDGES) {
@@ -2460,7 +2527,7 @@ function drawWheel(now = performance.now()) {
   const cy = WHEEL_CY;
   const R = WHEEL_R;
   const rim = WHEEL_RIM;
-  if (!wheelDisk) wheelDisk = makeWheelDisk();
+  if (!wheelDisk || wheelDiskLv !== upgrades.lottery) { wheelDisk = makeWheelDisk(); wheelDiskLv = upgrades.lottery; }
   const blink = wheelSpinning ? Math.floor(now / 120) % 2 : -1;
   ctx.clearRect(0, 0, W, W);
   ctx.drawImage(wheelRims[blink] ||= makeWheelRim(blink), 0, 0);
@@ -2517,8 +2584,8 @@ function renderWheelInfo() {
   freeBtn.hidden = freeSpins <= 0;
   const payBtn = document.getElementById('paySpinBtn');
   payBtn.textContent = '花錢抽一次';
-  payBtn.disabled = wallet < WHEEL_PRICE || wheelSpinning;
-  document.getElementById('wheelCost').textContent = `${freeSpins > 0 ? `免費還有 ${freeSpins} 次　・　` : ''}花錢抽一次 ${WHEEL_PRICE} 枚`;
+  payBtn.disabled = wallet < wheelPrice() || wheelSpinning;
+  document.getElementById('wheelCost').textContent = `${freeSpins > 0 ? `免費還有 ${freeSpins} 次　・　` : ''}花錢抽一次 ${wheelPrice()} 枚`;
 }
 
 function openWheel() {
@@ -2546,8 +2613,8 @@ function spinWheel(free) {
     if (freeSpins <= 0) return;
     freeSpins--;
   } else {
-    if (wallet < WHEEL_PRICE) return;
-    wallet -= WHEEL_PRICE;
+    if (wallet < wheelPrice()) return;
+    wallet -= wheelPrice();
     bump(walletEl);
   }
   stats.spins++;
@@ -2609,9 +2676,10 @@ function spinWheel(free) {
 function finishSpin(idx) {
   wheelSpinning = false;
   const w = WHEEL[idx];
-  earn(w.coins);
+  const prize = wheelPrize(w);
+  earn(prize);
   bump(walletEl);
-  document.getElementById('wheelResult').innerHTML = hangHtml(w.jackpot ? `大獎！+${w.coins} 枚` : w.big ? `中了！+${w.coins} 枚` : `+${w.coins} 枚`);
+  document.getElementById('wheelResult').innerHTML = hangHtml(w.jackpot ? `大獎！+${prize} 枚` : w.big ? `中了！+${prize} 枚` : `+${prize} 枚`);
   const notes = w.jackpot ? [880, 1100, 1320, 1760, 2200, 2640] : w.big ? [990, 1320, 1760] : [990, 1320];
   drawWheel();
   notes.forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'wheel'), k * 90));
@@ -2972,7 +3040,7 @@ function saveData() {
     version: 1,
     gemSet: true,
     // 設定也跟著存（納可：重新載入、讀檔都要回來）：自動投幣、瞄準位置、畫質、音效
-    settings: { auto: autoDrop, aimX, quality, sound: { ...soundOn }, buyMax: buyMaxOn },
+    settings: { auto: autoDrop, aimX, quality, sound: { ...soundOn }, buyMax: buyMaxOn, skillAuto: Object.fromEntries(SKILLS.map((sk) => [sk.key, sk.auto])) },
     wallet,
     upgrades: { ...upgrades },
     pusherPhase,
@@ -3044,6 +3112,7 @@ function applySave(d) {
   if (d.settings) {
     if (d.settings.auto) setAuto(true);
     buyMaxOn = !!d.settings.buyMax;
+    for (const sk of SKILLS) setSkillAuto(sk, !!d.settings.skillAuto?.[sk.key]);
     if (Number.isFinite(d.settings.aimX)) aimX = Math.max(-3, Math.min(3, d.settings.aimX));
   }
   rebirth.points = Math.max(0, Math.floor(Number(d.rebirth?.points) || 0));
@@ -3051,6 +3120,8 @@ function applySave(d) {
   rebirth.shopping = !!d.rebirth?.shopping;
   rebirth.gained = Math.max(0, Math.floor(Number(d.rebirth?.gained) || 0));
   for (const k of PERK_KEYS) rebirth.perks[k] = Math.min(PERKS[k].costs.length, Math.max(0, Math.floor(Number(d.rebirth?.perks?.[k]) || 0)));
+  // 輪迴點商店的「小寶物」搬到一般商店（2026-10-16）：買過的點數退回
+  rebirth.points += Math.max(0, Math.floor(Number(d.rebirth?.perks?.gems) || 0));
   wallet = Math.max(0, Math.floor(Number(d.wallet) || 0));
   // 舊存檔買過「大金幣」：換成同樣等級的「銀幣」（2026-10-06）
   if (d.upgrades && d.upgrades.lucky && !d.upgrades.silver) d.upgrades.silver = d.upgrades.lucky;
@@ -3059,9 +3130,9 @@ function applySave(d) {
     upgrades[key] = Math.min(UPGRADES[key].prices.length, Math.max(0, lv));
   }
   pusherPhase = Number(d.pusherPhase) || 0;
-  shakeCd = Math.min(UPGRADES.shake.levels[1], Math.max(0, Number(d.shakeCd) || 0));
-  rainCd = Math.min(UPGRADES.rain.levels[1], Math.max(0, Number(d.rainCd) || 0));
-  summonCd = Math.min(UPGRADES.summon.levels[1], Math.max(0, Number(d.summonCd) || 0));
+  shakeCd = Math.min(UPGRADES.shakeCool.levels[0], Math.max(0, Number(d.shakeCd) || 0));
+  rainCd = Math.min(UPGRADES.rainCool.levels[0], Math.max(0, Number(d.rainCd) || 0));
+  summonCd = Math.min(SUMMON_CD, Math.max(0, Number(d.summonCd) || 0));
   feverGauge = Math.min(FEVER_MAX - 1, Math.max(0, Math.floor(Number(d.feverGauge) || 0)));
   dollChance.count = Math.max(0, Math.floor(Number(d.dollCount) || 0));
   jackpotChance.count = Math.max(0, Math.floor(Number(d.jackpotCount) || 0));
@@ -3331,10 +3402,10 @@ function updateTimers(frame) {
   treasureTimer += frame;
   if (treasureTimer >= 1) {
     treasureTimer -= 1;
-    if (perkLv('gems') > 0 && treasures.length < maxTreasures() && treasureChance.roll()) dropTreasure();
+    if (upValue('gems') > 0 && treasures.length < maxTreasures() && treasureChance.roll()) dropTreasure();
   }
 
-  // 檯面上的幣太少：下一場補充用的金幣雨，不夠就再一場（2026-10-05 納可：正常情況不會觸發）
+  // 檯面上的幣太少：一場雨補回開局的量
   refillCheck += frame;
   if (refillCheck >= 3) {
     refillCheck = 0;
@@ -3346,7 +3417,7 @@ function updateTimers(frame) {
     rainSpawn += frame * rainRate;
     while (rainSpawn >= 1 && rainQueue > 0) {
       rainSpawn -= 1;
-      if (!dropRainCoin()) { rainQueue = 0; break; }
+      if (!dropRainCoin(rainKind)) { rainQueue = 0; break; }
       rainQueue--;
     }
   }
@@ -3362,6 +3433,7 @@ function updateTimers(frame) {
   if (shakeCd > 0) shakeCd = Math.max(0, shakeCd - frame);
   if (rainCd > 0) rainCd = Math.max(0, rainCd - frame);
   if (summonCd > 0) summonCd = Math.max(0, summonCd - frame);
+  autoSkills();
 
   // 媽媽十元：固定時間給 10 枚，不管手上有多少錢都給（2026-10-06 納可：拿掉滿 100 枚就不給的限制）
   refillTimer += frame;
