@@ -43,7 +43,8 @@ for (const vp of [{ width: 1000, height: 700 }, { width: 390, height: 780 }]) {
     g.setWallet(100000); g.buy('refill'); o.afterBuy = [...document.querySelectorAll('#shopList .item .name')].map((x) => x.textContent).join('|');
     document.getElementById('shopClose').click();
     const old = { upgrades: { refill: 7, guard: 3, speed: 7, dropRate: 6, silver: 6, gold: 10, rain: 8, rainSize: 7, shake: 2, summon: 1, multi: 1 } };
-    const d = g.saveData(); d.upgrades = old.upgrades; o.save = d;
+    o.tabs = document.querySelectorAll('#shopList .bookTab').length;
+    const d = g.saveData(); d.upgrades = old.upgrades; d.rebirth = { points: 4, perks: { dollCap: 2, gemCap: 1, mult: 3 } }; o.save = d;
     return o;
   });
   // 重新整理時遊戲會先存檔，所以舊存檔要在新頁面開始前才放進去

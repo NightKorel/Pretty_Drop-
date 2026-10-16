@@ -2,15 +2,15 @@
 import * as THREE from '../lib/three.module.js';
 import RAPIER from '../lib/rapier.mjs';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
-import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.3';
-import { drawDigits } from './digits.js?v=0.1.3';
-import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.3';
-import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.3';
+import { makeCoinMaterials, makeFaceMaps } from './coin.js?v=0.1.4';
+import { drawDigits } from './digits.js?v=0.1.4';
+import { TREASURES, TREASURE_ORDER, PEARL_R, treasureGeo, treasureMaterial } from './treasure.js?v=0.1.4';
+import { START_LAYOUT, START_PHASE } from './start-layout.js?v=0.1.4';
 import {
   RARITY, SLOTS, SLIME_SETS, SET_BY_ID, slimeInfo, makeSlimeMesh, slimeHullPoints,
   updateSlimeEffects, drawSlimeIcon, slimePartBoxes, SPARE_SKINS, SLIME_R,
-} from './slime.js?v=0.1.3';
-import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.3';
+} from './slime.js?v=0.1.4';
+import { ACHIEVEMENTS, ACH_CATS, achIconSvg, DECORATIONS, DECORATION_SLOTS, STAT_NAMES, REMOVED_DECOR, LIGHT_NEON } from './achievements.js?v=0.1.4';
 
 // 物理引擎的核心（wasm）另外下載壓縮過的版本，下載量少一大半；
 // 瀏覽器太舊不能解壓縮時，改抓沒壓縮的版本
@@ -128,6 +128,12 @@ const UPGRADES = {
     levels: [0, 1, 2, 3],                              // 開幾種（照 TREASURE_ORDER）。2026-10-06 納可：從輪迴點商店搬來一般商店
     prices: [150, 500, 1200],
   },
+  gemCap: {
+    name: '寶物上限',
+    desc: '檯面上同時可以有更多珠寶',
+    levels: [0, 1, 2, 3],                              // 比一開始多幾個（2026-10-16 拿掉輪迴，從輪迴點商店搬來）
+    prices: [400, 900, 1600],
+  },
   shake: {
     name: '甩一甩',
     desc: '解鎖技能「甩一甩」：抓著機台甩，把卡住的東西甩下去。升級讓力道變大',
@@ -145,6 +151,12 @@ const UPGRADES = {
     desc: '解鎖技能「召喚」：從解鎖過的史萊姆裡隨機召喚，直接掉在檯面上，不受檯面上限限制。升級讓一次召喚的隻數變多',
     levels: [0, 1, 2, 'cap'],                          // 一次幾隻（'cap' 是目前上限那麼多隻）；冷卻固定 SUMMON_CD
     prices: [450, 1100, 1600],
+  },
+  dollCap: {
+    name: '娃娃上限',
+    desc: '檯面上同時可以有更多史萊姆。召喚滿級時一次召喚的隻數也跟著變多',
+    levels: [0, 1, 2],                                 // 比一開始多幾隻（2026-10-16 拿掉輪迴，從輪迴點商店搬來）
+    prices: [700, 2000],
   },
   lottery: {
     name: '彩票',
@@ -182,43 +194,9 @@ for (const u of Object.values(UPGRADES)) {
 }
 const UPGRADE_KEYS = Object.keys(UPGRADES);
 
-// ===== 輪迴 =====
-// 玩家自己選什麼時候輪迴：清空錢、商店升級、檯面；保留圖鑑、成就、裝飾品和輪迴點買的東西。
-// 輪迴點照「這一輪累計賺的錢」換，像經驗值表：第 n 點要累計賺到 REBIRTH_BASE × n^REBIRTH_POW 枚（越後面越難）。
-// 數值是 Claude 先隨意設定的（2026-10-05），之後看手感調。
-const REBIRTH_BASE = 1000;  // 第 1 點 1000 枚（2026-10-05 納可：不要放太高）
-// 2026-10-05 納可：中後段買不到東西的時候，就是該輪迴的時候，點數曲線調低一點（1.5 → 1.25），那時候輪迴比較划算
-const REBIRTH_POW = 1.25;
-function rebirthNeed(n) {
-  const x = REBIRTH_BASE * Math.pow(n, REBIRTH_POW);
-  return x < 10000 ? Math.round(x / 100) * 100 : Math.round(x / 1000) * 1000;
-}
-// 輪迴點商店：costs 是每一級要幾點。每一級都一樣 1 點，不會越來越貴（納可：輪迴點每一點都很珍貴）
-// 以後要卡進度，用「這一層全部升到多少級才開第二層」來卡（納可定）
-// 每一級的效果不一定一樣，所以畫面上只寫「升級後」那一級的效果（納可定）。eff(lv) 是第 lv 級的效果
-const PERK_MULT = 0.1;       // 收入加成每級 +10%（2026-10-05 納可定）。2026-10-06 納可：改成複利，每級乘 1.1（3 級是 1.1³ ≈ 多拿 33%）
-const PERK_MONEY = [0, 100, 300, 600, 1000, 1500]; // 初始資金每一級總共多幾枚（納可定）
-const PERK_OFF = 0.1;        // 商店打折每級 -10%，複利（每級乘 0.9，2026-10-06 納可）
-const perkMult = (lv) => Math.pow(1 + PERK_MULT, lv);
-const perkOff = (lv) => Math.pow(1 - PERK_OFF, lv);
-const PERKS = {
-  mult: { name: '收入加成', costs: [1, 1, 1, 1, 1], eff: (lv) => `推下來的幣、娃娃、轉盤都多拿 ${Math.round((perkMult(lv) - 1) * 100)}%` },
-  startMoney: { name: '初始資金', costs: [1, 1, 1, 1, 1], eff: (lv) => `輪迴後一開始手上多 ${PERK_MONEY[lv]} 枚` },
-  headStart: { name: '起跑', costs: [1, 1, 1], eff: (lv) => `輪迴後「媽媽十元」「投幣速度」「推板加速」直接從 Lv ${lv} 開始` },
-  discount: { name: '商店打折', costs: [1, 1, 1, 1], eff: (lv) => `商店升級便宜 ${Math.round((1 - perkOff(lv)) * 100)}%` },
-  dollCap: { name: '娃娃上限', costs: [1, 1], eff: (lv) => `檯面上同時最多 ${MAX_DOLLS + lv} 隻娃娃` },
-  // 小寶物的種類 2026-10-16 搬到一般商店的「珠寶」（納可定）；上限還留在這裡
-  gemCap: { name: '寶物上限', costs: [1, 1, 1], eff: (lv) => `檯面上同時最多 ${MAX_TREASURES + lv} 個小寶物` },
-};
-const PERK_KEYS = Object.keys(PERKS);
-// shopping：按了兩次輪迴、正在輪迴點商店裡（點數已經拿到，還沒按「重生」）；gained 是這次拿到幾點
-const rebirth = { points: 0, count: 0, shopping: false, gained: 0, perks: Object.fromEntries(PERK_KEYS.map((k) => [k, 0])) };
-const perkLv = (k) => rebirth.perks[k];
-// 商店升級的價錢（打折後一樣取乾脆的數字）
+// 商店升級的價錢（2026-10-16 拿掉輪迴，商店打折也跟著拿掉）
 function upPrice(key, lv = upgrades[key]) {
-  const p = UPGRADES[key].prices[lv];
-  const off = perkOff(perkLv('discount'));
-  return off < 1 ? niceMoney(p * off) : p;
+  return UPGRADES[key].prices[lv];
 }
 
 // ===== 狀態 =====
@@ -251,8 +229,8 @@ let activeSets = ['jelly'];  // 現在用哪幾套娃娃（可以同時選好幾
 const DOLL_MIN = 2;           // 少於這麼多隻就很快補上
 const DOLL_LOW_WAIT = 3;      // 少於 DOLL_MIN 隻後幾秒補一隻（Claude 定）
 let dollLowT = 0;
-const MAX_DOLLS = 3;         // 檯面上最多同時幾隻；一開始 3 隻，輪迴點「娃娃上限」才加（2026-10-05 納可定）
-const maxDolls = () => MAX_DOLLS + perkLv('dollCap');
+const MAX_DOLLS = 3;         // 檯面上最多同時幾隻；一開始 3 隻，商店「娃娃上限」再加（2026-10-05 納可定）
+const maxDolls = () => MAX_DOLLS + upValue('dollCap');
 let dollTimer = 0;
 
 // ===== 保底式假隨機 =====
@@ -798,10 +776,10 @@ function prefill() {
   spawnDoll('jelly.0', 1, { x: 0.3, y: 1.6, z: -0.6 });
 }
 
-// 賺錢都走這裡：算上輪迴的收入加成（小數存起來，湊滿 1 枚再給）
+// 賺錢都走這裡（小數存起來，湊滿 1 枚再給）
 let earnCarry = 0;
 function earn(v) {
-  const x = v * perkMult(perkLv('mult')) + earnCarry;
+  const x = v + earnCarry;
   const n = Math.floor(x);
   earnCarry = x - n;
   wallet += n;
@@ -872,9 +850,8 @@ function setSkillAuto(sk, on) {
 function skillName(sk) {
   return sk.key === 'rain' ? `${COIN_KINDS[RAIN_KIND[upValue('rain')]].name[0]}幣雨` : sk.name;
 }
-// 自動的技能：冷卻好了就發動（輪迴動畫、輪迴商店裡不發動）
+// 自動的技能：冷卻好了就發動
 function autoSkills() {
-  if (rebornBusy || rebirth.shopping) return;
   for (const sk of SKILLS) if (sk.auto && upgrades[sk.key] > 0 && sk.cd() <= 0) sk.use();
 }
 function updateSkillBtn() {
@@ -1018,7 +995,7 @@ function aimFromEvent(e) {
 }
 
 // 掉落袋子（2026-10-06 納可定）：三袋混在一起抽，每袋 20 枚、比例固定，三袋抽完才補三袋。
-// 硬幣比例變了（買升級、輪迴、讀檔），袋子馬上照新比例重裝
+// 硬幣比例變了（買升級、讀檔），袋子馬上照新比例重裝
 const BAG_SIZE = 20;
 let coinBag = [];
 let coinBagMix = '';
@@ -1866,7 +1843,7 @@ const ITEMS = {
 const ITEM_CHANCE = 0.02;    // 每秒放一個道具的機率（保底式，平均大約 50 秒一個）
 const TICKET_CHANCE = 0.006; // 每秒放一張彩券的機率（保底式，平均大約 3 分鐘一張），檯面上同時最多 1 張
 const MAX_PROPS = 3;         // 檯面上道具加彩券最多幾個
-const MAX_TREASURES = 2;     // 檯面上小寶物一開始最多幾個（輪迴點「寶物上限」再加）
+const MAX_TREASURES = 2;     // 檯面上小寶物一開始最多幾個（商店「寶物上限」再加）
 const TREASURE_CHANCE = 0.05; // 每秒放一個小寶物的機率（保底式，平均大約 20 秒一個）
 const treasures = [];        // 檯面上的小寶物
 let treasureTimer = 0;
@@ -2303,7 +2280,7 @@ function removeTreasure(i) {
   scene.remove(treasures[i].mesh);
   treasures.splice(i, 1);
 }
-const maxTreasures = () => MAX_TREASURES + perkLv('gemCap');
+const maxTreasures = () => MAX_TREASURES + upValue('gemCap');
 // 機台放一個小寶物（照解鎖了哪幾種隨機挑）
 function dropTreasure(kind) {
   const open = TREASURE_ORDER.slice(0, upValue('gems'));
@@ -2765,20 +2742,10 @@ function canAffordSomething() {
   });
 }
 
-let shopTab = 'up';
 const shopTitleEl = document.querySelector('#shop .shopTitle');
-let rebirthArmed = 0;        // 輪迴按鈕按第一次只是確認，3 秒內再按一次才真的輪迴
 function renderShop() {
   shopWalletEl.textContent = wallet;
-  shopTitleEl.textContent = rebirth.shopping ? '輪迴' : '商店';
-  if (rebirth.shopping) { shopListEl.innerHTML = rebirthShopHtml(); return; }
-  let html = '<div class="bookTabs">'
-    + `<button type="button" class="bookTab${shopTab === 'up' ? ' on' : ''}" data-shoptab="up">升級</button>`
-    + `<button type="button" class="bookTab${shopTab === 'rebirth' ? ' on' : ''}" data-shoptab="rebirth">輪迴${rebirthPending() ? `（+${rebirthPending()}）` : ''}</button></div>`;
-  if (shopTab === 'rebirth') {
-    shopListEl.innerHTML = html + rebirthHtml();
-    return;
-  }
+  let html = '';
   // 不分類（納可定）；滿級的收進最下面的「已滿級」，預設收起來。
   // 「一鍵買到最高」打勾時，按升級會一次買到手上的錢買得起的最高級
   html += `<label class="buyMax"><input type="checkbox" id="buyMaxChk"${buyMaxOn ? ' checked' : ''}> 一鍵買到能買的最高</label>`;
@@ -2815,211 +2782,6 @@ function renderShop() {
   if (maxedN) html += groupHtml('shop.maxed', '已滿級', `${maxedN} 項`, maxed);
   if (UPGRADE_KEYS.some((_, i) => !shopVisible(i))) html += '<div class="item locked"><div class="info"><div class="desc">買下新的升級，就會出現下一個</div></div></div>';
   shopListEl.innerHTML = html;
-}
-
-// 現在輪迴可以拿到幾點
-function rebirthPending() {
-  let n = 0;
-  while (rebirthNeed(n + 1) <= won) n++;
-  return n;
-}
-function rebirthHtml() {
-  if (rebirth.shopping) return rebirthShopHtml();
-  const n = rebirthPending();
-  const need = rebirthNeed(n + 1);
-  let html = `<div class="rebirthBox">
-    <div>這一輪累計賺了 <b>${Math.floor(won)}</b> 枚</div>
-    <div>現在輪迴可以拿到 <b>${n}</b> 點輪迴點（再賺 ${need - Math.floor(won)} 枚多 1 點）</div>
-    <div class="bookNote">輪迴會清空：手上的錢、商店升級、檯面上的東西。<br>會保留：圖鑑、成就、裝飾品、輪迴點和輪迴點買的東西。<br>輪迴點要在輪迴的時候才能用。</div>
-    <button type="button" id="rebirthGo" ${n ? '' : 'disabled'}>${rebirthArmed ? `確定？再按一次就輪迴（+${n} 點）` : n ? `輪迴（+${n} 點）` : `累計賺到 ${rebirthNeed(1)} 枚才能輪迴`}</button>
-  </div>
-  <div class="rebirthHead">輪迴點：<b>${rebirth.points}</b> 點${rebirth.count ? `　已經輪迴 ${rebirth.count} 次` : ''}</div>`;
-  // 平常只看得到現在的等級和效果，不能買
-  let inner = '';
-  for (const k of PERK_KEYS) {
-    const p = PERKS[k];
-    const lv = perkLv(k);
-    const max = p.costs.length;
-    inner += buyRowHtml({
-      name: p.name, lv: lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`,
-      desc: lv ? `現在：${p.eff(lv)}` : `還沒買。Lv 1：${p.eff(1)}`,
-      btn: '',
-    });
-  }
-  html += groupHtml('rebirth.perks', '輪迴點商店（輪迴時才能買）', `${PERK_KEYS.length} 項`, inner);
-  return html;
-}
-// 輪迴中的商店：只剩這個面板，買完按「重生」
-const REBIRTH_LINES = ['改機被老闆發現了，快溜！', '玩太多被媽媽發現了，塊陶啊！'];
-let rebirthLine = REBIRTH_LINES[0];
-function rebirthShopHtml() {
-  let html = `<div class="rebirthBox">
-    <div class="rebirthLine">${rebirthLine}</div>
-    <div>這次拿到 <b>${rebirth.gained}</b> 點輪迴點，手上共 <b>${rebirth.points}</b> 點</div>
-    <div class="bookNote">想買什麼就買，不買也可以。按「重生」就重新開始。</div>
-  </div>`;
-  let inner = '';
-  for (const k of PERK_KEYS) {
-    const p = PERKS[k];
-    const lv = perkLv(k);
-    const max = p.costs.length;
-    const cost = p.costs[lv];
-    inner += buyRowHtml({
-      name: p.name, lv: lv >= max ? `Lv ${lv}（滿級）` : `Lv ${lv} / ${max}`,
-      desc: lv >= max ? `已滿級：${p.eff(lv)}` : `升級後：${p.eff(lv + 1)}`,
-      price: lv < max ? `${cost} 點` : '', canPay: rebirth.points >= cost,
-      btn: lv >= max ? '<button type="button" disabled>滿級</button>'
-        : `<button type="button" data-perk="${k}" ${rebirth.points < cost ? 'disabled' : ''}>升級</button>`,
-    });
-  }
-  html += `<div class="perkList">${inner}</div>`;
-  html += '<button type="button" id="rebornGo">重生</button>';
-  return html;
-}
-// 按兩次輪迴：拿到點數，機台收起來，只剩輪迴點商店
-function enterRebirthShop() {
-  const n = rebirthPending();
-  if (!n || rebirth.shopping) return;
-  rebirth.points += n;
-  rebirth.count++;
-  rebirth.gained = n;
-  rebirth.shopping = true;
-  won = 0; // 點數已經拿了，避免重新整理後又算一次
-  rebirthLine = REBIRTH_LINES[Math.floor(Math.random() * REBIRTH_LINES.length)];
-  setAuto(false);
-  pointerDown = false;
-  showRebirthShop();
-  saveGame();
-}
-function showRebirthShop() {
-  for (const id of ['ach', 'book', 'settings', 'wheel', 'viewer']) document.getElementById(id).classList.remove('show');
-  document.body.classList.add('rebirthing');
-  shopTab = 'rebirth';
-  rebirthArmed = 0;
-  renderShop();
-  shopEl.classList.add('show');
-  shopListEl.scrollTop = 0;
-  shopEl.scrollTop = 0;
-}
-function buyPerk(k) {
-  if (!rebirth.shopping) return;
-  const lv = perkLv(k);
-  const cost = PERKS[k].costs[lv];
-  if (cost === undefined || rebirth.points < cost) return;
-  rebirth.points -= cost;
-  rebirth.perks[k]++;
-  beep(660, 0.08, 0.06, 'triangle', 'shop');
-  setTimeout(() => beep(1320, 0.12, 0.06, 'triangle', 'shop'), 80);
-  renderShop();
-  saveGame();
-}
-// 重新開始：清空檯面、錢、升級。還沒進輪迴點商店就先拿點數（測試會直接叫這個）
-function doRebirth() {
-  if (!rebirth.shopping) {
-    const n = rebirthPending();
-    if (!n) return;
-    rebirth.points += n;
-    rebirth.count++;
-    rebirth.gained = n;
-  }
-  const n = rebirth.gained;
-  rebirth.shopping = false;
-  // 清空檯面、錢、升級，照開新遊戲的樣子重新鋪幣
-  while (coins.length) removeCoin(coins.length - 1);
-  while (dolls.length) removeDoll(dolls.length - 1);
-  dollQueue.length = 0;
-  while (props.length) removeProp(props.length - 1);
-  while (treasures.length) removeTreasure(treasures.length - 1);
-  for (const k of UPGRADE_KEYS) upgrades[k] = 0;
-  for (const k of ['refill', 'dropRate', 'speed']) upgrades[k] = Math.min(perkLv('headStart'), UPGRADES[k].prices.length);
-  wallet = START_WALLET + PERK_MONEY[perkLv('startMoney')];
-  won = 0;
-  lost = 0;
-  earnCarry = 0;
-  rainQueue = 0;
-  refillTimer = 0;
-  windTime = quakeTime = reachExtra = 0;
-  reachQueued = false;
-  itemQueue.length = 0;
-  itemGap = 0;
-  shakeTime = shakeCd = 0;
-  rainCd = 0;
-  summonCd = 0;
-  feverGauge = 0;
-  if (feverTime > 0) { feverTime = 0; endFever(); }
-  prefill();
-  buildGuards();
-  setAuto(false);
-  rebirthArmed = 0;
-  shopTab = 'up';
-  document.body.classList.remove('rebirthing');
-  shopEl.classList.remove('show');
-  renderShop();
-  saveGame();
-  return n;
-}
-
-// 轉生動畫（納可定）：蓋上一層「轉生中……」，天使史萊姆跳幾下、轉一圈；
-// 蓋滿的時候偷偷換好新檯面，動畫結束再淡出，看到的就是輪迴後的新檯面
-const rebornEl = document.getElementById('reborn');
-let rebornView = null;
-let rebornBusy = false;
-const REBORN_TIME = 4.2;     // 整段動畫幾秒
-function rebirthWithAnim() {
-  if (rebornBusy || (!rebirth.shopping && !rebirthPending())) return;
-  rebornBusy = true;
-  shopEl.classList.remove('show');
-  setAuto(false);
-  pointerDown = false;
-  if (!rebornView) {
-    rebornView = makeMiniView(document.getElementById('rebornCanvas'), false);
-    rebornView.cam.position.set(0, 1.3, 3.9);
-    rebornView.cam.lookAt(0, 0.62, 0);
-  }
-  if (rebornView.mesh) rebornView.sc.remove(rebornView.mesh);
-  rebornView.mesh = makeSlimeMesh(SPARE_SKINS.angel, 1, quality !== 'low');
-  rebornView.sc.add(rebornView.mesh);
-  rebornEl.classList.remove('out');
-  rebornEl.classList.add('show');
-  [523, 659, 784, 1047, 1319].forEach((f, k) => setTimeout(() => beep(f, 0.22, 0.06, 'triangle', 'shop'), 300 + k * 140));
-  let got = 0;
-  let swapped = false;
-  const t0 = performance.now();
-  const loop = (now) => {
-    const t = window.__rebornT ?? (now - t0) / 1000; // __rebornT：測試用，讓動畫停在某一秒拍照
-    // 蓋滿了（淡入 0.5 秒）才換檯面
-    if (!swapped && t > 0.6) { swapped = true; got = doRebirth(); }
-    animateAngel(rebornView.mesh, t);
-    miniRender(rebornView, rebornView.mesh.rotation.y, now);
-    if (t < REBORN_TIME) { requestAnimationFrame(loop); return; }
-    rebornEl.classList.add('out');
-    setTimeout(() => { rebornEl.classList.remove('show', 'out'); rebornBusy = false; }, 600);
-    bump(walletEl);
-    toast(`轉生完成！拿到 ${got} 點輪迴點`);
-    [784, 1047, 1319].forEach((f, k) => setTimeout(() => beep(f, 0.18, 0.06, 'triangle', 'shop'), k * 90));
-  };
-  requestAnimationFrame(loop);
-}
-// 天使：前 2.4 秒跳三下（落地時壓扁一點），之後往上飄、轉一整圈，再落回來
-function animateAngel(m, t) {
-  let y = 0;
-  let sq = 1;
-  let yaw = 0;
-  if (t < 2.4) {
-    const k = (t % 0.8) / 0.8;               // 每一下 0.8 秒
-    y = Math.sin(k * Math.PI) * 0.38;
-    const land = Math.max(0, 1 - Math.min(k, 1 - k) / 0.12); // 剛落地、剛起跳的那一下壓扁
-    sq = 1 - land * 0.18;
-    yaw = Math.sin(t * 2.4) * 0.35;          // 跳的時候左右晃一點
-  } else {
-    const k = Math.min(1, (t - 2.4) / 1.5);
-    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-    y = Math.sin(k * Math.PI) * 0.3;
-    yaw = e * Math.PI * 2;
-  }
-  m.position.y = y;
-  m.scale.set(1 + (1 - sq) * 0.6, sq, 1 + (1 - sq) * 0.6);
-  m.rotation.y = yaw;
 }
 
 // 一鍵買到最高：手上的錢從現在這一級一路買上去，最多買到幾級、共要多少
@@ -3078,16 +2840,6 @@ shopListEl.addEventListener('change', (e) => {
 shopListEl.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-buy]');
   if (b) buyUpgrade(b.dataset.buy);
-  const t = e.target.closest('button[data-shoptab]');
-  if (t) { shopTab = t.dataset.shoptab; rebirthArmed = 0; renderShop(); }
-  const pk = e.target.closest('button[data-perk]');
-  if (pk) buyPerk(pk.dataset.perk);
-  if (e.target.closest('#rebornGo')) { rebirthWithAnim(); return; }
-  if (e.target.closest('#rebirthGo')) {
-    if (rebirthArmed) { clearTimeout(rebirthArmed); rebirthArmed = 0; enterRebirthShop(); return; }
-    rebirthArmed = setTimeout(() => { rebirthArmed = 0; if (shopTab === 'rebirth') renderShop(); }, 3000);
-    renderShop();
-  }
 });
 
 // ===== 存檔 =====
@@ -3134,7 +2886,6 @@ function saveData() {
     tutor: [...tutorSeen],
     achieved: { ...achieved },
     achPoints,
-    rebirth: { points: rebirth.points, count: rebirth.count, shopping: rebirth.shopping, gained: rebirth.gained, perks: { ...rebirth.perks } },
     ownedDecor: { ...ownedDecor },
     equipped: { ...equipped },
     shelf: [...shelf],
@@ -3209,17 +2960,15 @@ function applySave(d) {
     for (const sk of SKILLS) setSkillAuto(sk, !!d.settings.skillAuto?.[sk.key]);
     if (Number.isFinite(d.settings.aimX)) aimX = Math.max(-3, Math.min(3, d.settings.aimX));
   }
-  rebirth.points = Math.max(0, Math.floor(Number(d.rebirth?.points) || 0));
-  rebirth.count = Math.max(0, Math.floor(Number(d.rebirth?.count) || 0));
-  rebirth.shopping = !!d.rebirth?.shopping;
-  rebirth.gained = Math.max(0, Math.floor(Number(d.rebirth?.gained) || 0));
-  for (const k of PERK_KEYS) rebirth.perks[k] = Math.min(PERKS[k].costs.length, Math.max(0, Math.floor(Number(d.rebirth?.perks?.[k]) || 0)));
-  // 輪迴點商店的「小寶物」搬到一般商店（2026-10-16）：買過的點數退回
-  rebirth.points += Math.max(0, Math.floor(Number(d.rebirth?.perks?.gems) || 0));
   wallet = Math.max(0, Math.floor(Number(d.wallet) || 0));
   // 舊存檔買過「大金幣」：換成同樣等級的「銀幣」（2026-10-06）
   if (d.upgrades && d.upgrades.lucky && !d.upgrades.silver) d.upgrades.silver = d.upgrades.lucky;
   if (d.upgrades && !('coinMix' in d.upgrades)) convertOldUpgrades(d.upgrades);
+  // 拿掉輪迴（2026-10-16 納可）：輪迴點買過的娃娃上限、寶物上限換成一般商店同樣等級；其他加成和剩下的點數不留
+  if (d.upgrades && d.rebirth?.perks && !('dollCap' in d.upgrades)) {
+    d.upgrades.dollCap = d.rebirth.perks.dollCap;
+    d.upgrades.gemCap = d.rebirth.perks.gemCap;
+  }
   for (const key of Object.keys(upgrades)) {
     const lv = Math.floor(Number(d.upgrades?.[key]) || 0);
     upgrades[key] = Math.min(UPGRADES[key].prices.length, Math.max(0, lv));
@@ -3481,7 +3230,7 @@ function updateTimers(frame) {
     if (dolls.length + dollQueue.length < maxDolls() && dollChance.roll()) dropNewDoll();
   }
   // 檯面上不能沒有史萊姆（2026-10-05 納可）：少於 2 隻的時候，等 3 秒就直接補一隻，不用等機率
-  if (dolls.length + dollQueue.length < DOLL_MIN && !rebornBusy && !rebirth.shopping) {
+  if (dolls.length + dollQueue.length < DOLL_MIN) {
     dollLowT += frame;
     if (dollLowT >= DOLL_LOW_WAIT) { dollLowT = 0; dropNewDoll(); }
   } else {
@@ -3507,7 +3256,7 @@ function updateTimers(frame) {
   refillCheck += frame;
   if (refillCheck >= 3) {
     refillCheck = 0;
-    if (rainQueue === 0 && feverTime <= 0 && !rebornBusy && !rebirth.shopping && coins.length < REFILL_MIN) startRefill();
+    if (rainQueue === 0 && feverTime <= 0 && coins.length < REFILL_MIN) startRefill();
   }
 
   // 金幣雨：大約 2.5 秒內，一枚一枚從畫面上方翻轉著掉下來
@@ -3549,7 +3298,6 @@ function tick(now) {
   lastT = now;
   acc += frame;
   let steps = 0;
-  if (rebirth.shopping) acc = 0; // 輪迴點商店開著的時候機台停著
   while (acc >= STEP && steps < 4) {
     stepSim();
     acc -= STEP;
@@ -3557,7 +3305,7 @@ function tick(now) {
   }
   if (steps === 4) acc = 0;
 
-  if (!rebirth.shopping) updateTimers(frame);
+  updateTimers(frame);
   updateCombo(frame);
 
   // 同步畫面
@@ -3613,7 +3361,6 @@ const TUTOR = [
   { id: 'ticket', when: () => freeSpins > 0, text: '拿到免費彩券了，按「彩券」轉一次', done: () => freeSpins === 0, dur: 12 },
   { id: 'item', when: () => props.some((p) => p.type !== 'ticket'), text: '道具推下前緣會馬上發動', dur: 8 },
   { id: 'fever', when: () => feverGauge >= 300, text: '推下東西會累積狂熱值（錢下面那一條），滿了就是狂熱時間', dur: 9 },
-  { id: 'rebirth', when: () => rebirthPending() >= 1, text: '可以輪迴了！看看「商店」的「輪迴」分頁', dur: 12 },
 ];
 const tutorSeen = new Set();
 const tutorEl = document.getElementById('tutor');
@@ -3634,7 +3381,6 @@ function tutorHide() {
   tutorEl.classList.remove('show');
 }
 function tutorTick(frame) {
-  if (rebornBusy || rebirth.shopping) return;
   if (tutorNow) {
     tutorT += frame;
     if ((tutorNow.done && tutorNow.done()) || (tutorNow.dur && tutorT >= tutorNow.dur)) tutorHide();
@@ -3669,7 +3415,6 @@ applyQuality(quality);
 const saved = loadSave();
 if (saved) applySave(saved);
 else prefill();
-if (rebirth.shopping) showRebirthShop(); // 上次在輪迴點商店裡關掉的，回到那裡
 buildGuards();
 updateLotteryBadge();
 updateHud();
@@ -3677,9 +3422,8 @@ gameReady = true;
 document.getElementById('loading').classList.add('hide');
 setTimeout(prewarmSlimes, 1200); // 開好之後趁空檔熱身，不拖慢開啟
 // 給測試用
-window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, useItem, get itemQueue() { return [...itemQueue]; }, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, rebirth, rebirthNeed, rebirthPending, doRebirth, rebirthWithAnim, enterRebirthShop, get rebornBusy() { return rebornBusy; }, buyPerk, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, get coinBag() { return coinBag; }, nextCoinKind, refillCoinBag, COIN_KINDS, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
+window.__game = { coins, world, camera, get moving() { return movingCount; }, applyQuality, get quality() { return quality; }, get wallet() { return wallet; }, get won() { return won; }, get lost() { return lost; }, dropAt(x) { aimX = x; dropCoin(); }, upgrades, buy, setWallet(n) { wallet = n; }, startRain, UPGRADES, get rain() { return rainQueue; }, startRefill, get refills() { return refills; }, dolls, collection, dropNewDoll, spawnDoll, get activeSets() { return activeSets; }, setSets(a) { activeSets = a; refillDollBag(); return prewarmSlimes(); }, prewarmSlimes, openViewer, props, dropProp, spawnProp, triggerItem, useItem, get itemQueue() { return [...itemQueue]; }, treasures, spawnTreasure, dropTreasure, startShake, startRainSkill, get rainCd() { return rainCd; }, get summonCd() { return summonCd; }, startSummon, addFever, get fever() { return { gauge: feverGauge, time: feverTime }; }, upPrice, toggleShelf, shelf, get earned() { return won; }, set earned(v) { won = v; }, get shakeCd() { return shakeCd; }, get freeSpins() { return freeSpins; }, giveSpins(n) { freeSpins += n; updateLotteryBadge(); }, get wheelTop() { const t = ((-wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return WHEEL.findIndex((w) => { const d = Math.abs(((t - w.mid + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d < w.half; }); }, WHEEL, spinWheel, spawnCoin, clearTable() { while (coins.length) removeCoin(coins.length - 1); while (dolls.length) removeDoll(dolls.length - 1); while (props.length) removeProp(props.length - 1); while (treasures.length) removeTreasure(treasures.length - 1); }, stats, achieved, get achPoints() { return achPoints; }, checkAchievements, PseudoRandom, get auto() { return autoDrop; }, soundOn, get coinBag() { return coinBag; }, nextCoinKind, refillCoinBag, COIN_KINDS, setAuto, saveGame, saveData, RAPIER, renderer, simulate(sec) { for (let i = 0; i < sec * 60; i++) stepSim(); },
   // 測試用：照真實時間跑物理和計時（自動投幣、娃娃、金幣雨、媽媽都會動），每一步呼叫 onStep
-  PERKS, PERK_KEYS, perkLv,
   play(sec, onStep) { for (let i = 0; i < sec * 60; i++) { stepSim(); updateTimers(STEP); if (onStep) onStep(i * STEP); } },
   setAim(x) { aimX = x; }, upValue, tutorSeen, get tutorNow() { return tutorNow && tutorNow.id; }, canBuy(key) { const lv = upgrades[key]; const i = UPGRADE_KEYS.indexOf(key); return shopVisible(i) && lv < UPGRADES[key].prices.length && wallet >= upPrice(key); }, UPGRADE_KEYS };
 requestAnimationFrame((t) => { lastT = t; tick(t); });
